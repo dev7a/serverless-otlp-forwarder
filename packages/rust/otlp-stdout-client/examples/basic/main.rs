@@ -1,10 +1,10 @@
 use opentelemetry::global;
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
-use opentelemetry_otlp::{SpanExporter, WithExportConfig, WithHttpConfig, Protocol};
+use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
     runtime::Tokio,
-    trace::{Config, TracerProvider},
+    trace::TracerProvider,
 };
 use otlp_stdout_client::StdoutClient;
 
@@ -34,8 +34,8 @@ fn init_tracer_provider() -> Result<TracerProvider, Box<dyn std::error::Error>> 
         .build()?;
 
     let tracer_provider = TracerProvider::builder()
-        .with_config(Config::default())
         .with_batch_exporter(exporter, Tokio)
+        .with_resource(opentelemetry_sdk::Resource::default())
         .build();
 
     Ok(tracer_provider)
