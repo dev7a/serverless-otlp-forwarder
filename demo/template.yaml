@@ -9,6 +9,15 @@ Parameters:
   ExporterEndpoint:
     Type: String
     Description: The endpoint of the OTLP exporter
+    Default: http://localhost:4318
+  ExporterProtocol:
+    Type: String
+    Description: The protocol of the OTLP exporter
+    Default: http/protobuf
+  ExporterCompression:
+    Type: String
+    Description: The compression of the OTLP exporter
+    Default: gzip
   TracingEnabled:
     Type: String
     Description: Whether to enable X-Ray tracing
@@ -58,8 +67,8 @@ Resources:
         Variables:
           RUST_LOG: info
           OTEL_EXPORTER_OTLP_ENDPOINT: !Ref ExporterEndpoint
-          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+          OTEL_EXPORTER_OTLP_PROTOCOL: !Ref ExporterProtocol
+          OTEL_EXPORTER_OTLP_COMPRESSION: !Ref ExporterCompression
           OTEL_SERVICE_NAME: !Sub '${NestedStackName}-lambda-backend'
           TABLE_NAME: !Sub '${NestedStackName}-table'
       Events:
@@ -100,8 +109,8 @@ Resources:
         Variables:
           RUST_LOG: info
           OTEL_EXPORTER_OTLP_ENDPOINT: !Ref ExporterEndpoint
-          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/json
+          OTEL_EXPORTER_OTLP_COMPRESSION: none
           OTEL_SERVICE_NAME: !Sub '${NestedStackName}-lambda-frontend'
           TARGET_URL: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
 
@@ -117,8 +126,8 @@ Resources:
       Environment:
         Variables:
           OTEL_EXPORTER_OTLP_ENDPOINT: !Ref ExporterEndpoint
-          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+          OTEL_EXPORTER_OTLP_PROTOCOL: !Ref ExporterProtocol
+          OTEL_EXPORTER_OTLP_COMPRESSION: !Ref ExporterCompression
           OTEL_SERVICE_NAME: !Sub '${NestedStackName}-python-client'
           TARGET_URL: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/quotes'
       Events:
@@ -140,8 +149,8 @@ Resources:
       Environment:
         Variables:
           OTEL_EXPORTER_OTLP_ENDPOINT: !Ref ExporterEndpoint
-          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+          OTEL_EXPORTER_OTLP_PROTOCOL: !Ref ExporterProtocol
+          OTEL_EXPORTER_OTLP_COMPRESSION: !Ref ExporterCompression
           OTEL_SERVICE_NAME: !Sub '${NestedStackName}-node-client'
           TARGET_URL: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/quotes'
       Events:

@@ -1,6 +1,6 @@
 [package]
 name = "lambda-otel-utils"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
 description = "A set of utilities for AWS Lambda and OpenTelemetry"
@@ -13,27 +13,31 @@ homepage = "https://github.com/dev7a/lambda-otlp-forwarder"
 documentation = "https://docs.rs/lambda-otel-utils"
 
 [dependencies]
-opentelemetry = { version = "0.26.0", default-features = false, features = ["trace"] }
-opentelemetry_sdk = { version = "0.26.0", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.26.0", features = ["http-proto", "reqwest-client", "http-json"] }
-opentelemetry-http = "0.26.0"
+opentelemetry = { version = "0.27.0", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27.0", features = ["http-proto", "reqwest-client"] }
+opentelemetry-http = "0.27.0"
+opentelemetry-stdout = "0.27.0"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "json"] }
-tracing-opentelemetry = "0.27.0"
-opentelemetry-aws = { version = "0.14.0", features = ["detector-aws-lambda"] }
-opentelemetry-semantic-conventions = "0.26.0"
+tracing-opentelemetry = "0.28.0"
+opentelemetry-semantic-conventions = { version = "0.27.0", features=["semconv_experimental"] }
 delegate = "0.13.1"
 lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
 tracing = { version = "0.1" }
 serde_json = { version = "1.0" }
 http = "1.1.0"
-otlp-stdout-client = "0.2.0"
 aws_lambda_events = { version = "0.15.1", default-features = false, features = ["apigw", "alb"] }
-opentelemetry-stdout = "0.26.0"
 futures = "0.3.31"
 pin-project = "1.1.0"
+otlp-stdout-client = { path = "../otlp-stdout-client", version = "0.2.1" }
+once_cell = "1.12"
+opentelemetry-aws = { version = "0.15.0", features = ["detector-aws-lambda"] }
+rustc_version_runtime = "0.3.0"
+
 [dev-dependencies]
 tokio = { version = "1.0", features = ["full", "test-util", "macros"] }
 sealed_test = "1.1.0"   
 aws_lambda_events = { version = "0.15.1", default-features = false, features = ["apigw", "alb"] }
-opentelemetry_sdk = { version = "0.26.0", features = ["testing"] }
+opentelemetry_sdk = { version = "0.27.0", features = ["testing"] }
 mockall = "0.13.0"
+doc-comment = "0.3"

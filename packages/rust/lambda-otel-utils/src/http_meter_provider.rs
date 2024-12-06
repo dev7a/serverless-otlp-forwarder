@@ -3,7 +3,7 @@
 //!
 //! It includes:
 //! - `HttpMeterProviderBuilder`: A builder struct for configuring and initializing a MeterProvider.
-//! 
+//!
 //! The module supports various configuration options, including:
 //! - Custom HTTP clients for exporting metrics
 //! - Setting custom meter names
@@ -12,35 +12,13 @@
 
 use std::time::Duration;
 
-use opentelemetry::metrics::{MeterProvider, Result as MetricsResult};
 use opentelemetry_http::HttpClient;
-use opentelemetry_otlp::{ExportConfig, Protocol, WithExportConfig};
+use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
-    metrics::{PeriodicReader, SdkMeterProvider, InstrumentKind},
-    metrics::data::Temporality,
-    metrics::reader::TemporalitySelector,
+    metrics::{PeriodicReader, SdkMeterProvider},
     runtime,
 };
 use otlp_stdout_client::StdoutClient;
-use std::env;
-use crate::http_tracer_provider::get_lambda_resource;
-
-/// Default temporality selector that uses Delta for all instruments
-#[derive(Debug, Default)]
-struct DefaultTemporalitySelector;
-
-impl TemporalitySelector for DefaultTemporalitySelector {
-    fn temporality(&self, kind: InstrumentKind) -> Temporality {
-        match kind {
-            InstrumentKind::Counter | InstrumentKind::ObservableCounter | InstrumentKind::Histogram => {
-                Temporality::Delta
-            }
-            InstrumentKind::UpDownCounter | InstrumentKind::ObservableUpDownCounter | InstrumentKind::ObservableGauge | InstrumentKind::Gauge => {
-                Temporality::Cumulative
-            }
-        }
-    }
-}
 
 /// Builder for configuring and initializing a MeterProvider.
 ///
@@ -54,7 +32,7 @@ impl TemporalitySelector for DefaultTemporalitySelector {
 /// use std::time::Duration;
 ///
 /// #[tokio::main]
-/// async fn main() -> Result<(), opentelemetry::metrics::MetricsError> {
+/// async fn main() -> Result<(), opentelemetry_sdk::error::Error> {
 ///     let meter_provider = HttpMeterProviderBuilder::default()
 ///         .with_stdout_client()
 ///         .with_meter_name("my-service")
@@ -69,6 +47,7 @@ pub struct HttpMeterProviderBuilder<C: HttpClient + 'static = StdoutClient> {
     meter_name: Option<&'static str>,
     export_interval: Duration,
     export_timeout: Duration,
+    install_global: bool,
 }
 
 impl Default for HttpMeterProviderBuilder {
@@ -85,6 +64,7 @@ impl HttpMeterProviderBuilder {
             meter_name: None,
             export_interval: Duration::from_secs(60),
             export_timeout: Duration::from_secs(10),
+            install_global: false,
         }
     }
 
@@ -116,38 +96,32 @@ impl HttpMeterProviderBuilder {
         self
     }
 
+    /// Enables or disables global installation of the meter provider.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lambda_otel_utils::HttpMeterProviderBuilder;
+    ///
+    /// let builder = HttpMeterProviderBuilder::default().enable_global(true);
+    /// ```
+    pub fn enable_global(mut self, set_global: bool) -> Self {
+        self.install_global = set_global;
+        self
+    }
+
     /// Builds the `MeterProvider` with the configured settings.
-    pub fn build(self) -> MetricsResult<SdkMeterProvider> {
-        let protocol = match env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
-            .unwrap_or_default()
-            .to_lowercase()
-            .as_str()
-        {
-            "http/protobuf" => Protocol::HttpBinary,
-            "http/json" | "" => Protocol::HttpJson,
-            unsupported => {
-                eprintln!(
-                    "Warning: OTEL_EXPORTER_OTLP_PROTOCOL value '{}' is not supported. Defaulting to HTTP JSON.",
-                    unsupported
-                );
-                Protocol::HttpJson
-            }
-        };
-
-        let export_config = ExportConfig {
-            protocol,
-            timeout: self.export_timeout,
-            ..Default::default()
-        };
-
-        let mut exporter_builder = opentelemetry_otlp::new_exporter().http().with_export_config(export_config);
+    pub fn build(self) -> Result<SdkMeterProvider, opentelemetry_sdk::error::Error> {
+        let mut exporter_builder = opentelemetry_otlp::MetricExporter::builder()
+            .with_http()
+            .with_protocol(crate::protocol::get_protocol())
+            .with_timeout(self.export_timeout);
 
         if let Some(client) = self.client {
             exporter_builder = exporter_builder.with_http_client(client);
         }
 
-        // Build the metrics exporter with default temporality selector
-        let exporter = exporter_builder.build_metrics_exporter(Box::new(DefaultTemporalitySelector))?;
+        let exporter = exporter_builder.build()?;
 
         let reader = PeriodicReader::builder(exporter, runtime::Tokio)
             .with_interval(self.export_interval)
@@ -155,15 +129,15 @@ impl HttpMeterProviderBuilder {
 
         let provider = SdkMeterProvider::builder()
             .with_reader(reader)
-            .with_resource(get_lambda_resource())
+            .with_resource(crate::resource::get_lambda_resource())
             .build();
 
-        Ok(provider)
-    }
+        // Optionally install global provider
+        if self.install_global {
+            opentelemetry::global::set_meter_provider(provider.clone());
+        }
 
-    /// Gets a meter from the provider with the configured name.
-    pub fn get_meter(self, provider: &SdkMeterProvider) -> opentelemetry::metrics::Meter {
-        provider.meter(self.meter_name.unwrap_or("default"))
+        Ok(provider)
     }
 }
 
@@ -178,6 +152,7 @@ mod tests {
         assert!(builder.meter_name.is_none());
         assert_eq!(builder.export_interval, Duration::from_secs(60));
         assert_eq!(builder.export_timeout, Duration::from_secs(10));
+        assert!(!builder.install_global);
     }
 
     #[test]
@@ -186,11 +161,13 @@ mod tests {
             .with_stdout_client()
             .with_meter_name("test-meter")
             .with_export_interval(Duration::from_secs(30))
-            .with_export_timeout(Duration::from_secs(5));
+            .with_export_timeout(Duration::from_secs(5))
+            .enable_global(true);
 
         assert!(builder.client.is_some());
         assert_eq!(builder.meter_name, Some("test-meter"));
         assert_eq!(builder.export_interval, Duration::from_secs(30));
         assert_eq!(builder.export_timeout, Duration::from_secs(5));
+        assert!(builder.install_global);
     }
-} 
+}

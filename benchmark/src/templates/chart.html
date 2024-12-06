@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.2/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+    <style>
+        :root {
+            --primary-bg: #ffffff;
+            --secondary-bg: #f8fafc;
+            --border-color: #e2e8f0;
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --accent-color: #3b82f6;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--secondary-bg);
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .header {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .title-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .chart-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+            text-transform: uppercase;
+            letter-spacing: 0.025em;
+        }
+
+        .chart-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            align-self: flex-end;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-link.active {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .nav-separator {
+            color: var(--border-color);
+        }
+
+        .chart-container {
+            height: 600px;
+            background: var(--primary-bg);
+            border-radius: 0.75rem;
+            box-shadow: var(--shadow-md);
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 1rem auto;
+                padding: 0 0.5rem;
+                gap: 1rem;
+            }
+
+            .header {
+                gap: 0.25rem;
+            }
+
+            .title-section {
+                gap: 0.125rem;
+            }
+
+            .chart-title {
+                font-size: 1.125rem;
+            }
+
+            .chart-subtitle {
+                font-size: 0.75rem;
+            }
+
+            .nav {
+                font-size: 0.75rem;
+                gap: 0.5rem;
+            }
+
+            .chart-container {
+                height: 500px;
+                padding: 0.5rem;
+            }
+        }
+    </style>
+  </head>
+  <body>
+      <div class="container">
+          <div class="header">
+              <div class="title-section">
+                  <h1 class="chart-title">{{ title }}</h1>
+                  <p class="chart-subtitle">memory: {{ config.memory_size }} MB | concurrency: {{ config.concurrent_invocations }} | runs: {{ config.rounds }} | timestamp: {{ config.timestamp }}</p>
+              </div>
+              <nav class="nav">
+                  <a href="cold_starts.html" class="nav-link{% if page_type == 'cold' %} active{% endif %}">Cold Start</a>
+                  <span class="nav-separator">|</span>
+                  <a href="warm_starts.html" class="nav-link{% if page_type == 'warm' %} active{% endif %}">Warm Start</a>
+                  <span class="nav-separator">|</span>
+                  <a href="memory_usage.html" class="nav-link{% if page_type == 'memory' %} active{% endif %}">Memory Usage</a>
+              </nav>
+          </div>
+
+          <div class="chart-container" id="{{ chart_id }}"></div>
+      </div>
+      
+      <script type="text/javascript">
+          var chart = echarts.init(document.getElementById('{{ chart_id }}'));
+          var options = JSON.parse('{{ options | safe }}');
+          chart.setOption(options);
+
+          window.addEventListener('resize', function() {
+              chart.resize();
+          });
+      </script>
+  </body>
+</html> 

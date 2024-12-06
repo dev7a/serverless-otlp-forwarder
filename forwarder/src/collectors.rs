@@ -29,8 +29,10 @@ pub(crate) struct Collector {
     pub(crate) name: String,
     /// Base URL endpoint for the collector
     pub(crate) endpoint: String,
-    /// Optional authentication header in format "header_name=header_value"
-    /// For example: "x-api-key=your-api-key" or "Authorization=Bearer token123"
+    /// Optional authentication string. Special values:
+    /// - "sigv4" or "iam": Use AWS SigV4 signing
+    /// - "header_name=value": Add a custom header
+    /// - null or empty: No authentication
     pub(crate) auth: Option<String>,
 }
 
@@ -185,10 +187,7 @@ async fn fetch_collectors(client: &SecretsManagerClient) -> Result<Vec<Collector
     tracing::info!("Loading collectors secrets with prefix: {}", prefix);
 
     // Create a filter for the name prefix
-    let filter = Filter::builder()
-        .key("name".into())
-        .values(prefix)
-        .build();
+    let filter = Filter::builder().key("name".into()).values(prefix).build();
 
     let response = client
         .batch_get_secret_value()

@@ -14,10 +14,15 @@ Parameters:
   CollectorsSecretsKeyPrefix:
     Type: String
     Default: 'lambda-otlp-forwarder/keys'
-  DemoExporterEndpoint:
+  CollectorsCacheTtlSeconds:
     Type: String
-    Description: 'The endpoint of the OTLP exporter for the demo application'
-    Default: 'https://localhost:4318'
+    Default: '300'
+  DemoExporterProtocol:
+    Type: String
+    Default: 'http/protobuf'
+  DemoExporterCompression:
+    Type: String
+    Default: 'gzip'
 
 Conditions:
   RouteAllLogs: !Equals [!Ref RouteAllLogs, 'true']
@@ -50,7 +55,7 @@ Resources:
           OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
           OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          COLLECTORS_CACHE_TTL_SECONDS: '300'
+          COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
           COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
       Policies:
         - Version: '2012-10-17'
@@ -59,6 +64,9 @@ Resources:
               Action:
                 - 'secretsmanager:BatchGetSecretValue'
                 - 'secretsmanager:ListSecrets'
+                - 'xray:PutTraceSegments'
+                - 'xray:PutSpans'
+                - 'xray:PutSpansForIndexing'
               Resource: '*'
             - Effect: Allow
               Action:
@@ -98,7 +106,8 @@ Resources:
       Location: ./demo/template.yaml
       Parameters:
         NestedStackName: demo
-        ExporterEndpoint: !Ref DemoExporterEndpoint
+        ExporterProtocol: !Ref DemoExporterProtocol
+        ExporterCompression: !Ref DemoExporterCompression
 
 Outputs:
   LogProcessorFunctionArn:

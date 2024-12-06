@@ -6,166 +6,197 @@
 
 - Easy setup of OpenTelemetry TracerProvider and MeterProvider for AWS Lambda
 - Customizable tracing and metrics configuration
-- Support for context propagation in HTTP requests
-- Integration with various OpenTelemetry exporters
 - Compatible with the `lambda_runtime` crate
+- Support for outputting to stdout using the `otlp-stdout-client`
+- Environment variable configuration support
+- AWS Lambda resource detection and attribute injection
+- Flexible subscriber configuration with JSON formatting options
 
 ## Installation
 
-Add the following to your `Cargo.toml`:
+Add the following to your `Cargo.toml` or run `cargo add lambda-otel-utils`:
 
 ```toml
 [dependencies]
-lambda-otel-utils = "0.1.0" 
+lambda-otel-utils = "0.2.0" 
 ```
 
 ## Usage
 
-There are two ways to use OpenTelemetry with this library:
+### Basic Setup with Tracing and Metrics
 
-### 1. Using the HTTP OpenTelemetry Layer
-
-Here's an example using our custom HTTP OpenTelemetry layer, which provides enhanced HTTP-specific tracing:
-
-```rust
+```rust, no_run
 use lambda_otel_utils::{
-    HttpTracerProviderBuilder,
-    http_otel_layer::HttpOtelLayer
+    HttpMeterProviderBuilder, HttpTracerProviderBuilder, OpenTelemetrySubscriberBuilder,
 };
-use lambda_runtime::{service_fn, Error, LambdaEvent};
-use aws_lambda_events::event::apigw::ApiGatewayProxyRequest;
-use serde_json::Value;
-use lambda_runtime::tower::ServiceBuilder;
+use std::error::Error as StdError;
+use std::time::Duration;
+use tracing::{info, info_span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-async fn function_handler(event: LambdaEvent<ApiGatewayProxyRequest>) -> Result<Value, Error> {
-    // Your Lambda function logic here
-    Ok(serde_json::json!({
-        "statusCode": 200,
-        "body": json!({ "message": "Hello, World!" })
-    }))
+#[tracing::instrument]
+fn do_work() {
+    let span = tracing::Span::current();
+    span.set_attribute("work_done", "true");
+
+    // Add metrics with attributes
+    info!(
+        monotonic_counter.operations = 1_u64,
+        operation = "add_item",
+        unit = "count",
+        "Operation completed successfully"
+    );
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
-    // Set up tracing
+async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
+    // Initialize tracer provider
     let tracer_provider = HttpTracerProviderBuilder::default()
         .with_stdout_client()
-        .with_tracer_name("my-lambda-function")
         .with_default_text_map_propagator()
+        .with_simple_exporter()
         .enable_global(true)
-        .enable_fmt_layer(true)
         .build()?;
 
-    let provider_clone = tracer_provider.clone();
+    // Initialize meter provider
+    let meter_provider = HttpMeterProviderBuilder::default()
+        .with_stdout_client()
+        .with_meter_name("my-service")
+        .with_export_interval(Duration::from_secs(30))
+        .build()?;
 
-    // Build the Lambda service with the HTTP OpenTelemetry layer
-    let func = ServiceBuilder::new()
-        .layer(HttpOtelLayer::new(move || {
-            provider_clone.force_flush();
-        }))
-        .service(service_fn(function_handler));
+    // Keep references for shutdown
+    let tracer_provider_ref = tracer_provider.clone();
+    let meter_provider_ref = meter_provider.clone();
 
-    lambda_runtime::run(func).await?;
+    // Initialize the OpenTelemetry subscriber
+    OpenTelemetrySubscriberBuilder::new()
+        .with_env_filter(true)
+        .with_tracer_provider(tracer_provider)
+        .with_meter_provider(meter_provider)
+        .with_service_name("my-service")
+        .init()?;
+
+    // Example instrumentation
+    let span = info_span!(
+        "test_span",
+        service.name = "test-service",
+        operation = "test-operation"
+    );
+    span.in_scope(|| {
+        span.set_attribute("test_attribute", "test_value");
+        span.set_attribute("another_attribute", "another_value");
+        do_work();
+    });
+
+    // flush and shutdown
+    for result in tracer_provider_ref.force_flush() {
+        if let Err(e) = result {
+            eprintln!("Error flushing tracer provider: {}", e);
+        }
+    }
+    if let Err(e) = meter_provider_ref.force_flush() {
+        eprintln!("Error flushing meter provider: {}", e);
+    }
+    shutdown_providers(&tracer_provider_ref, &meter_provider_ref)
+}
+
+fn shutdown_providers(
+    tracer_provider: &opentelemetry_sdk::trace::TracerProvider,
+    meter_provider: &opentelemetry_sdk::metrics::SdkMeterProvider,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
+    tracer_provider.shutdown()?;
+    meter_provider.shutdown()?;
     Ok(())
 }
 ```
-
-This implementation provides:
-- Automatic HTTP context propagation
-- HTTP-specific span attributes (method, route, status code)
-- Cold start tracking
-- Proper span lifecycle management
-- Automatic error tracking and status code recording
-
-### 2. Using AWS Lambda Runtime OpenTelemetry Layer
-
-For more general use cases, you can use the AWS Lambda Runtime OpenTelemetry layer:
-
-```rust
-use lambda_otel_utils::{HttpTracerProviderBuilder, HttpMeterProviderBuilder, HttpPropagationLayer};
-use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
-use lambda_runtime::layers::{OpenTelemetryLayer, OpenTelemetryFaasTrigger};
-use aws_lambda_events::event::apigw::ApiGatewayProxyRequest;
-use serde_json::Value;
-use std::time::Duration;
-
-async fn function_handler(event: LambdaEvent<ApiGatewayProxyRequest>) -> Result<Value, Error> {
-    // Your Lambda function logic here
-    Ok(serde_json::json!({"message": "Hello, World!"}))
-}
-
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    // Set up tracing
-    let tracer_provider = HttpTracerProviderBuilder::default()
-        .with_stdout_client()
-        .with_tracer_name("my-lambda-function")
-        .with_default_text_map_propagator()
-        .enable_global(true)
-        .enable_fmt_layer(true)
-        .build()?;
-
-    // Set up metrics
-    let meter_provider = HttpMeterProviderBuilder::default()
-        .with_stdout_client()
-        .with_meter_name("my-lambda-function")
-        .with_export_interval(Duration::from_secs(60))
-        .build()?;
-
-    let service = service_fn(function_handler);
-
-    Runtime::new(service)
-        .layer(
-            OpenTelemetryLayer::new(move || {
-                tracer_provider.force_flush();
-                meter_provider.force_flush();
-            })
-            .with_trigger(OpenTelemetryFaasTrigger::Http),
-        )
-        .layer(HttpPropagationLayer)
-        .run()
-        .await
-}
-```
-
-This example demonstrates how to:
-1. Set up both the `HttpTracerProviderBuilder` and `HttpMeterProviderBuilder` with various options
-2. Create a Lambda runtime with a service function
-3. Add the `OpenTelemetryLayer` with a flush callback for both tracing and metrics
-4. Include the `HttpPropagationLayer` for context propagation
 
 ## Main Components
 
 ### HttpTracerProviderBuilder
 
-The `HttpTracerProviderBuilder` allows you to configure and build a custom TracerProvider tailored for Lambda environments. It supports various options such as:
+The `HttpTracerProviderBuilder` allows you to configure and build a custom TracerProvider tailored for Lambda environments. Features include:
 
-- Custom HTTP clients for exporting traces
-- Enabling/disabling logging layers
-- Setting custom tracer names
-- Configuring propagators and ID generators
-- Choosing between simple and batch exporters
+- Stdout client support for Lambda environments
+- Configurable text map propagators (including XRay support)
+- Custom ID generators with XRay support
+- Simple and batch exporter options
+- Global provider installation option
 
-It also support the use of the `otlp-stdout-client` to export the traces to a stdout-like sink, for easy integration with AWS Lambda and forwarding to collectors.
+```rust, ignore
+use lambda_otel_utils::HttpTracerProviderBuilder;
+
+let tracer_provider = HttpTracerProviderBuilder::default()
+    .with_stdout_client()
+    .with_xray_text_map_propagator()
+    .with_xray_id_generator()
+    .with_simple_exporter()
+    .enable_global(true)
+    .build()?;
+```
 
 ### HttpMeterProviderBuilder
 
-The `HttpMeterProviderBuilder` allows you to configure and build a custom MeterProvider tailored for Lambda environments. It supports various options such as:
+The `HttpMeterProviderBuilder` provides configuration options for metrics collection:
 
-- Custom HTTP clients for exporting metrics
-- Setting custom meter names
-- Configuring export intervals and timeouts
-- Integration with Lambda resource attributes
+- Customizable export intervals
+- Stdout client support
+- Meter naming
+- Export timeout configuration
+- Global provider installation
 
-It also supports the use of the `otlp-stdout-client` to export the metrics to a stdout-like sink, for easy integration with AWS Lambda and forwarding to collectors.
+```rust, ignore
+use lambda_otel_utils::HttpMeterProviderBuilder;
+use std::time::Duration;
 
-### HttpPropagationLayer
+let meter_provider = HttpMeterProviderBuilder::default()
+    .with_stdout_client()
+    .with_meter_name("my-service")
+    .with_export_interval(Duration::from_secs(30))
+    .build()?;
+```
 
-The `HttpPropagationLayer` is used for propagating context across HTTP boundaries, ensuring that trace context is maintained throughout your distributed system.
+### OpenTelemetrySubscriberBuilder
+
+A flexible builder for configuring tracing subscribers with OpenTelemetry support:
+
+- Environment filter support (RUST_LOG)
+- JSON formatting options
+- Combined tracing and metrics setup
+- Service name configuration
+
+```rust, ignore
+use lambda_otel_utils::OpenTelemetrySubscriberBuilder;
+
+OpenTelemetrySubscriberBuilder::new()
+    .with_tracer_provider(tracer_provider)
+    .with_meter_provider(meter_provider)
+    .with_service_name("my-service")
+    .with_env_filter(true)
+    .with_json_format(true)
+    .init()?;
+```
+
 
 ## Environment Variables
 
-The crate respects standard OpenTelemetry environment variables for configuration, but the `HttpTracerProviderBuilder` is restricted to only `http/protobuf` and `http/json` protocols for the `OTEL_EXPORTER_OTLP_PROTOCOL` variable.
+The crate respects several environment variables for configuration:
+
+- `OTEL_SERVICE_NAME`: Sets the service name for telemetry data
+- `AWS_LAMBDA_FUNCTION_NAME`: Fallback for service name if OTEL_SERVICE_NAME is not set
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: Configures the OTLP protocol ("http/protobuf" or "http/json")
+- `LAMBDA_OTEL_SPAN_PROCESSOR`: Selects the span processor type ("simple" or "batch")
+- `RUST_LOG`: Controls logging levels when environment filter is enabled
+
+## Resource Detection
+
+The crate automatically detects and includes AWS Lambda resource attributes in your telemetry data, including:
+
+- Function name
+- Function version
+- Execution environment
+- Memory limits
+- Region information
 
 ## Contributing
 

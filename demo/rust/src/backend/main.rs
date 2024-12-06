@@ -1,58 +1,79 @@
-use aws_lambda_events::event::apigw::ApiGatewayProxyRequest;
-use aws_sdk_dynamodb::{types::AttributeValue, Client as DynamoDbClient};
-use lambda_otel_utils::{HttpOtelLayer, HttpTracerProviderBuilder};
-use lambda_runtime::{
-    service_fn, tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime,
-};
 use lazy_static::lazy_static;
-use opentelemetry::trace::SpanKind;
-use serde_dynamo::{from_item, to_attribute_value};
+use serde_dynamo::to_attribute_value;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::env;
-use std::sync::Arc;
+use std::{env, sync::Arc};
 use tracing::{instrument, Instrument};
 
+use aws_lambda_events::event::apigw::ApiGatewayProxyRequest;
+use aws_sdk_dynamodb::{types::AttributeValue, Client as DynamoDbClient};
 use lambda_lw_http_router::{define_router, route};
+use lambda_otel_utils::{
+    HttpTracerProviderBuilder, OpenTelemetryFaasTrigger, OpenTelemetryLayer,
+    OpenTelemetrySubscriberBuilder,
+};
+use lambda_runtime::{service_fn, tracing::field, Error as LambdaError, LambdaEvent, Runtime};
+use opentelemetry::{Array, Value as OtelValue};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
+/// Sets DynamoDB-specific attributes on a tracing span
+///
+/// # Arguments
+/// * `span` - The span to set attributes on
+/// * `table_name` - The DynamoDB table name
+/// * `operation` - The DynamoDB operation name (e.g., "PutItem", "GetItem")
+fn set_dynamodb_span_attributes(
+    span: &tracing::Span,
+    table_name: &'static str,
+    operation: &'static str,
+) {
+    let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+    let endpoint = format!("dynamodb.{}.amazonaws.com", &region);
+
+    // Basic span attributes
+    span.record("otel.kind", "client");
+    span.record("otel.name", format!("DynamoDB.{}", operation));
+
+    // Standard OpenTelemetry attributes
+    span.set_attribute("db.system", "dynamodb");
+    span.set_attribute("db.operation", operation);
+    span.set_attribute("net.peer.name", endpoint);
+    span.set_attribute("net.peer.port", 443);
+
+    // AWS-specific attributes
+    span.set_attribute("aws.region", region.clone());
+    span.set_attribute("cloud.provider", "aws");
+    span.set_attribute("cloud.region", region);
+    span.set_attribute("otel.name", format!("DynamoDB.{}", operation));
+
+    // RPC attributes
+    span.set_attribute("rpc.system", "aws-api");
+    span.set_attribute("rpc.service", "DynamoDB");
+    span.set_attribute("rpc.method", operation);
+
+    // AWS semantic conventions
+    span.set_attribute("aws.remote.service", "AWS::DynamoDB");
+    span.set_attribute("aws.remote.operation", operation);
+    span.set_attribute("aws.remote.resource.type", "AWS::DynamoDB::Table");
+    span.set_attribute("aws.remote.resource.identifier", table_name);
+    span.set_attribute("aws.remote.resource.cfn.primary.identifier", table_name);
+    span.set_attribute("aws.span.kind", "CLIENT");
+
+    // Set table names as array
+    let table_name_array = OtelValue::Array(Array::String(vec![table_name.to_string().into()]));
+    span.set_attribute("aws.dynamodb.table_names", table_name_array);
+}
+
+/// Creates a DynamoDB span with standard attributes
 macro_rules! dynamodb_span {
-    ($request:expr, $operation:expr) => {{
-        let table_name = ($request).as_input().get_table_name()
-            .as_deref()
-            .map(|t| vec![t])
-            .unwrap_or_default();
-
-        let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
-        let endpoint = format!("dynamodb.{}.amazonaws.com", region);
-        let span_name = format!("DynamoDB.{}", $operation);
-
-        tracing::info_span!(
-            $operation,
-
-            // Required DB semantic conventions
-            "db.system" = "dynamodb",
-            "db.operation" = $operation,
-
-            // Network attributes
-            "net.peer.name" = endpoint,
-
-            // AWS specific attributes
-            "aws.region" = region,
-            "cloud.provider" = "aws",
-            "cloud.region" = region,
-
-            // Required span attributes
-            "otel.kind" = ?SpanKind::Client,
-            "otel.name" = span_name,
-
-            // RPC attributes
-            "rpc.system" = "aws-api",
-            "rpc.service" = "DynamoDB",
-            "rpc.method" = $operation,
-
-            // Keep these for additional context
-            "aws.dynamodb.table_names" = ?table_name
-        )
+    ($table_name:expr, $operation:expr) => {{
+        let span = tracing::info_span!(
+            "dynamodb_operation",
+            otel.name = field::Empty,
+            otel.kind = "client"
+        );
+        set_dynamodb_span_attributes(&span, $table_name, $operation);
+        span
     }};
 }
 
@@ -143,7 +164,7 @@ async fn handle_get_quote(ctx: RouteContext) -> Result<Value, LambdaError> {
     }
 }
 
-#[instrument(skip(state))]
+#[instrument(skip_all)]
 async fn write_item(
     pk: &str,
     timestamp: &str,
@@ -166,26 +187,30 @@ async fn write_item(
         request = request.item("payload", attribute_value);
     }
 
-    let span = dynamodb_span!(&request, "PutItem");
     request
         .send()
-        .instrument(span)
+        .instrument(dynamodb_span!(TABLE_NAME.as_str(), "PutItem"))
         .await
         .map(|_| ())
         .map_err(anyhow::Error::from)
 }
 
 #[instrument(skip(state))]
-async fn read_item(pk: &str, state: &AppState) -> Result<Option<Value>, anyhow::Error> {
-    let request = state
+async fn read_item(pk: &str, state: &AppState) -> Result<Option<Value>, LambdaError> {
+    let response = state
         .dynamodb_client
         .get_item()
         .table_name(TABLE_NAME.clone())
-        .key("pk", AttributeValue::S(pk.to_string()));
-    let span = dynamodb_span!(&request, "GetItem");
-    let response = request.send().instrument(span).await?;
+        .key("pk", AttributeValue::S(pk.to_string()))
+        .send()
+        .instrument(dynamodb_span!(TABLE_NAME.as_str(), "GetItem"))
+        .await
+        .map_err(|e| LambdaError::from(format!("Failed to get item from DynamoDB: {}", e)))?;
+
     if let Some(item) = response.item {
-        from_item(item).map_err(anyhow::Error::from).map(Some)
+        serde_dynamo::from_item(item)
+            .map_err(|e| LambdaError::from(format!("Failed to deserialize DynamoDB item: {}", e)))
+            .map(Some)
     } else {
         tracing::info!(name = "item not found", pk = %pk, table = TABLE_NAME.as_str());
         Ok(None)
@@ -194,11 +219,12 @@ async fn read_item(pk: &str, state: &AppState) -> Result<Option<Value>, anyhow::
 
 #[instrument(skip(state))]
 async fn list_items(state: &AppState) -> Result<Vec<Value>, LambdaError> {
-    let request = state.dynamodb_client.scan().table_name(TABLE_NAME.clone());
-    let span = dynamodb_span!(&request, "Scan");
-    let scan_output = request
+    let scan_output = state
+        .dynamodb_client
+        .scan()
+        .table_name(TABLE_NAME.clone())
         .send()
-        .instrument(span)
+        .instrument(dynamodb_span!(TABLE_NAME.as_str(), "Scan"))
         .await
         .map_err(|e| LambdaError::from(format!("Failed to scan DynamoDB table: {}", e)))?;
 
@@ -214,7 +240,6 @@ async fn list_items(state: &AppState) -> Result<Vec<Value>, LambdaError> {
         .collect::<Result<Vec<Value>, LambdaError>>()?;
 
     let item_count = items.len();
-
     tracing::info!(
         name = "retrieved items from dynamo",
         item_count = item_count,
@@ -228,12 +253,18 @@ async fn list_items(state: &AppState) -> Result<Vec<Value>, LambdaError> {
 async fn main() -> Result<(), LambdaError> {
     let tracer_provider = HttpTracerProviderBuilder::default()
         .with_stdout_client()
-        .with_tracer_name("server")
         .with_default_text_map_propagator()
-        .enable_global(true)
-        .enable_fmt_layer(true)
         .with_batch_exporter()
-        .build()?;
+        .enable_global(true)
+        .build()
+        .expect("Failed to build tracer provider");
+
+    // Initialize the OpenTelemetry subscriber
+    OpenTelemetrySubscriberBuilder::new()
+        .with_env_filter(true)
+        .with_tracer_provider(tracer_provider.clone())
+        .with_service_name("lambda-otlp-forwarder")
+        .init()?;
 
     let aws_config = aws_config::load_from_env().await;
     let dynamodb_client = DynamoDbClient::new(&aws_config);
@@ -241,18 +272,18 @@ async fn main() -> Result<(), LambdaError> {
     let state = Arc::new(AppState { dynamodb_client });
     let router = Arc::new(RouterBuilder::from_registry().build());
 
-    // Build the service with OpenTelemetry instrumentation
-    let service = ServiceBuilder::new()
-        .layer(HttpOtelLayer::new(|| {
-            tracer_provider.force_flush();
-        }))
-        .service(service_fn(
-            move |event: LambdaEvent<ApiGatewayProxyRequest>| {
-                let state = Arc::clone(&state);
-                let router = Arc::clone(&router);
-                async move { router.handle_request(event, state).await }
-            },
-        ));
+    let lambda = move |event: LambdaEvent<ApiGatewayProxyRequest>| {
+        let state = Arc::clone(&state);
+        let router = Arc::clone(&router);
+        async move { router.handle_request(event, state).await }
+    };
 
-    Runtime::new(service).run().await
+    let runtime = Runtime::new(service_fn(lambda)).layer(
+        OpenTelemetryLayer::new(|| {
+            tracer_provider.force_flush();
+        })
+        .with_trigger(OpenTelemetryFaasTrigger::Http),
+    );
+
+    runtime.run().await
 }

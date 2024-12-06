@@ -23,21 +23,19 @@
 //!
 //! ```rust
 //! use otlp_stdout_client::StdoutClient;
-//! use opentelemetry_sdk::trace::{TracerProvider, Config};
-//! use opentelemetry_otlp::{WithExportConfig, new_exporter};
-//! use opentelemetry_sdk::runtime::Tokio;
+//! use opentelemetry_sdk::trace::TracerProvider;
+//! use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 //! use opentelemetry::trace::Tracer;
 //! use opentelemetry::global;
 //!
 //! fn init_tracer_provider() -> Result<TracerProvider, Box<dyn std::error::Error>> {
-//!     let exporter = new_exporter()
-//!         .http()
+//!     let exporter = opentelemetry_otlp::SpanExporter::builder()
+//!         .with_http()
 //!         .with_http_client(StdoutClient::default())
-//!         .build_span_exporter()?;
+//!         .build()?;
 //!     
-//!     let tracer_provider = TracerProvider::builder()
-//!         .with_config(Config::default())
-//!         .with_batch_exporter(exporter, Tokio)
+//!     let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
+//!         .with_simple_exporter(exporter)
 //!         .build();
 //!
 //!     Ok(tracer_provider)
@@ -84,25 +82,20 @@
 //! For more detailed information on usage and configuration, please refer to the README.md file.
 
 use async_trait::async_trait;
+use base64::{engine::general_purpose, Engine as Base64Engine};
 use bytes::Bytes;
-use base64::{
-    engine::general_purpose,
-    Engine as Base64Engine
-};
-use flate2::{write::GzEncoder, read::GzDecoder, Compression};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use http::{Request, Response};
 
 use opentelemetry_http::HttpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::{
-    env,
-    error::Error as StdError,
-    fmt::Debug,
-    io::{self, Write, Read},
-    sync::Mutex
-};
+use std::sync::Arc;
+use std::{env, error::Error as StdError, fmt::Debug, io::Read};
+use tokio::io::AsyncWrite;
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
 // Constants for content types
 pub const CONTENT_TYPE_JSON: &str = "application/json";
@@ -146,7 +139,7 @@ pub struct LogRecord {
 pub struct StdoutClient {
     service_name: String,
     content_encoding_gzip: Option<String>,
-    writer: Mutex<Box<dyn Write + Send + Sync>>,
+    writer: Arc<Mutex<Box<dyn AsyncWrite + Send + Sync + Unpin>>>,
     version_identifier: String,
 }
 
@@ -173,7 +166,7 @@ impl StdoutClient {
     pub fn new() -> Self {
         StdoutClient {
             content_encoding_gzip: Self::parse_compression(),
-            writer: Mutex::new(Box::new(io::stdout())),
+            writer: Arc::new(Mutex::new(Box::new(tokio::io::stdout()))),
             service_name: Self::get_service_name(),
             version_identifier: Self::get_version_identifier(),
         }
@@ -185,25 +178,28 @@ impl StdoutClient {
     ///
     /// # Arguments
     ///
-    /// * `writer` - Any writer implementing `Write + Send + Sync + 'static`.
+    /// * `writer` - Any writer implementing `AsyncWrite + Send + Sync + Unpin + 'static`.
     ///
     /// # Example
     ///
-    /// ```rust no_run
-    /// use std::fs::File;
+    /// ```rust,no_run
     /// use otlp_stdout_client::StdoutClient;
+    /// use tokio::fs::File;
     ///
+    /// # async fn example() -> std::io::Result<()> {
     /// // Using a file as the writer
-    /// let file = File::create("output.log").unwrap();
+    /// let file = File::create("output.log").await?;
     /// let client = StdoutClient::new_with_writer(file);
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn new_with_writer<W>(writer: W) -> Self
     where
-        W: Write + Send + Sync + 'static,
+        W: AsyncWrite + Send + Sync + Unpin + 'static,
     {
         StdoutClient {
             content_encoding_gzip: Self::parse_compression(),
-            writer: Mutex::new(Box::new(writer)),
+            writer: Arc::new(Mutex::new(Box::new(writer))),
             service_name: Self::get_service_name(),
             version_identifier: Self::get_version_identifier(),
         }
@@ -267,7 +263,7 @@ impl StdoutClient {
     /// # Returns
     ///
     /// A `Result` indicating success or failure
-    fn process_payload(
+    async fn process_payload(
         &self,
         request: &Request<Vec<u8>>,
         content_type: &str,
@@ -296,7 +292,7 @@ impl StdoutClient {
             payload = Self::compress_payload(&payload)?;
             // if we compressed, we need to encode as base64
             should_encode_base64 = true;
-        } 
+        }
 
         // Prepare final payload so it can be serialized to json
         let final_payload = if should_encode_base64 {
@@ -319,9 +315,10 @@ impl StdoutClient {
         };
 
         // Write the log record
-        let mut writer = self.writer.lock().unwrap();
-        writeln!(writer, "{}", serde_json::to_string(&log_record)?)?;
-        writer.flush()?;
+        let mut writer = self.writer.lock().await;
+        let json = format!("{}\n", serde_json::to_string(&log_record)?);
+        writer.write_all(json.as_bytes()).await?;
+        writer.flush().await?;
 
         Ok(())
     }
@@ -370,7 +367,7 @@ impl StdoutClient {
     /// A `Result` containing the compressed payload as a `Vec<u8>`.
     fn compress_payload(payload: &[u8]) -> Result<Vec<u8>, Box<dyn StdError + Send + Sync>> {
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(payload)?;
+        std::io::Write::write_all(&mut encoder, payload)?;
         Ok(encoder.finish()?)
     }
 
@@ -403,7 +400,10 @@ impl StdoutClient {
         headers
             .iter()
             .filter_map(|(name, value)| {
-                value.to_str().ok().map(|v| (name.as_str().to_lowercase(), v.to_string()))
+                value
+                    .to_str()
+                    .ok()
+                    .map(|v| (name.as_str().to_lowercase(), v.to_string()))
             })
             .collect()
     }
@@ -418,11 +418,7 @@ impl StdoutClient {
     ///
     /// A String containing the version identifier in the format "package@version"
     fn get_version_identifier() -> String {
-        format!(
-            "{}@{}",
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION")
-        )
+        format!("{}@{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
     }
 }
 
@@ -456,7 +452,8 @@ impl HttpClient for StdoutClient {
 
         match content_type {
             Some(content_type) => {
-                self.process_payload(&request, content_type, content_encoding)?;
+                self.process_payload(&request, content_type, content_encoding)
+                    .await?;
             }
             _ => {
                 let message = match content_type {

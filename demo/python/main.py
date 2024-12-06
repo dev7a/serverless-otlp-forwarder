@@ -13,14 +13,15 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.semconv.trace import SpanAttributes
 
 def init_telemetry(
-    service_name: str = __name__,
+    service_name: str = os.getenv("OTEL_SERVICE_NAME") or os.getenv("AWS_LAMBDA_FUNCTION_NAME") or __name__,
     lambda_context=None,
 ) -> tuple[trace.Tracer, TracerProvider]:
     """
     Initialize OpenTelemetry with AWS Lambda-specific configuration.
 
     Args:
-        service_name: Name of the service for tracing identification
+        service_name: Name of the service for tracing identification. 
+                     Defaults to OTEL_SERVICE_NAME, then AWS_LAMBDA_FUNCTION_NAME, then __name__
         lambda_context: Optional AWS Lambda context object for enhanced attributes
 
     Returns:
@@ -74,14 +75,14 @@ target_url = os.environ.get("TARGET_URL")
 quotes_url = "https://dummyjson.com/quotes/random"
 
 
-@tracer.start_as_current_span("get_random_quote", kind=SpanKind.CLIENT)
+@tracer.start_as_current_span("get_random_quote")
 def get_random_quote():
     response = http_session.get(quotes_url)
     response.raise_for_status()
     return response.json()
 
 
-@tracer.start_as_current_span("save_quote", kind=SpanKind.CLIENT)
+@tracer.start_as_current_span("save_quote")
 def save_quote(quote: dict):
     response = http_session.post(
         f"{target_url}",
@@ -111,7 +112,7 @@ def force_flush(tracer_provider):
 def lambda_handler(event, context):
     with force_flush(tracer_provider), tracer.start_as_current_span(
         "lambda-invocation",
-        kind=SpanKind.CLIENT,
+        kind=SpanKind.SERVER,
         attributes={
             SpanAttributes.FAAS_TRIGGER: "timer",
         },

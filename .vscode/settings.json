@@ -7,6 +7,7 @@
         "packages/rust/lambda-lw-http-router/router-macro/Cargo.toml",
         "forwarder/Cargo.toml",
         "demo/rust/Cargo.toml",
+        "benchmark/Cargo.toml"
     ],
     "rust-analyzer.cargo.features": "all",
     "python.analysis.extraPaths": [

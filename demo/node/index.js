@@ -26,12 +26,11 @@ const TARGET_URL = process.env.TARGET_URL;
 propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 
 const createProvider = () => {
-  // Detect AWS Lambda resources synchronously
   const awsResource = new AwsLambdaDetectorSync().detect();
   
-  // Merge AWS resource with service name
   const resource = new Resource({
-    ["service.name"]: process.env.AWS_LAMBDA_FUNCTION_NAME || 'demo-function',
+    ["service.name"]: process.env.OTEL_SERVICE_NAME || process.env.AWS_LAMBDA_FUNCTION_NAME || 'demo-function',
+    ["faas.name"]: process.env.AWS_LAMBDA_FUNCTION_NAME,
   }).merge(awsResource);
 
   const provider = new NodeTracerProvider({
@@ -56,9 +55,7 @@ async function getRandomQuote() {
   // Get the parent context
   const parentContext = context.active();
   
-  const span = tracer.startSpan('get_random_quote', {
-    kind: SpanKind.CLIENT,
-  }, parentContext);  // Pass the parent context
+  const span = tracer.startSpan('getRandomQuote', parentContext);  // Pass the parent context
 
   // Set the context with the new span
   return await context.with(trace.setSpan(parentContext, span), async () => {
@@ -67,7 +64,10 @@ async function getRandomQuote() {
       return response.data;
     } catch (e) {
       span.recordException(e);
-      span.setStatus(SpanStatusCode.ERROR);
+      span.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: e.message
+      });
       throw e;
     } finally {
       span.end();
@@ -79,9 +79,7 @@ async function getRandomQuote() {
 async function saveQuote(quote) {
   const parentContext = context.active();
   
-  const span = tracer.startSpan('save_quote', {
-    kind: SpanKind.CLIENT,
-  }, parentContext);
+  const span = tracer.startSpan('saveQuote', parentContext);
 
   return await context.with(trace.setSpan(parentContext, span), async () => {
     try {
@@ -106,7 +104,10 @@ async function saveQuote(quote) {
 
 exports.handler = async (event, lambdaContext) => {
   const parentSpan = tracer.startSpan('lambda-invocation', {
-    kind: SpanKind.CLIENT
+    kind: SpanKind.SERVER,
+    attributes: {
+      'faas.trigger': 'timer'
+    }
   });
 
   // Set the root span as active

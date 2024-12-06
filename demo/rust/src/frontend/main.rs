@@ -1,27 +1,30 @@
-use anyhow::{Context, Result};
 use aws_lambda_events::apigw::ApiGatewayV2httpRequest;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset, Utc};
 use lambda_lw_http_router::{define_router, route};
-use lambda_otel_utils::{HttpOtelLayer, HttpTracerProviderBuilder};
-use lambda_runtime::{service_fn, tower::ServiceBuilder, Error, LambdaEvent, Runtime};
-use opentelemetry::trace::{Status, TraceContextExt};
-use opentelemetry::global;
-use opentelemetry_http::HeaderInjector;
-use opentelemetry_semantic_conventions as semconv;
-use reqwest::Url;
-use reqwest::{header::HeaderMap, Client};
+use lambda_otel_utils::{
+    HttpTracerProviderBuilder, OpenTelemetryFaasTrigger, OpenTelemetryLayer,
+    OpenTelemetrySubscriberBuilder,
+};
+use lambda_runtime::{service_fn, Error as LambdaError, LambdaEvent, Runtime};
+use reqwest::Client;
+use reqwest_middleware::ClientBuilder;
+use reqwest_middleware::ClientWithMiddleware;
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::env;
 use std::sync::Arc;
 use tera::{Context as TeraContext, Tera};
 use tracing::instrument;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+mod reqwest_propagation;
+use reqwest_propagation::OtelPropagationMiddleware;
+
 // Embed the quotes.html template at compile time
 const QUOTES_TEMPLATE: &str = include_str!("templates/quotes.html");
 
 #[derive(Clone)]
 struct AppState {
-    http_client: Client,
+    http_client: ClientWithMiddleware,
     base_context: TeraContext,
     target_url: String,
     templates: Tera,
@@ -43,149 +46,155 @@ fn format_relative_time(timestamp: &str) -> String {
     }
 }
 
-#[instrument(
-    skip_all,
-    fields(
-        otel.kind = "client",
-        http.request.method = "GET",
-        url.full,
-        http.response.status_code,
-        network.protocol.name = "http",
-        network.protocol.version = "1.1",
-        url.scheme = "https"
-    )
-)]
-async fn get_all_quotes(client: &Client, target_url: &str) -> Result<Value> {
+#[instrument(skip_all)]
+async fn get_all_quotes(
+    client: &ClientWithMiddleware,
+    target_url: &str,
+) -> Result<Value, LambdaError> {
     let target_url = format!("{}/quotes", target_url);
-
-    let current_span = tracing::Span::current();
-    let cx = current_span.context();
-    current_span.record("url.full", target_url.as_str());
-
-    // Parse URL for server attributes
-    if let Ok(url) = Url::parse(&target_url) {
-        current_span.record("server.address", url.host_str().unwrap_or(""));
-        if let Some(port) = url.port_or_known_default() {
-            current_span.record("server.port", port);
-        }
-    }
-
-    // Inject tracing context into request headers
-    let mut headers = HeaderMap::new();
-    global::get_text_map_propagator(|propagator| {
-        propagator.inject_context(&cx, &mut HeaderInjector(&mut headers));
-    });
-
-    tracing::debug!(
-        http.request.headers = ?headers, "Sending request with headers"
-    );
 
     let request = client
         .get(target_url.as_str())
-        .headers(headers)
         .build()
-        .with_context(|| format!("Failed to create request for URL: {}", target_url.as_str()))?;
+        .map_err(|e| LambdaError::from(format!("Failed to create request: {}", e)))?;
 
     let response = client
         .execute(request)
         .await
-        .with_context(|| format!("Failed to execute request to {}", target_url.as_str()))?;
-
-    let status = response.status();
-    current_span.record(semconv::trace::HTTP_RESPONSE_STATUS_CODE, status.as_u16());
-
-    // Set the span status based on the HTTP status code
-    let otel_status = if status.is_success() {
-        Status::Ok
-    } else {
-        Status::Error {
-            description: format!("HTTP error: {}", status).into(),
-        }
-    };
-    cx.span().set_status(otel_status);
+        .map_err(|e| LambdaError::from(format!("Failed to execute request: {}", e)))?;
 
     // Handle non-success status codes
-    if !status.is_success() {
+    if !response.status().is_success() {
+        let status = response.status();
         let error_body = response
             .text()
             .await
-            .context("Failed to read error response body")?;
-        return Err(anyhow::anyhow!("HTTP error {}: {}", status, error_body));
+            .unwrap_or_else(|_| "Unable to read error body".to_string());
+
+        return Err(LambdaError::from(format!(
+            "HTTP error {}: {}",
+            status, error_body
+        )));
     }
 
     let response_body = response
         .json::<Value>()
         .await
-        .context("Failed to parse response body as JSON")?;
+        .map_err(|e| LambdaError::from(format!("Failed to parse response as JSON: {}", e)))?;
 
     Ok(response_body)
 }
 
-#[instrument(
-    skip_all,
-    fields(
-        otel.kind = "client",
-        http.request.method = "GET",
-        url.full,
-        http.response.status_code,
-        network.protocol.name = "http",
-        network.protocol.version = "1.1",
-        url.scheme = "https"
-    )
-)]
-async fn get_quote(client: &Client, target_url: &str, id: &str) -> Result<Value> {
-    let target_url = format!("{}/quotes/{}", target_url, id);
+#[derive(Debug)]
+enum QuoteError {
+    NotFound(String),
+    BackendError(u16, String),
+    RequestError(String),
+}
 
-    let current_span = tracing::Span::current();
-    let cx = current_span.context();
-    current_span.record("url.full", target_url.as_str());
-
-    // Parse URL for server attributes
-    if let Ok(url) = Url::parse(&target_url) {
-        current_span.record("server.address", url.host_str().unwrap_or(""));
-        if let Some(port) = url.port_or_known_default() {
-            current_span.record("server.port", port);
-        }
+impl From<QuoteError> for LambdaError {
+    fn from(error: QuoteError) -> Self {
+        LambdaError::from(format!("{:?}", error))
     }
+}
 
-    let mut headers = HeaderMap::new();
-    global::get_text_map_propagator(|propagator| {
-        propagator.inject_context(&cx, &mut HeaderInjector(&mut headers));
-    });
+#[instrument(skip_all)]
+async fn get_quote(
+    client: &ClientWithMiddleware,
+    target_url: &str,
+    id: &str,
+) -> Result<Value, QuoteError> {
+    let target_url = format!("{}/quotes/{}", target_url, id);
 
     let request = client
         .get(target_url.as_str())
-        .headers(headers)
         .build()
-        .with_context(|| format!("Failed to create request for URL: {}", target_url.as_str()))?;
+        .map_err(|e| QuoteError::RequestError(format!("Failed to create request: {}", e)))?;
 
     let response = client
         .execute(request)
         .await
-        .with_context(|| format!("Failed to execute request to {}", target_url.as_str()))?;
+        .map_err(|e| QuoteError::RequestError(format!("Failed to execute request: {}", e)))?;
 
-    let status = response.status();
-    current_span.record(semconv::trace::HTTP_RESPONSE_STATUS_CODE, status.as_u16());
+    match response.status() {
+        status if status.is_success() => response.json::<Value>().await.map_err(|e| {
+            QuoteError::RequestError(format!("Failed to parse response as JSON: {}", e))
+        }),
+        reqwest::StatusCode::NOT_FOUND => {
+            Err(QuoteError::NotFound(format!("Quote {} not found", id)))
+        }
+        status => {
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unable to read error body".to_string());
 
-    if !status.is_success() {
-        let error_body = response
-            .text()
-            .await
-            .context("Failed to read error response body")?;
-        current_span.record("error.type", "HTTP");
-        return Err(anyhow::anyhow!("HTTP error {}: {}", status, error_body));
+            Err(QuoteError::BackendError(status.as_u16(), error_body))
+        }
+    }
+}
+
+#[derive(Debug)]
+struct TimeFrame {
+    start: Duration,
+    end: Duration,
+    name: String,
+}
+
+impl TimeFrame {
+    fn from_param(param: &str) -> Option<Self> {
+        let (start, end) = match param {
+            "now" => (Duration::zero(), Duration::hours(6)),
+            "earlier" => (Duration::hours(6), Duration::hours(24)),
+            "yesterday" => (Duration::hours(24), Duration::hours(48)),
+            _ => return None,
+        };
+
+        Some(Self {
+            start,
+            end,
+            name: param.to_string(),
+        })
     }
 
-    let response_body = response
-        .json::<Value>()
-        .await
-        .context("Failed to parse response body as JSON")?;
+    fn is_quote_in_range(&self, quote_time: DateTime<FixedOffset>) -> bool {
+        let age = Utc::now().signed_duration_since(quote_time);
+        age >= self.start && age < self.end
+    }
+}
 
-    Ok(response_body)
+#[derive(Debug, Serialize)]
+struct ProcessedQuote {
+    #[serde(flatten)]
+    quote: Value,
+    relative_time: String,
+}
+
+impl ProcessedQuote {
+    fn from_value(mut quote: Value) -> Option<Self> {
+        let timestamp = quote.get("timestamp")?.as_str()?;
+        let relative_time = format_relative_time(timestamp);
+        quote.as_object_mut()?.insert(
+            "relative_time".to_string(),
+            Value::String(relative_time.clone()),
+        );
+
+        Some(Self {
+            quote,
+            relative_time,
+        })
+    }
+
+    fn timestamp(&self) -> Option<DateTime<FixedOffset>> {
+        self.quote
+            .get("timestamp")?
+            .as_str()
+            .and_then(|t| DateTime::parse_from_rfc3339(t).ok())
+    }
 }
 
 #[route(method = "GET", path = "/")]
-async fn handle_root_redirect(_rctx: RouteContext) -> Result<Value, Error> {
+async fn handle_root_redirect(_rctx: RouteContext) -> Result<Value, LambdaError> {
     // Return a 301 permanent redirect to /now
     Ok(json!({
         "statusCode": 301,
@@ -198,13 +207,18 @@ async fn handle_root_redirect(_rctx: RouteContext) -> Result<Value, Error> {
 }
 
 #[route(method = "GET", path = "/{timeframe}")]
-async fn hande_home(rctx: RouteContext) -> Result<Value, Error> {
-    let timeframe = match rctx.params.get("timeframe") {
-        Some(frame) if !frame.is_empty() => {
-            rctx.set_otel_attribute("resource.query.time.frame", frame.to_owned());
+async fn hande_home(rctx: RouteContext) -> Result<Value, LambdaError> {
+    // Parse and validate timeframe
+    let timeframe = match rctx
+        .params
+        .get("timeframe")
+        .and_then(|f| TimeFrame::from_param(f))
+    {
+        Some(frame) => {
+            rctx.set_otel_attribute("resource.query.time.frame", frame.name.clone());
             frame
         }
-        _ => {
+        None => {
             return Ok(json!({
                 "statusCode": 404,
                 "headers": {"Content-Type": "text/plain"},
@@ -213,68 +227,13 @@ async fn hande_home(rctx: RouteContext) -> Result<Value, Error> {
         }
     };
 
-    // Define the time ranges
-    let (start_duration, end_duration) = match timeframe.as_str() {
-        "now" => (Duration::zero(), Duration::hours(6)),         // 0-6 hours old
-        "earlier" => (Duration::hours(6), Duration::hours(24)),  // 6-24 hours old
-        "yesterday" => (Duration::hours(24), Duration::hours(48)), // 24-48 hours old
-        _ => return Ok(json!({
-            "statusCode": 404,
-            "headers": {"Content-Type": "text/plain"},
-            "body": "Invalid time frame"
-        })),
-    };
+    // Fetch and process quotes
+    let quotes = get_and_process_quotes(&rctx, &timeframe).await?;
 
-    let response = get_all_quotes(&rctx.state.http_client, &rctx.state.target_url).await?;
+    // Render template
     let mut tera_ctx = rctx.state.base_context.clone();
-
-    if let Value::Array(quotes_array) = response {
-        let mut processed_quotes: Vec<Value> = quotes_array
-            .into_iter()
-            .filter(|quote| {
-                if let Some(timestamp) = quote.get("timestamp").and_then(|t| t.as_str()) {
-                    if let Ok(quote_time) = DateTime::parse_from_rfc3339(timestamp) {
-                        let age = Utc::now().signed_duration_since(quote_time);
-                        return age >= start_duration && age < end_duration;
-                    }
-                }
-                false
-            })
-            .map(|mut quote| {
-                if let Some(timestamp) = quote.get("timestamp").and_then(|t| t.as_str()) {
-                    let relative_time = format_relative_time(timestamp);
-                    quote
-                        .as_object_mut()
-                        .unwrap()
-                        .insert("relative_time".to_string(), Value::String(relative_time));
-                }
-                quote
-            })
-            .collect();
-
-        // Sort quotes by timestamp in descending order (newest first)
-        processed_quotes.sort_by(|a, b| {
-            let a_time = a
-                .get("timestamp")
-                .and_then(|t| t.as_str())
-                .and_then(|t| DateTime::parse_from_rfc3339(t).ok());
-            let b_time = b
-                .get("timestamp")
-                .and_then(|t| t.as_str())
-                .and_then(|t| DateTime::parse_from_rfc3339(t).ok());
-
-            match (a_time, b_time) {
-                (Some(a), Some(b)) => b.cmp(&a),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => std::cmp::Ordering::Equal,
-            }
-        });
-
-        tera_ctx.insert("quotes", &processed_quotes);
-    }
-
-    tera_ctx.insert("timeframe", timeframe);
+    tera_ctx.insert("quotes", &quotes);
+    tera_ctx.insert("timeframe", &timeframe.name);
 
     let html_content = rctx.state.templates.render("quotes.html", &tera_ctx)?;
 
@@ -285,8 +244,69 @@ async fn hande_home(rctx: RouteContext) -> Result<Value, Error> {
     }))
 }
 
+async fn get_and_process_quotes(
+    rctx: &RouteContext,
+    timeframe: &TimeFrame,
+) -> Result<Vec<ProcessedQuote>, LambdaError> {
+    let response = get_all_quotes(&rctx.state.http_client, &rctx.state.target_url).await?;
+
+    let quotes = match response {
+        Value::Array(quotes) => quotes,
+        _ => return Ok(Vec::new()),
+    };
+
+    let mut processed_quotes: Vec<ProcessedQuote> = quotes
+        .into_iter()
+        .filter_map(|quote| {
+            let processed = ProcessedQuote::from_value(quote)?;
+            let quote_time = processed.timestamp()?;
+            timeframe.is_quote_in_range(quote_time).then_some(processed)
+        })
+        .collect();
+
+    // Sort quotes by timestamp in descending order (newest first)
+    processed_quotes.sort_by(|a, b| match (a.timestamp(), b.timestamp()) {
+        (Some(a), Some(b)) => b.cmp(&a),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => std::cmp::Ordering::Equal,
+    });
+
+    Ok(processed_quotes)
+}
+
+/// Helper function to render the quotes template with common context
+fn render_quotes_template(
+    templates: &Tera,
+    base_ctx: &TeraContext,
+    quotes: Vec<Value>,
+    error_message: Option<&str>,
+) -> Result<String, LambdaError> {
+    let mut ctx = base_ctx.clone();
+    ctx.insert("quotes", &quotes);
+    ctx.insert("single_quote", &true);
+    ctx.insert("time", "current");
+
+    if let Some(msg) = error_message {
+        ctx.insert("error_message", msg);
+    }
+
+    templates
+        .render("quotes.html", &ctx)
+        .map_err(|e| LambdaError::from(format!("Template rendering error: {}", e)))
+}
+
+/// Helper function to create an HTML response with the given status code
+fn html_response(status_code: u16, html_content: String) -> Value {
+    json!({
+        "statusCode": status_code,
+        "headers": {"Content-Type": "text/html"},
+        "body": html_content
+    })
+}
+
 #[route(method = "GET", path = "/quote/{id}")]
-async fn handle_quote(rctx: RouteContext) -> Result<Value, Error> {
+async fn handle_quote(rctx: RouteContext) -> Result<Value, LambdaError> {
     let quote_id = match rctx.params.get("id") {
         Some(id) if !id.is_empty() => {
             rctx.set_otel_attribute("resource.type", "quote")
@@ -294,47 +314,87 @@ async fn handle_quote(rctx: RouteContext) -> Result<Value, Error> {
             id
         }
         _ => {
-            return Ok(json!({
-                "statusCode": 404,
-                "headers": {"Content-Type": "text/plain"},
-                "body": "Quote not found"
-            }));
+            let html_content = render_quotes_template(
+                &rctx.state.templates,
+                &rctx.state.base_context,
+                vec![],
+                Some("Quote ID not provided"),
+            )?;
+
+            return Ok(html_response(404, html_content));
         }
     };
 
-    let response = get_quote(&rctx.state.http_client, &rctx.state.target_url, &quote_id).await?;
-    let mut tera_ctx = rctx.state.base_context.clone();
+    match get_quote(&rctx.state.http_client, &rctx.state.target_url, quote_id).await {
+        Ok(mut quote) => {
+            if let Some(timestamp) = quote.get("timestamp").and_then(|t| t.as_str()) {
+                let relative_time = format_relative_time(timestamp);
+                quote
+                    .as_object_mut()
+                    .ok_or_else(|| LambdaError::from("Invalid quote format"))?
+                    .insert("relative_time".to_string(), Value::String(relative_time));
+            }
 
-    // Process the single quote to add relative_time
-    let mut quote = response;
-    if let Some(timestamp) = quote.get("timestamp").and_then(|t| t.as_str()) {
-        let relative_time = format_relative_time(timestamp);
-        quote
-            .as_object_mut()
-            .ok_or_else(|| Error::from("Invalid quote format"))?
-            .insert("relative_time".to_string(), Value::String(relative_time));
+            let html_content = render_quotes_template(
+                &rctx.state.templates,
+                &rctx.state.base_context,
+                vec![quote],
+                None,
+            )?;
+
+            Ok(html_response(200, html_content))
+        }
+        Err(QuoteError::NotFound(msg)) => {
+            let html_content = render_quotes_template(
+                &rctx.state.templates,
+                &rctx.state.base_context,
+                vec![],
+                Some(&msg),
+            )?;
+
+            Ok(html_response(404, html_content))
+        }
+        Err(QuoteError::BackendError(status, msg)) => {
+            let html_content = render_quotes_template(
+                &rctx.state.templates,
+                &rctx.state.base_context,
+                vec![],
+                Some(&format!("Backend error: {} - {}", status, msg)),
+            )?;
+
+            Ok(html_response(status, html_content))
+        }
+        Err(QuoteError::RequestError(msg)) => {
+            let html_content = render_quotes_template(
+                &rctx.state.templates,
+                &rctx.state.base_context,
+                vec![],
+                Some(&format!("Request error: {}", msg)),
+            )?;
+
+            Ok(html_response(500, html_content))
+        }
     }
-
-    // Wrap in array for template compatibility
-    tera_ctx.insert("quotes", &vec![quote]);
-    tera_ctx.insert("single_quote", &true);
-    tera_ctx.insert("time", "current"); // Add time context even for single quote
-
-    let html_content = rctx
-        .state
-        .templates
-        .render("quotes.html", &tera_ctx)
-        .map_err(|e| Error::from(format!("Failed to render template: {}", e)))?;
-
-    Ok(json!({
-        "statusCode": 200,
-        "headers": {"Content-Type": "text/html"},
-        "body": html_content
-    }))
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<(), LambdaError> {
+    // Initialize tracer
+    let tracer_provider = HttpTracerProviderBuilder::default()
+        .with_stdout_client()
+        .with_default_text_map_propagator()
+        .with_batch_exporter()
+        .enable_global(true)
+        .build()
+        .expect("Failed to build tracer provider");
+
+    // Initialize the OpenTelemetry subscriber
+    OpenTelemetrySubscriberBuilder::new()
+        .with_env_filter(true)
+        .with_tracer_provider(tracer_provider.clone())
+        .with_service_name("lambda-otlp-forwarder")
+        .init()?;
+
     let target_url = env::var("TARGET_URL").expect("TARGET_URL must be set");
     // Initialize templates
     let templates = {
@@ -346,9 +406,15 @@ async fn main() -> Result<(), Error> {
 
     // Initialize application state
     let state = Arc::new(AppState {
-        http_client: Client::builder()
-            .build()
-            .expect("Failed to create HTTP client"),
+        http_client: {
+            let reqwest_client = Client::builder()
+                .build()
+                .expect("Failed to create HTTP client");
+
+            ClientBuilder::new(reqwest_client)
+                .with(OtelPropagationMiddleware::new())
+                .build()
+        },
         base_context: {
             let mut ctx = TeraContext::new();
             ctx.insert("app_name", "Quote Viewer");
@@ -359,29 +425,21 @@ async fn main() -> Result<(), Error> {
         templates,
     });
 
+    // Initialize router
     let router = Arc::new(RouterBuilder::from_registry().build());
 
-    // Initialize tracer
-    let tracer_provider = HttpTracerProviderBuilder::default()
-        .with_stdout_client()
-        .with_tracer_name("client")
-        .enable_fmt_layer(true)
-        .enable_global(true)
-        .with_default_text_map_propagator()
-        .with_batch_exporter()
-        .build()?;
+    let lambda = move |event: LambdaEvent<ApiGatewayV2httpRequest>| {
+        let state = Arc::clone(&state);
+        let router = Arc::clone(&router);
+        async move { router.handle_request(event, state).await }
+    };
 
-    let service = ServiceBuilder::new()
-        .layer(HttpOtelLayer::new(|| {
+    let runtime = Runtime::new(service_fn(lambda)).layer(
+        OpenTelemetryLayer::new(|| {
             tracer_provider.force_flush();
-        }))
-        .service(service_fn(
-            move |event: LambdaEvent<ApiGatewayV2httpRequest>| {
-                let state = Arc::clone(&state);
-                let router = Arc::clone(&router);
-                async move { router.handle_request(event, state).await }
-            },
-        ));
+        })
+        .with_trigger(OpenTelemetryFaasTrigger::Http),
+    );
 
-    Runtime::new(service).run().await
+    runtime.run().await
 }

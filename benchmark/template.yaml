@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: AWS SAM template for the lambda-otlp-forwarder benchmark.
+
+Parameters:
+  StackName:
+    Type: String
+    Description: Name of the stack, used as prefix for function names
+
+Mappings:
+  LayerArns:
+    Python:
+      adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-arm64-ver-1-25-0:1'
+      appsignals: 'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:5'
+    Node:
+      adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-arm64-ver-1-17-1:1'
+      appsignals: 'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJs:5'
+
+Globals:
+  Function:
+    Architectures:
+      - arm64
+    Timeout: 5
+    MemorySize: 128
+    LoggingConfig:
+      LogFormat: JSON
+    Tracing: Active
+
+Resources:
+
+  # Node.js Functions
+  NodeStdoutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackName}-node-stdout'
+      CodeUri: functions/nodejs/manual/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Environment:
+        Variables:
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+          OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+          OTEL_SERVICE_NAME: !Sub '${StackName}-node-stdout'
+  
+  NodeAdotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackName}-node-adot'
+      CodeUri: functions/nodejs/auto/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-handler
+          OTEL_SERVICE_NAME: !Sub '${StackName}-node-adot'
+          OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf'
+          OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318'
+      Layers:
+        - !FindInMap [LayerArns, Node, adot]
+  
+  NodeAppSignalsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackName}-node-appsignals'
+      CodeUri: functions/nodejs/auto/
+      Handler: index.handler
+      Runtime: nodejs20.x
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-instrument
+          OTEL_SERVICE_NAME: !Sub '${StackName}-node-appsignals'
+      Policies:
+        - arn:aws:iam::aws:policy/CloudWatchLambdaApplicationSignalsExecutionRolePolicy
+      Layers:
+        - !FindInMap [LayerArns, Node, appsignals]
+  
+  # Python Functions
+  PythonStdoutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackName}-python-stdout'
+      CodeUri: functions/python/manual/
+      Handler: app.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
+          OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+          OTEL_SERVICE_NAME: !Sub '${StackName}-python-stdout'
+
+  PythonAdotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackName}-python-adot'
+      CodeUri: functions/python/auto/
+      Handler: app.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-instrument
+          OTEL_SERVICE_NAME: !Sub '${StackName}-python-adot'
+          OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf'
+          OTEL_EXPORTER_OTLP_ENDPOINT: 'http://localhost:4318'
+      Policies:
+        - arn:aws:iam::aws:policy/CloudWatchLambdaApplicationSignalsExecutionRolePolicy
+      Layers:
+        - !FindInMap [LayerArns, Python, adot]
+ 
+  PythonAppSignalsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackName}-python-appsignals'
+      CodeUri: functions/python/auto/
+      Handler: app.handler
+      Runtime: python3.12
+      Environment:
+        Variables:
+          AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-instrument
+          OTEL_SERVICE_NAME: !Sub '${StackName}-python-appsignals'
+      Layers:
+        - !FindInMap [LayerArns, Python, appsignals]
+
+Outputs:
+  NodeStdoutFunction:
+    Description: Node.js Manual OTLP Function ARN
+    Value: !GetAtt NodeStdoutFunction.Arn
+  NodeAdotFunction:
+    Description: Node.js ADOT Function ARN
+    Value: !GetAtt NodeAdotFunction.Arn
+  NodeAppSignalsFunction:
+    Description: Node.js AppSignals Function ARN
+    Value: !GetAtt NodeAppSignalsFunction.Arn
+  PythonStdoutFunction:
+    Description: Python Manual OTLP Function ARN
+    Value: !GetAtt PythonStdoutFunction.Arn
+  PythonAdotFunction:
+    Description: Python ADOT Function ARN
+    Value: !GetAtt PythonAdotFunction.Arn
+  PythonAppSignalsFunction:
+    Description: Python AppSignals Function ARN
+    Value: !GetAtt PythonAppSignalsFunction.Arn

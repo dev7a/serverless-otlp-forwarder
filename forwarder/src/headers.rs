@@ -1,36 +1,30 @@
 //! Header management for the Lambda OTLP forwarder.
 //!
 //! This module handles two types of headers:
-//! - Environment-based headers from OTEL configuration
 //! - Log record specific headers for forwarding requests
+//! - Authentication headers for collectors
 //!
 //! The headers are used when forwarding log records to their respective collectors.
 
 use anyhow::{Context, Result};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::collections::HashMap;
-use std::env;
 use std::str::FromStr;
-use std::sync::Arc;
-use tracing::instrument;
 
+use crate::collectors::Collector;
+use crate::sigv4::sign_request;
+use aws_credential_types::Credentials;
 use otlp_stdout_client::{LogRecord, CONTENT_ENCODING_HEADER, CONTENT_TYPE_HEADER};
 
 /// Headers builder for outgoing log record requests.
 /// Uses the builder pattern to construct the final set of headers
-/// from various sources (environment, log record, collector auth).
+/// from various sources (log record, collector auth).
 pub(crate) struct LogRecordHeaders(HeaderMap);
 
 impl LogRecordHeaders {
     /// Creates a new empty set of headers.
     pub(crate) fn new() -> Self {
         LogRecordHeaders(HeaderMap::new())
-    }
-
-    /// Adds environment-based headers to the request.
-    pub(crate) fn with_env_headers(mut self, env_headers: &EnvHeaders) -> Self {
-        self.0.extend(env_headers.0.clone());
-        self
     }
 
     /// Adds headers from the log record itself.
@@ -42,16 +36,48 @@ impl LogRecordHeaders {
     }
 
     /// Adds authentication headers from the collector configuration.
-    /// The auth string should be in the format "HeaderName=HeaderValue".
-    pub(crate) fn with_collector_auth(mut self, auth: &Option<String>) -> Result<Self> {
-        if let Some(auth) = auth {
-            let (header_name, header_value) = auth
-                .split_once('=')
-                .context("Invalid auth format in collector config")?;
-            self.0.insert(
-                HeaderName::from_str(header_name)?,
-                HeaderValue::from_str(header_value)?,
-            );
+    pub(crate) fn with_collector_auth(
+        mut self,
+        collector: &Collector,
+        payload: &[u8],
+        credentials: &Credentials,
+    ) -> Result<Self> {
+        if let Some(auth) = &collector.auth {
+            match auth.as_str() {
+                "sigv4" | "iam" => {
+                    // Create a new HeaderMap with headers required for SigV4
+                    let mut headers_to_sign = HeaderMap::new();
+                    for (key, value) in self.0.iter() {
+                        let header_name = key.as_str().to_lowercase();
+                        if matches!(
+                            header_name.as_str(),
+                            "content-type" | 
+                            "content-encoding" |
+                            "content-length" |
+                            "user-agent"
+                        ) {
+                            headers_to_sign.insert(key.clone(), value.clone());
+                        }
+                    }
+                    let signed_headers = sign_request(
+                        credentials,
+                        &collector.endpoint,
+                        &headers_to_sign,
+                        payload
+                    )?;
+                    self.0.extend(signed_headers);
+                }
+                _ if auth.contains('=') => {
+                    let (name, value) = auth
+                        .split_once('=')
+                        .context("Invalid auth format in collector config")?;
+                    self.0
+                        .insert(HeaderName::from_str(name)?, HeaderValue::from_str(value)?);
+                }
+                _ => {
+                    tracing::warn!("Unknown auth type: {}", auth);
+                }
+            }
         }
         Ok(self)
     }
@@ -96,50 +122,5 @@ impl LogRecordHeaders {
             );
         }
         Ok(())
-    }
-}
-
-/// Environment-based headers loaded from OTEL configuration.
-/// These headers are loaded once at startup and shared across all requests.
-pub(crate) struct EnvHeaders(HeaderMap);
-
-impl EnvHeaders {
-    /// Creates a new EnvHeaders instance by reading from OTEL_EXPORTER_OTLP_HEADERS.
-    ///
-    /// The environment variable should contain comma-separated key=value pairs, e.g.:
-    /// "header1=value1,header2=value2"
-    ///
-    /// Returns an Arc-wrapped instance for thread-safe sharing across async tasks.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the headers are malformed or cannot be parsed.
-    #[instrument]
-    pub(crate) fn from_env() -> Result<Arc<Self>, anyhow::Error> {
-        let mut headers = HeaderMap::new();
-        if let Ok(env_headers) = env::var("OTEL_EXPORTER_OTLP_HEADERS") {
-            tracing::debug!("Parsing OTEL headers from environment");
-            for header_pair in env_headers.split(',') {
-                let parts: Vec<&str> = header_pair.split('=').collect();
-                if parts.len() != 2 {
-                    tracing::warn!("Invalid header pair: {}", header_pair);
-                    continue;
-                }
-
-                let (name, value) = (parts[0].trim(), parts[1].trim());
-
-                if let Ok(header_name) = HeaderName::from_str(name) {
-                    if let Ok(header_value) = HeaderValue::from_str(value) {
-                        headers.insert(header_name, header_value);
-                        tracing::debug!("Added header from env: {}={}", name, value);
-                    } else {
-                        tracing::warn!("Invalid header value from env: {}", value);
-                    }
-                } else {
-                    tracing::warn!("Invalid header name from env: {}", name);
-                }
-            }
-        }
-        Ok(Arc::new(EnvHeaders(headers)))
     }
 }

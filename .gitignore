@@ -38,4 +38,4 @@ node_modules/
 __pycache__/
 *.pyc
 .ruff_cache/
-secrets.json
+.DS_Store

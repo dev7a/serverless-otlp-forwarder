@@ -27,15 +27,37 @@ use reqwest::{header::HeaderMap, Client, ClientBuilder};
 use serde_json::Value;
 use std::io::Read;
 use std::sync::Arc;
-use tracing::instrument;
+use tracing::{instrument, Instrument};
+use lambda_otel_utils::{HttpTracerProviderBuilder, OpenTelemetrySubscriberBuilder};
+use otlp_stdout_client::LogRecord;
 
 mod collectors;
 mod headers;
-
+mod sigv4;
 use crate::collectors::Collectors;
-use lambda_otel_utils::HttpTracerProviderBuilder;
-use otlp_stdout_client::LogRecord;
-use tracing::Instrument;
+
+/// Shared application state across Lambda invocations
+struct AppState {
+    http_client: Client,
+    credentials: Arc<Credentials>,
+    secrets_client: SecretsManagerClient,
+}
+
+impl AppState {
+    async fn new() -> Result<Self, LambdaError> {
+        let config = aws_config::load_from_env().await;
+        let credentials_provider = config
+            .credentials_provider()
+            .expect("No credentials provider found");
+
+        let credentials = credentials_provider.provide_credentials().await?;
+        Ok(Self {
+            http_client: ClientBuilder::new().build()?,
+            credentials: Arc::new(credentials),
+            secrets_client: SecretsManagerClient::new(&config),
+        })
+    }
+}
 
 /// Decodes a payload from a log record.
 ///
@@ -71,15 +93,23 @@ fn decode_payload(log_record: &LogRecord) -> Result<Vec<u8>, anyhow::Error> {
     otel.status_code,
     http.method = "POST",
     http.url = endpoint,
+    http.request.headers.content_type,
+    http.request.headers.content_encoding,
     http.status_code,
 ))]
-async fn post(
+async fn send_event(
     client: &Client,
     endpoint: &str,
     headers: HeaderMap,
     payload: Vec<u8>,
 ) -> Result<(), anyhow::Error> {
     let current_span = tracing::Span::current();
+    if let Some(content_type) = headers.get("content-type") {
+        current_span.record("http.request.headers.content_type", &content_type.to_str().unwrap_or(""));
+    }
+    if let Some(content_encoding) = headers.get("content-encoding") {
+        current_span.record("http.request.headers.content_encoding", &content_encoding.to_str().unwrap_or(""));
+    }
     let response = client
         .post(endpoint)
         .headers(headers.clone())
@@ -95,10 +125,16 @@ async fn post(
 
     if !status.is_success() {
         current_span.record("otel.status_code", "ERROR");
+        let error_body = match response.text().await {
+            Ok(text) => text,
+            Err(_) => "Could not read response body".to_string(),
+        };
         tracing::warn!(
             name = "error posting log record",
             endpoint = endpoint,
             status = status.as_u16(),
+            status_text = %status.canonical_reason().unwrap_or("Unknown status"),
+            error = %error_body,
         );
     }
 
@@ -114,7 +150,7 @@ async fn post(
 async fn process_log_event(
     event: &Value,
     client: &Client,
-    env_headers: &headers::EnvHeaders,
+    credentials: &Credentials,
 ) -> Result<()> {
     let record = event["message"]
         .as_str()
@@ -136,73 +172,60 @@ async fn process_log_event(
     // Create futures for sending to each collector
     let futures: Vec<_> = collectors
         .into_iter()
-        .map(|collector| {
+        .map(|collector| -> Result<_, anyhow::Error> {
             let client = client.clone();
             let decoded_payload = decoded_payload.clone();
-            let headers = headers::LogRecordHeaders::new()
-                .with_env_headers(env_headers)
+            let headers = match headers::LogRecordHeaders::new()
                 .with_log_record(&log_record)
-                .unwrap()
-                .with_collector_auth(&collector.auth)
-                .unwrap()
-                .build();
-
-            async move {
-                match post(&client, &collector.endpoint, headers, decoded_payload).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => {
-                        tracing::warn!("Failed to send to collector {}: {}", collector.name, e);
-                        Err(e)
-                    }
+                .and_then(|h| h.with_collector_auth(&collector, &decoded_payload, credentials))
+            {
+                Ok(h) => h.build(),
+                Err(e) => {
+                    tracing::error!("Failed to build headers: {}", e);
+                    return Err(e);
                 }
-            }
+            };
+
+            Ok(async move {
+                if let Err(e) = send_event(&client, &collector.endpoint, headers, decoded_payload).await {
+                    tracing::warn!("Failed to send to collector {}: {}", collector.name, e);
+                    return Err(e);
+                }
+                Ok(())
+            })
         })
+        .filter_map(Result::ok)
         .collect();
 
-    // Execute all requests in parallel
     let results = join_all(futures).await;
 
-    // Check if any requests succeeded
-    let mut any_success = false;
-    let mut last_error = None;
-
-    for result in results {
-        match result {
-            Ok(()) => {
-                any_success = true;
-            }
-            Err(e) => {
-                tracing::error!("Task error: {:?}", e);
-                last_error = Some(e);
-            }
+    let results: Vec<Result<(), _>> = results.into_iter().collect();
+    
+    match results.iter().find(|r| r.is_ok()) {
+        Some(_) => Ok(()), // At least one success
+        None => {
+            // Get the last error, if any
+            let last_error = results
+                .into_iter()
+                .filter_map(|r| r.err())
+                .last()
+                .map(|e| format!("Last error: {}", e))
+                .unwrap_or_else(|| "No error details".to_string());
+            
+            Err(anyhow::anyhow!("All collectors failed. {}", last_error))
         }
-    }
-
-    if !any_success {
-        if let Some(e) = last_error {
-            Err(anyhow::anyhow!("All collectors failed. Last error: {}", e))
-        } else {
-            Err(anyhow::anyhow!(
-                "All collectors failed with no error details"
-            ))
-        }
-    } else {
-        Ok(())
     }
 }
 
-/// Main Lambda function handler that:
-/// 1. Decodes base64 CloudWatch log data
-/// 2. Decompresses gzipped content
-/// 3. Spawns concurrent tasks to process each log event
-/// 4. Aggregates results and handles errors
 #[instrument(skip_all, name = "function_handler")]
 async fn function_handler(
     event: LambdaEvent<Value>,
-    client: Client,
-    env_headers: Arc<headers::EnvHeaders>,
+    state: Arc<AppState>,
 ) -> Result<(), LambdaError> {
     tracing::debug!("Function handler started");
+
+    // Check and refresh collectors cache if stale
+    Collectors::init(&state.secrets_client).await?;
 
     // Extract and process the CloudWatch Logs data
     let decoded = general_purpose::STANDARD
@@ -237,15 +260,16 @@ async fn function_handler(
     // Create an Arc<Vec<Value>> to share ownership of log_events
     let log_events = Arc::new(log_events.clone());
 
+    let client = state.http_client.clone();
+    let credentials = Arc::clone(&state.credentials);
     let tasks: Vec<_> = log_events
         .iter()
         .map(|event| {
             let client = client.clone();
-            let env_headers = Arc::clone(&env_headers);
             let event = event.clone();
-
+            let credentials = credentials.clone();
             async move {
-                let result = process_log_event(&event, &client, &env_headers).await;
+                let result = process_log_event(&event, &client, &credentials).await;
                 if let Err(e) = &result {
                     tracing::warn!("Error processing log event: {}", e);
                 }
@@ -270,27 +294,31 @@ async fn function_handler(
     Ok(())
 }
 
+use aws_credential_types::{provider::ProvideCredentials, Credentials};
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
+    // Initialize tracer provider
     let tracer_provider = HttpTracerProviderBuilder::default()
-        .enable_global(true)
-        .enable_fmt_layer(true)
-        .with_tracer_name("lambda-otlp-forwarder")
         .with_batch_exporter()
+        .enable_global(true)
         .build()?;
 
-    // Initialize AWS clients and collectors
-    let config = aws_config::load_from_env().await;
-    let secrets_client = SecretsManagerClient::new(&config);
-    Collectors::init(&secrets_client).await?;
+    // Initialize the OpenTelemetry subscriber
+    OpenTelemetrySubscriberBuilder::new()
+        .with_env_filter(true)
+        .with_tracer_provider(tracer_provider.clone())
+        .with_service_name("lambda-otlp-forwarder")
+        .init()?;
 
-    let http_client = ClientBuilder::new().build()?;
-    let env_headers = headers::EnvHeaders::from_env()?;
+    // Initialize shared application state
+    let state = Arc::new(AppState::new().await?);
+
+    // Initialize collectors using state's secrets client
+    Collectors::init(&state.secrets_client).await?;
 
     Runtime::new(lambda_runtime::service_fn(|event| {
-        let client = http_client.clone();
-        let env_headers = Arc::clone(&env_headers);
-        async move { function_handler(event, client, env_headers).await }
+        let state = Arc::clone(&state);
+        async move { function_handler(event, state).await }
     }))
     .layer(
         OtelLayer::new(|| {

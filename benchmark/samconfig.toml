@@ -1,0 +1,14 @@
+version = 0.1
+[default.global.parameters]
+stack_name = "otel-bench"
+beta_features = "yes"
+
+[default.deploy.parameters]
+resolve_s3 = true
+s3_prefix = "otel-bench"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "StackName=otel-bench"
+]
+image_repositories = []

@@ -1,6 +1,6 @@
 [package]
 name = "lambda-lw-http-router-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Core functionality for lambda-lw-http-router"
 license = "MIT"
@@ -16,8 +16,10 @@ aws_lambda_events = { version = "0.15.1", features = ["alb", "apigw"] }
 lazy_static = "1.4.0"
 ctor = "0.2.5"
 tracing = { version = "0.1" }
-opentelemetry = { version = "0.26.0", features = ["trace"] }
-tracing-opentelemetry = "0.27.0"
+opentelemetry = { version = "0.27.0", features = ["trace"] }
+tracing-opentelemetry = "0.28.0"
+opentelemetry-http = "0.27.0"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt", "macros", "test-util"] } 
+http = "1.0"

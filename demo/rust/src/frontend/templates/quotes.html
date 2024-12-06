@@ -4,6 +4,18 @@
     <title>{{ app_name }} - v{{ version }}</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script>
+        // Auto reload the page every minute
+        function setupAutoReload() {
+            const RELOAD_INTERVAL = 60000; // 1 minute in milliseconds
+            setInterval(() => {
+                window.location.reload();
+            }, RELOAD_INTERVAL);
+        }
+
+        // Initialize auto-reload when the page loads
+        window.addEventListener('load', setupAutoReload);
+    </script>
     <style>
         :root {
             --primary-color: #2c3e50;
@@ -238,22 +250,28 @@
         </div>
         {% endif %}
 
-        {% for quote in quotes %}
-        <div class="quote">
-            <div class="quote-text">{{ quote.payload.quote }}</div>
-            <div class="quote-author">{{ quote.payload.author }}</div>
-            <div class="quote-meta">
-                <span class="quote-time" title="{{ quote.timestamp }}">
-                    {{ quote.relative_time }}
-                </span>
-                {% if not single_quote %}
-                <div class="quote-link">
-                    <a href="/quote/{{ quote.pk }}">View quote</a>
-                </div>
-                {% endif %}
+        {% if error_message %}
+            <div class="error-message">
+                {{ error_message }}
             </div>
-        </div>
-        {% endfor %}
+        {% else %}
+            {% for quote in quotes %}
+            <div class="quote">
+                <div class="quote-text">{{ quote.payload.quote }}</div>
+                <div class="quote-author">{{ quote.payload.author }}</div>
+                <div class="quote-meta">
+                    <span class="quote-time" title="{{ quote.timestamp }}">
+                        {{ quote.relative_time }}
+                    </span>
+                    {% if not single_quote %}
+                    <div class="quote-link">
+                        <a href="/quote/{{ quote.pk }}">View quote</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% endif %}
     </div>
 </body>
 </html>

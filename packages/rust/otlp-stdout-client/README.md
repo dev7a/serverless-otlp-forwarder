@@ -17,32 +17,30 @@ By outputting telemetry data to stdout, this library enables seamless integratio
 
 ## Usage
 
-Add this to your `Cargo.toml`:
+Add this to your `Cargo.toml` or run `cargo add otlp-stdout-client`:
 
 ```toml
 [dependencies]
-otlp-stdout-client = "0.1.1"
+otlp-stdout-client = "0.2.1"
 ```
 
 ## Example
 
 ```rust
 use otlp_stdout_client::StdoutClient;
-use opentelemetry_sdk::trace::{TracerProvider, Config};
-use opentelemetry_otlp::{WithExportConfig, new_exporter};
-use opentelemetry_sdk::runtime::Tokio;
+use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry::trace::Tracer;
 use opentelemetry::global;
 
 fn init_tracer_provider() -> Result<TracerProvider, Box<dyn std::error::Error>> {
-    let exporter = new_exporter()
-        .http()
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
         .with_http_client(StdoutClient::default())
-        .build_span_exporter()?;
+        .build()?;
     
-    let tracer_provider = TracerProvider::builder()
-        .with_config(Config::default())
-        .with_batch_exporter(exporter, Tokio)
+    let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
+        .with_simple_exporter(exporter)
         .build();
 
     Ok(tracer_provider)

@@ -1,53 +1,70 @@
 use super::*;
 use base64::engine::general_purpose;
 use flate2::read::GzDecoder;
+use futures::FutureExt;
 use opentelemetry::trace::Tracer;
 use opentelemetry_otlp::Protocol;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::WithHttpConfig;
 use sealed_test::prelude::*;
 use serde_json::Value;
+use std::io;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::{
-    io::{Cursor, Read, Write},
-    sync::{Arc, Mutex},
+    io::{Cursor, Read},
+    sync::Arc,
     time::Duration,
 };
+use tokio::io::AsyncWrite;
+use tokio::sync::Mutex;
 
-/// A thread-safe writer that wraps an `Arc<Mutex<Cursor<Vec<u8>>>>`.
-///
-/// Implements the `Write` trait by delegating write operations to the inner `Cursor`.
+/// A thread-safe writer for testing that captures output in a buffer
 #[derive(Clone)]
 struct TestWriter {
     buffer: Arc<Mutex<Cursor<Vec<u8>>>>,
 }
 
 impl TestWriter {
-    /// Creates a new `TestWriter` with an empty buffer.
     fn new() -> Self {
         TestWriter {
             buffer: Arc::new(Mutex::new(Cursor::new(Vec::new()))),
         }
     }
 
-    /// Retrieves the current content of the buffer as a `String`.
-    fn get_content(&self) -> String {
-        let mut buffer = self.buffer.lock().unwrap();
+    async fn get_content(&self) -> String {
+        let mut buffer = self.buffer.lock().await;
         buffer.set_position(0);
         let mut content = String::new();
-        buffer.read_to_string(&mut content).expect("Failed to read buffer");
+        buffer
+            .read_to_string(&mut content)
+            .expect("Failed to read buffer");
         content
     }
 }
 
-impl Write for TestWriter {
-    /// Writes data to the inner `Cursor`, ensuring thread-safe access.
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut cursor = self.buffer.lock().unwrap();
-        cursor.write(buf)
+// Instead of implementing Write, implement AsyncWrite
+impl AsyncWrite for TestWriter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        let lock_future = self.buffer.lock();
+        futures::pin_mut!(lock_future);
+        let mut guard = futures::ready!(lock_future.poll_unpin(cx));
+        Poll::Ready(std::io::Write::write(&mut *guard, buf))
     }
 
-    /// Flushes the inner `Cursor`, ensuring thread-safe access.
-    fn flush(&mut self) -> std::io::Result<()> {
-        let mut cursor = self.buffer.lock().unwrap();
-        cursor.flush()
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let lock_future = self.buffer.lock();
+        futures::pin_mut!(lock_future);
+        let mut guard = futures::ready!(lock_future.poll_unpin(cx));
+        Poll::Ready(std::io::Write::flush(&mut *guard))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 }
 
@@ -74,22 +91,21 @@ async fn run_tracer_test() -> Result<String, Box<dyn std::error::Error + Send + 
         }
     };
 
-
     // Initialize the TestWriter
     let test_writer = TestWriter::new();
     let client = StdoutClient::new_with_writer(test_writer.clone());
 
     // Set up the OTLP exporter with the StdoutClient using the TestWriter
-    let exporter = opentelemetry_otlp::new_exporter()
-        .http()
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
         .with_protocol(protocol)
-        .with_http_client(client);
+        .with_http_client(client)
+        .build()?;
 
     // Create a tracer provider and set it as the global provider
-    let tracer_provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(exporter)
-        .install_simple()?;
+    let tracer_provider = opentelemetry_sdk::trace::TracerProvider::builder()
+        .with_simple_exporter(exporter)
+        .build();
 
     opentelemetry::global::set_tracer_provider(tracer_provider);
     let tracer = opentelemetry::global::tracer("my_tracer");
@@ -106,7 +122,7 @@ async fn run_tracer_test() -> Result<String, Box<dyn std::error::Error + Send + 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Retrieve and convert the captured output
-    let content = test_writer.get_content();
+    let content = test_writer.get_content().await;
 
     Ok(content)
 }

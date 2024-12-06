@@ -1,6 +1,6 @@
 [package]
 name = "lambda-lw-http-router-macro"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Procedural macros for lambda-lw-http-router"
 license = "MIT"
@@ -18,7 +18,7 @@ darling = "0.20"
 serde_json = "1.0"
 lambda_runtime = "0.13.0"
 tracing = { version = "0.1", optional = true }
-lambda-lw-http-router-core = { version = "0.1.0", path = "../router-core" }
+lambda-lw-http-router-core = { version = "0.1.1", path = "../router-core" }
 
 [dev-dependencies]
 lambda_runtime = "0.13.0"
