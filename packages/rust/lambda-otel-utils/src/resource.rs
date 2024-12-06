@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_runtime_attributes() {
         let resource = get_lambda_resource();
-        
+
         // Test process.runtime.name
         assert_eq!(
             resource.get(opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME.into()),
@@ -86,6 +86,9 @@ mod tests {
         let version = resource
             .get(opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION.into())
             .expect("Runtime version should be present");
-        assert!(version.to_string().contains('.'), "Version should be in semver format");
+        assert!(
+            version.to_string().contains('.'),
+            "Version should be in semver format"
+        );
     }
 }
