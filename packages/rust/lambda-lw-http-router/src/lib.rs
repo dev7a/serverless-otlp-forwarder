@@ -252,3 +252,12 @@ macro_rules! define_router {
         pub use __lambda_lw_http_router_core_default_router::*;
     };
 }
+
+#[cfg(doctest)]
+extern crate doc_comment;
+
+#[cfg(doctest)]
+use doc_comment::doctest;
+
+#[cfg(doctest)]
+doctest!("../README.md", readme);

@@ -11,7 +11,6 @@ A lightweight, type-safe HTTP router for AWS Lambda functions with support for A
   - API Gateway HTTP API (v2)
   - API Gateway REST API (v1)
   - Application Load Balancer
-  - WebSocket API
 - 📊 OpenTelemetry integration for tracing
 - 🏗️ Builder pattern for easy router construction
 - 🧩 Modular design with separate core and macro crates
@@ -22,16 +21,18 @@ Run `cargo add lambda-lw-http-router` to add the crate to your project or add th
 
 ```toml
 [dependencies]
-lambda-lw-http-router = "0.1.0"
+lambda-lw-http-router = "0.1.1"
 ```
 
 ## Quick Start
 
-```rust
+```rust, no_run
 use lambda_lw_http_router::{define_router, route};
 use aws_lambda_events::apigw::ApiGatewayV2httpRequest;
 use serde_json::{json, Value};
-use lambda_runtime::Error;
+use lambda_runtime::{service_fn, Error, LambdaEvent};
+use std::sync::Arc;
+
 
 // Define your application state
 #[derive(Clone)]
@@ -55,46 +56,26 @@ async fn handle_hello(ctx: RouteContext) -> Result<Value, Error> {
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let state = Arc::new(AppState {});
-    let router = RouterBuilder::from_registry().build();
+    let router = Arc::new(RouterBuilder::from_registry().build());
     
-    lambda_runtime::run(handler(router, state)).await?;
-    Ok(())
-}
-```
+    let lambda = move |event: LambdaEvent<ApiGatewayV2httpRequest>| {
+        let state = Arc::clone(&state);
+        let router = Arc::clone(&router);
+        async move { router.handle_request(event, state).await }
+    };
 
-## Advanced Usage
-
-### Multiple Routers
-
-You can define multiple routers for different event types:
-
-```rust
-use aws_lambda_events::alb::AlbTargetGroupRequest;
-
-// Define an API Gateway router
-define_router!(event = ApiGatewayV2httpRequest, module = api_router, state = AppState);
-
-// Define an ALB router
-define_router!(event = AlbTargetGroupRequest, module = alb_router, state = AppState);
-
-// Use specific types for each router
-#[route(path = "/api/hello", module = "api_router")]
-async fn api_hello(ctx: api_router::RouteContext) -> Result<Value, Error> {
-    // ...
-}
-
-#[route(path = "/alb/hello", module = "alb_router")]
-async fn alb_hello(ctx: alb_router::RouteContext) -> Result<Value, Error> {
-    // ...
+    lambda_runtime::run(service_fn(lambda)).await
 }
 ```
 
 ### OpenTelemetry Integration
 
-The router automatically integrates with OpenTelemetry for tracing:
+The router automatically integrates with OpenTelemetry for tracing, adding semantic http attributes to the span 
+and setting the span name to the route path. 
+It also support setting additional attributes to the spanas shown in the following example:
 
-```rust
-#[route(path = "/users/{id}", set_span_name = true)]
+```rust,ignore
+#[route(path = "/users/{id}")]
 async fn get_user(ctx: RouteContext) -> Result<Value, Error> {
     // Span name will be "GET /users/{id}"
     ctx.set_otel_attribute("user.id", ctx.params.get("id").unwrap());
@@ -106,15 +87,28 @@ async fn get_user(ctx: RouteContext) -> Result<Value, Error> {
 
 Support for various path parameter patterns:
 
-```rust
+```rust,ignore
 // Basic parameters
 #[route(path = "/users/{id}")]
+async fn get_user(ctx: RouteContext) -> Result<Value, Error> {
+    let user_id = ctx.params.get("id")?
+    // ...
+}
 
 // Multi-segment parameters
 #[route(path = "/files/{path+}")]  // Matches /files/docs/2024/report.pdf
+async fn get_file(ctx: RouteContext) -> Result<Value, Error> {
+    let path = ctx.params.get("path")?;
+    // ...
+}
 
 // Multiple parameters
 #[route(path = "/users/{user_id}/posts/{post_id}")]
+async fn get_post_for_user(ctx: RouteContext) -> Result<Value, Error> {
+    let user_id = ctx.params.get("user_id")?;
+    let post_id = ctx.params.get("post_id")?;
+    // ...
+}
 ```
 
 ## API Documentation
@@ -128,13 +122,3 @@ cargo doc --open
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
