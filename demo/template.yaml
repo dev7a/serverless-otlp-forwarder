@@ -48,6 +48,29 @@ Resources:
       EndpointConfiguration:
         Type: REGIONAL
 
+
+  RustHelloLambdaFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: hello
+    Properties:
+      FunctionName: !Sub '${NestedStackName}-lambda-hello'
+      CodeUri: ./hello
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Description: 'Demo Hello Lambda function to showcase OpenTelemetry integration'
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          RUST_LOG: info
+          OTEL_EXPORTER_OTLP_ENDPOINT: !Ref ExporterEndpoint
+          OTEL_EXPORTER_OTLP_PROTOCOL: !Ref ExporterProtocol
+          OTEL_EXPORTER_OTLP_COMPRESSION: !Ref ExporterCompression
+          OTEL_SERVICE_NAME: !Sub '${NestedStackName}-lambda-hello'
+
   BackendLambdaFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -192,3 +215,6 @@ Outputs:
   FrontendUrl:
     Description: 'URL of the Frontend Lambda function'
     Value: !GetAtt FrontendLambdaFunctionUrl.FunctionUrl
+  HelloWorldUrl:
+    Description: 'URL of the Hello World Lambda function'
+    Value: !GetAtt RustHelloLambdaFunctionUrl.FunctionUrl

@@ -121,3 +121,7 @@ Outputs:
     Condition: DeployDemo
     Description: 'URL of the Frontend Lambda function'
     Value: !GetAtt DemoStack.Outputs.FrontendUrl
+  HelloWorldUrl:
+    Condition: DeployDemo
+    Description: 'URL of the Hello World Lambda function'
+    Value: !GetAtt DemoStack.Outputs.HelloWorldUrl
