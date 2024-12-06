@@ -471,3 +471,12 @@ impl HttpClient for StdoutClient {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(doctest)]
+extern crate doc_comment;
+
+#[cfg(doctest)]
+use doc_comment::doctest;
+
+#[cfg(doctest)]
+doctest!("../README.md", readme);
