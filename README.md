@@ -297,7 +297,7 @@ See the [demo/template.yaml](demo/template.yaml) for a complete example with mul
 
 ### Environment Variables
 
-The following environment variables can be set in the instrumented lambda function to choose the protocol and compression for the OTLP data.
+The following environment variables can be set in your instrumented lambda functions to choose the protocol and compression for the OTLP data.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` or `http/json` | `http/protobuf` |
@@ -311,11 +311,10 @@ The forwarder service configuration is defined in the [template.yaml](template.y
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| RouteAllLogs | String | 'true' | Route all AWS logs to the Lambda function |
+| RouteAllLogs | String | 'true' | Route all AWS Cloudwatch logs to the Lambda function |
 | DeployDemo | String | 'true' | Deploy the demo application |
 | CollectorsSecretsKeyPrefix | String | 'lambda-otlp-forwarder/keys' | Location of the secrets containing the collector endpoint and authentication headers |
 | CollectorsCacheTtlSeconds | String | '300' | How long (in seconds) to cache the collector configuration in memory. This is used to reduce the number of requests to the secrets manager. |
-
 
 To change these defaults, you can edit the [samconfig.toml](samconfig.toml) file. For instance, to not subscribe to all log groups, you can set `RouteAllLogs` to `false` and to not deploy the demo application, set `DeployDemo` to `false`:
 
