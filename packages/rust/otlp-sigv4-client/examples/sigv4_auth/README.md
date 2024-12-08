@@ -1,4 +1,4 @@
-# Basic Example
+# SigV4 Authentication Example
 
 This example demonstrates how to use the `otlp-sigv4-client` to send OpenTelemetry traces to AWS X-Ray using SigV4 authentication.
 
@@ -9,7 +9,7 @@ The example uses AWS's standard credential provider chain, so you need to have v
 ## Running the Example
 
 ```bash
-cargo run --example basic
+cargo run --example sigv4_auth
 ```
 
 This will:

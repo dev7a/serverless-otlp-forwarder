@@ -1,4 +1,4 @@
-//! # Basic Example
+//! # Tracing Example
 //!
 //! This example demonstrates how to set up OpenTelemetry tracing and metrics using
 //! the `lambda-otel-utils` library with stdout output.
@@ -14,7 +14,7 @@
 //! ## Running the Example
 //!
 //! ```sh
-//! RUST_LOG=info OTEL_SERVICE_NAME=example cargo run --example basic
+//! RUST_LOG=info OTEL_SERVICE_NAME=example cargo run --example tracing_example
 //! ```
 //!
 //! ## Expected Output
@@ -89,14 +89,14 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
         Ok(level) => {
             if !level.to_lowercase().contains("info") {
                 println!("Warning: RUST_LOG is set to '{}' but should contain 'info' to see the example output.", level);
-                println!("Try running with: RUST_LOG=info cargo run --example basic");
+                println!("Try running with: RUST_LOG=info cargo run --example tracing_example");
             }
         }
         Err(_) => {
             println!(
                 "Warning: RUST_LOG environment variable is not set. No output will be visible."
             );
-            println!("Try running with: RUST_LOG=info cargo run --example basic");
+            println!("Try running with: RUST_LOG=info cargo run --example tracing_example");
         }
     }
 

@@ -2,24 +2,24 @@
 
 This directory contains examples demonstrating how to use the `otlp-stdout-client` library.
 
-## Basic Example
+## Stdout Export Example
 
-The basic example shows how to set up a simple tracer that outputs spans to stdout. You can run it with different configurations using environment variables.
+The stdout export example shows how to set up a simple tracer that outputs spans to stdout. You can run it with different configurations using environment variables.
 
 ### Running the Example
 
 ```bash
 # Run with default settings (JSON output)
-cargo run --example basic
+cargo run --example stdout_export
 
 # Run with Protobuf output
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf cargo run --example basic
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf cargo run --example stdout_export
 
 # Run with JSON output and GZIP compression
-OTEL_EXPORTER_OTLP_PROTOCOL=http/json OTEL_EXPORTER_OTLP_COMPRESSION=gzip cargo run --example basic
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json OTEL_EXPORTER_OTLP_COMPRESSION=gzip cargo run --example stdout_export
 
 # Run with Protobuf output and GZIP compression
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf OTEL_EXPORTER_OTLP_COMPRESSION=gzip cargo run --example basic
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf OTEL_EXPORTER_OTLP_COMPRESSION=gzip cargo run --example stdout_export
 ```
 
 ### Example Output
