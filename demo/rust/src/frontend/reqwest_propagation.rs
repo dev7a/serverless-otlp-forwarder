@@ -26,7 +26,7 @@ struct ParentAwareSpanBackend;
 impl ReqwestOtelSpanBackend for ParentAwareSpanBackend {
     fn on_request_start(req: &Request, ext: &mut Extensions) -> Span {
         let name = default_span_name(req, ext);
-        reqwest_otel_span!(name = name, req, 
+        reqwest_otel_span!(name = name, req,
             url.full = %req.url(),
             net.peer.name = %req.url().host_str().unwrap_or_default(),
             net.peer.port = %req.url().port().unwrap_or_default(),
