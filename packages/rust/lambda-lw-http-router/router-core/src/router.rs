@@ -1,3 +1,4 @@
+use crate::{RoutableHttpEvent, RouteContext};
 use lambda_runtime::{Error, LambdaEvent};
 use lazy_static::lazy_static;
 use opentelemetry::{global, trace::Status, Context as OtelContext};
@@ -11,7 +12,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use crate::{RoutableHttpEvent, RouteContext};
 
 lazy_static! {
     static ref ROUTE_REGISTRY: Mutex<HashMap<(TypeId, TypeId), Box<dyn Any + Send + Sync>>> =

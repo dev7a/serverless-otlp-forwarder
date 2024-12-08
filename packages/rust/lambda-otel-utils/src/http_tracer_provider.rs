@@ -31,19 +31,8 @@
 //! # Ok(())
 //! # }
 //! ```
-//!
-//! This example demonstrates how to use the `HttpTracerProviderBuilder` to configure and build
-//! a TracerProvider with custom settings for use in a Lambda function.
 
-use delegate::delegate;
-use opentelemetry::propagation::text_map_propagator::FieldIter;
 use opentelemetry::propagation::TextMapPropagator;
-use opentelemetry::propagation::{Extractor, Injector};
-use opentelemetry::{
-    trace::{SpanId, TraceError, TraceId},
-    Context,
-};
-
 use opentelemetry_aws::trace::{XrayIdGenerator, XrayPropagator};
 use opentelemetry_http::HttpClient;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
@@ -53,6 +42,7 @@ use opentelemetry_sdk::{
 };
 use otlp_stdout_client::StdoutClient;
 use std::{env, fmt::Debug};
+use thiserror::Error;
 
 #[derive(Debug)]
 enum ExporterType {
@@ -60,58 +50,24 @@ enum ExporterType {
     Batch,
 }
 
-#[derive(Debug)]
-struct PropagatorWrapper(Box<dyn TextMapPropagator + Send + Sync>);
-
-impl TextMapPropagator for PropagatorWrapper {
-    delegate! {
-        to self.0 {
-            fn inject_context(&self, cx: &Context, carrier: &mut dyn Injector);
-            fn extract_with_context(&self, cx: &Context, carrier: &dyn Extractor) -> Context;
-            fn fields(&self) -> FieldIter<'_>;
-        }
-    }
+#[derive(Debug, Error)]
+pub enum BuilderError {
+    #[error("Failed to build exporter: {0}")]
+    ExporterBuildError(#[from] opentelemetry::trace::TraceError),
 }
 
-#[derive(Debug)]
-struct IdGeneratorWrapper(Box<dyn IdGenerator + Send + Sync>);
-
-impl IdGenerator for IdGeneratorWrapper {
-    delegate! {
-        to self.0 {
-            fn new_trace_id(&self) -> TraceId;
-            fn new_span_id(&self) -> SpanId;
-        }
-    }
-}
-
-/// Builder for configuring and initializing a TracerProvider.
-///
-/// This struct provides a fluent interface for configuring various aspects of the
-/// OpenTelemetry tracing setup, including the exporter type, propagators, and ID generators.
-///
-/// # Examples
-///
-/// ```
-/// use lambda_otel_utils::HttpTracerProviderBuilder;
-/// use opentelemetry_sdk::trace::{TracerProvider, Tracer};
-///
-/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-/// let tracer_provider: TracerProvider = HttpTracerProviderBuilder::default()
-///     .with_stdout_client()
-///     .with_default_text_map_propagator()
-///     .with_default_id_generator()
-///     .enable_global(true)
-///     .build()?;
-/// # Ok(())
-/// # }
-/// ```
-pub struct HttpTracerProviderBuilder<C: HttpClient + 'static = StdoutClient> {
-    client: Option<C>,
+/// A type-safe builder for configuring and initializing a TracerProvider.
+pub struct HttpTracerProviderBuilder<
+    C: HttpClient = StdoutClient,
+    I: IdGenerator = RandomIdGenerator,
+    P: TextMapPropagator = TraceContextPropagator,
+> {
+    client: C,
     install_global: bool,
-    propagators: Vec<PropagatorWrapper>,
-    id_generator: Option<IdGeneratorWrapper>,
+    id_generator: I,
+    propagators: Vec<Box<dyn TextMapPropagator + Send + Sync>>,
     exporter_type: ExporterType,
+    _propagator_type: std::marker::PhantomData<P>,
 }
 
 /// Provides a default implementation for `HttpTracerProviderBuilder`.
@@ -126,13 +82,20 @@ pub struct HttpTracerProviderBuilder<C: HttpClient + 'static = StdoutClient> {
 ///
 /// let default_builder = HttpTracerProviderBuilder::default();
 /// ```
-impl Default for HttpTracerProviderBuilder {
+impl Default
+    for HttpTracerProviderBuilder<StdoutClient, RandomIdGenerator, TraceContextPropagator>
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl HttpTracerProviderBuilder {
+impl<C, I, P> HttpTracerProviderBuilder<C, I, P>
+where
+    C: HttpClient + 'static,
+    I: IdGenerator + Send + Sync + 'static,
+    P: TextMapPropagator + Send + Sync + 'static,
+{
     /// Creates a new `HttpTracerProviderBuilder` with default settings.
     ///
     /// The default exporter type is determined by the `LAMBDA_OTEL_SPAN_PROCESSOR` environment variable:
@@ -142,12 +105,16 @@ impl HttpTracerProviderBuilder {
     ///
     /// # Examples
     ///
-    /// ```rust, no_run
-    /// use lambda_otel_utils::HttpTracerProviderBuilder;
-    ///
-    /// let builder = HttpTracerProviderBuilder::new();
     /// ```
-    pub fn new() -> Self {
+    /// use lambda_otel_utils::HttpTracerProviderBuilder;
+    /// use otlp_stdout_client::StdoutClient;
+    /// use opentelemetry_sdk::propagation::TraceContextPropagator;
+    /// use opentelemetry_sdk::trace::RandomIdGenerator;
+    ///
+    /// let builder = HttpTracerProviderBuilder::default();
+    /// ```
+    pub fn new(
+    ) -> HttpTracerProviderBuilder<StdoutClient, RandomIdGenerator, TraceContextPropagator> {
         let exporter_type = match env::var("LAMBDA_OTEL_SPAN_PROCESSOR")
             .unwrap_or_else(|_| "simple".to_string())
             .to_lowercase()
@@ -164,12 +131,13 @@ impl HttpTracerProviderBuilder {
             }
         };
 
-        Self {
-            client: None,
+        HttpTracerProviderBuilder {
+            client: StdoutClient::new(),
             install_global: false,
+            id_generator: RandomIdGenerator::default(),
             propagators: Vec::new(),
-            id_generator: None,
             exporter_type,
+            _propagator_type: std::marker::PhantomData,
         }
     }
 
@@ -177,14 +145,49 @@ impl HttpTracerProviderBuilder {
     ///
     /// # Examples
     ///
-    /// ```rust, no_run
+    /// ```
     /// use lambda_otel_utils::HttpTracerProviderBuilder;
     ///
-    /// let builder = HttpTracerProviderBuilder::default().with_stdout_client();
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_stdout_client();
     /// ```
-    pub fn with_stdout_client(mut self) -> Self {
-        self.client = Some(StdoutClient::new());
-        self
+    pub fn with_stdout_client(self) -> HttpTracerProviderBuilder<StdoutClient, I, P> {
+        HttpTracerProviderBuilder {
+            client: StdoutClient::new(),
+            install_global: self.install_global,
+            id_generator: self.id_generator,
+            propagators: self.propagators,
+            exporter_type: self.exporter_type,
+            _propagator_type: std::marker::PhantomData,
+        }
+    }
+
+    /// Sets a custom HTTP client for exporting traces.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lambda_otel_utils::HttpTracerProviderBuilder;
+    /// use reqwest::Client;
+    /// use opentelemetry_sdk::propagation::TraceContextPropagator;
+    /// use opentelemetry_sdk::trace::RandomIdGenerator;
+    ///
+    /// let client = Client::new();
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_http_client(client);
+    /// ```
+    pub fn with_http_client<NewC>(self, client: NewC) -> HttpTracerProviderBuilder<NewC, I, P>
+    where
+        NewC: HttpClient + 'static,
+    {
+        HttpTracerProviderBuilder {
+            client,
+            install_global: self.install_global,
+            id_generator: self.id_generator,
+            propagators: self.propagators,
+            exporter_type: self.exporter_type,
+            _propagator_type: std::marker::PhantomData,
+        }
     }
 
     /// Adds a custom text map propagator.
@@ -198,13 +201,22 @@ impl HttpTracerProviderBuilder {
     /// let builder = HttpTracerProviderBuilder::default()
     ///     .with_text_map_propagator(TraceContextPropagator::new());
     /// ```
-    pub fn with_text_map_propagator<P>(mut self, propagator: P) -> Self
+    pub fn with_text_map_propagator<NewP>(
+        mut self,
+        propagator: NewP,
+    ) -> HttpTracerProviderBuilder<C, I, NewP>
     where
-        P: TextMapPropagator + Send + Sync + 'static,
+        NewP: TextMapPropagator + Send + Sync + 'static,
     {
-        self.propagators
-            .push(PropagatorWrapper(Box::new(propagator)));
-        self
+        self.propagators.push(Box::new(propagator));
+        HttpTracerProviderBuilder {
+            client: self.client,
+            install_global: self.install_global,
+            id_generator: self.id_generator,
+            propagators: self.propagators,
+            exporter_type: self.exporter_type,
+            _propagator_type: std::marker::PhantomData,
+        }
     }
 
     /// Adds the default text map propagator (TraceContextPropagator).
@@ -214,18 +226,27 @@ impl HttpTracerProviderBuilder {
     /// ```
     /// use lambda_otel_utils::HttpTracerProviderBuilder;
     ///
-    /// let builder = HttpTracerProviderBuilder::default().with_default_text_map_propagator();
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_default_text_map_propagator();
     /// ```
     pub fn with_default_text_map_propagator(mut self) -> Self {
         self.propagators
-            .push(PropagatorWrapper(Box::new(TraceContextPropagator::new())));
+            .push(Box::new(TraceContextPropagator::new()));
         self
     }
 
     /// Adds the XRay text map propagator.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lambda_otel_utils::HttpTracerProviderBuilder;
+    ///
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_xray_text_map_propagator();
+    /// ```
     pub fn with_xray_text_map_propagator(mut self) -> Self {
-        self.propagators
-            .push(PropagatorWrapper(Box::new(XrayPropagator::new())));
+        self.propagators.push(Box::new(XrayPropagator::new()));
         self
     }
 
@@ -240,12 +261,21 @@ impl HttpTracerProviderBuilder {
     /// let builder = HttpTracerProviderBuilder::default()
     ///     .with_id_generator(RandomIdGenerator::default());
     /// ```
-    pub fn with_id_generator<I>(mut self, id_generator: I) -> Self
+    pub fn with_id_generator<NewI>(
+        self,
+        id_generator: NewI,
+    ) -> HttpTracerProviderBuilder<C, NewI, P>
     where
-        I: IdGenerator + Send + Sync + 'static,
+        NewI: IdGenerator + Send + Sync + 'static,
     {
-        self.id_generator = Some(IdGeneratorWrapper(Box::new(id_generator)));
-        self
+        HttpTracerProviderBuilder {
+            client: self.client,
+            install_global: self.install_global,
+            id_generator,
+            propagators: self.propagators,
+            exporter_type: self.exporter_type,
+            _propagator_type: std::marker::PhantomData,
+        }
     }
 
     /// Sets the default ID generator (RandomIdGenerator).
@@ -255,31 +285,25 @@ impl HttpTracerProviderBuilder {
     /// ```
     /// use lambda_otel_utils::HttpTracerProviderBuilder;
     ///
-    /// let builder = HttpTracerProviderBuilder::default().with_default_id_generator();
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_default_id_generator();
     /// ```
-    pub fn with_default_id_generator(mut self) -> Self {
-        self.id_generator = Some(IdGeneratorWrapper(Box::new(RandomIdGenerator::default())));
-        self
+    pub fn with_default_id_generator(self) -> HttpTracerProviderBuilder<C, RandomIdGenerator, P> {
+        self.with_id_generator(RandomIdGenerator::default())
     }
 
-    /// Adds the XRay ID generator.
-    pub fn with_xray_id_generator(mut self) -> Self {
-        self.id_generator = Some(IdGeneratorWrapper(Box::new(XrayIdGenerator::default())));
-        self
-    }
-
-    /// Enables or disables global installation of the tracer provider.
+    /// Sets the XRay ID generator.
     ///
     /// # Examples
     ///
     /// ```
     /// use lambda_otel_utils::HttpTracerProviderBuilder;
     ///
-    /// let builder = HttpTracerProviderBuilder::default().enable_global(true);
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_xray_id_generator();
     /// ```
-    pub fn enable_global(mut self, set_global: bool) -> Self {
-        self.install_global = set_global;
-        self
+    pub fn with_xray_id_generator(self) -> HttpTracerProviderBuilder<C, XrayIdGenerator, P> {
+        self.with_id_generator(XrayIdGenerator::default())
     }
 
     /// Configures the builder to use a simple exporter.
@@ -289,7 +313,8 @@ impl HttpTracerProviderBuilder {
     /// ```
     /// use lambda_otel_utils::HttpTracerProviderBuilder;
     ///
-    /// let builder = HttpTracerProviderBuilder::default().with_simple_exporter();
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_simple_exporter();
     /// ```
     pub fn with_simple_exporter(mut self) -> Self {
         self.exporter_type = ExporterType::Simple;
@@ -303,83 +328,63 @@ impl HttpTracerProviderBuilder {
     /// ```
     /// use lambda_otel_utils::HttpTracerProviderBuilder;
     ///
-    /// let builder = HttpTracerProviderBuilder::default().with_batch_exporter();
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .with_batch_exporter();
     /// ```
     pub fn with_batch_exporter(mut self) -> Self {
         self.exporter_type = ExporterType::Batch;
         self
     }
 
-    /// Builds the `TracerProvider` with the configured settings.
+    /// Enables or disables global installation of the tracer provider.
     ///
     /// # Examples
     ///
     /// ```
     /// use lambda_otel_utils::HttpTracerProviderBuilder;
-    /// use opentelemetry_sdk::trace::{TracerProvider, Tracer};
     ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// let tracer_provider: TracerProvider = HttpTracerProviderBuilder::default()
-    ///     .with_stdout_client()
-    ///     .with_default_text_map_propagator()
-    ///     .with_default_id_generator()
-    ///     .enable_global(true)
-    ///     .build()?;
-    /// # Ok(())
-    /// # }
+    /// let builder = HttpTracerProviderBuilder::default()
+    ///     .enable_global(true);
     /// ```
-    pub fn build(self) -> Result<SdkTracerProvider, TraceError> {
-        // Build exporter
-        fn build_exporter(
-            client: Option<impl HttpClient + 'static>,
-        ) -> Result<opentelemetry_otlp::SpanExporter, TraceError> {
-            // Build exporter
-            let mut builder = opentelemetry_otlp::SpanExporter::builder()
-                .with_http()
-                .with_protocol(crate::protocol::get_protocol());
+    pub fn enable_global(mut self, set_global: bool) -> Self {
+        self.install_global = set_global;
+        self
+    }
 
-            if let Some(client) = client {
-                builder = builder.with_http_client(client);
-            }
-            builder.build()
-        }
+    /// Builds the TracerProvider with the configured settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns a `BuilderError` if the exporter fails to build
+    pub fn build(self) -> Result<SdkTracerProvider, BuilderError> {
+        let exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_http()
+            .with_protocol(crate::protocol::get_protocol())
+            .with_http_client(self.client)
+            .build()
+            .map_err(BuilderError::ExporterBuildError)?;
 
-        // Get tracer provider builder
-        fn get_tracer_provider_builder(
-            exporter_type: ExporterType,
-            exporter: opentelemetry_otlp::SpanExporter,
-        ) -> opentelemetry_sdk::trace::Builder {
-            match exporter_type {
-                ExporterType::Simple => SdkTracerProvider::builder().with_simple_exporter(exporter),
-                ExporterType::Batch => SdkTracerProvider::builder()
-                    .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio),
-            }
-        }
+        let builder = match self.exporter_type {
+            ExporterType::Simple => SdkTracerProvider::builder().with_simple_exporter(exporter),
+            ExporterType::Batch => SdkTracerProvider::builder()
+                .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio),
+        };
 
-        // Main build logic
-        let id_generator = self
-            .id_generator
-            .unwrap_or_else(|| IdGeneratorWrapper(Box::new(RandomIdGenerator::default())));
-        let tracer_provider = get_tracer_provider_builder(
-            self.exporter_type,
-            build_exporter(self.client).expect("Failed to build exporter"),
-        )
-        .with_resource(crate::resource::get_lambda_resource())
-        .with_id_generator(id_generator)
-        .build();
+        let tracer_provider = builder
+            .with_resource(crate::resource::get_lambda_resource())
+            .with_id_generator(self.id_generator)
+            .build();
 
-        // Setup propagators
         if !self.propagators.is_empty() {
-            let composite_propagator = opentelemetry::propagation::TextMapCompositePropagator::new(
-                self.propagators.into_iter().map(|p| p.0).collect(),
-            );
+            let composite_propagator =
+                opentelemetry::propagation::TextMapCompositePropagator::new(self.propagators);
             opentelemetry::global::set_text_map_propagator(composite_propagator);
         }
 
-        // Optionally install global provider
         if self.install_global {
             opentelemetry::global::set_tracer_provider(tracer_provider.clone());
         }
+
         Ok(tracer_provider)
     }
 }
@@ -387,28 +392,49 @@ impl HttpTracerProviderBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opentelemetry::trace::Span;
+    use opentelemetry::trace::Tracer;
+    use opentelemetry::trace::TracerProvider;
 
     #[test]
-    fn test_http_tracer_provider_builder_default() {
+    fn test_default_builder() {
         let builder = HttpTracerProviderBuilder::default();
+        assert!(!builder.install_global);
         assert!(matches!(builder.exporter_type, ExporterType::Simple));
-        assert!(builder.client.is_none());
-        assert!(builder.propagators.is_empty());
-        assert!(builder.id_generator.is_none());
     }
 
-    #[test]
-    fn test_http_tracer_provider_builder_customization() {
-        let builder = HttpTracerProviderBuilder::new()
-            .with_stdout_client()
-            .with_default_text_map_propagator()
-            .with_default_id_generator()
-            .enable_global(true)
-            .with_batch_exporter();
+    #[tokio::test]
+    async fn test_successful_build() -> Result<(), BuilderError> {
+        let provider = HttpTracerProviderBuilder::default().build()?;
 
-        assert!(builder.client.is_some());
-        assert_eq!(builder.propagators.len(), 1);
-        assert!(builder.id_generator.is_some());
-        assert!(matches!(builder.exporter_type, ExporterType::Batch));
+        let tracer = provider.tracer("test");
+        let span = tracer.span_builder("test_span").start(&tracer);
+        assert!(span.is_recording());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_multiple_propagators() -> Result<(), BuilderError> {
+        let provider = HttpTracerProviderBuilder::default()
+            .with_text_map_propagator(TraceContextPropagator::new())
+            .with_text_map_propagator(XrayPropagator::new())
+            .build()?;
+
+        let tracer = provider.tracer("test");
+        let span = tracer.span_builder("test_span").start(&tracer);
+        assert!(span.is_recording());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_custom_id_generator() -> Result<(), BuilderError> {
+        let provider = HttpTracerProviderBuilder::default()
+            .with_id_generator(XrayIdGenerator::default())
+            .build()?;
+
+        let tracer = provider.tracer("test");
+        let span = tracer.span_builder("test_span").start(&tracer);
+        assert!(span.is_recording());
+        Ok(())
     }
 }

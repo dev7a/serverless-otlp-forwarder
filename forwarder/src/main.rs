@@ -18,43 +18,47 @@ use aws_sdk_secretsmanager::Client as SecretsManagerClient;
 use base64::{engine::general_purpose, Engine};
 use flate2::read::GzDecoder;
 use futures::future::join_all;
+use lambda_otel_utils::{HttpTracerProviderBuilder, OpenTelemetrySubscriberBuilder};
 use lambda_runtime::{
     layers::{OpenTelemetryFaasTrigger, OpenTelemetryLayer as OtelLayer},
     Error as LambdaError, LambdaEvent, Runtime,
 };
 use opentelemetry::trace::SpanKind;
-use reqwest::{header::HeaderMap, Client, ClientBuilder};
+use otlp_stdout_client::LogRecord;
+use reqwest::{header::HeaderMap, Client as ReqwestClient};
 use serde_json::Value;
 use std::io::Read;
 use std::sync::Arc;
 use tracing::{instrument, Instrument};
-use lambda_otel_utils::{HttpTracerProviderBuilder, OpenTelemetrySubscriberBuilder};
-use otlp_stdout_client::LogRecord;
-
 mod collectors;
 mod headers;
-mod sigv4;
-use crate::collectors::Collectors;
+use aws_credential_types::{provider::ProvideCredentials, Credentials};
+use collectors::Collectors;
+use otlp_sigv4_client::SigV4ClientBuilder;
 
 /// Shared application state across Lambda invocations
 struct AppState {
-    http_client: Client,
-    credentials: Arc<Credentials>,
+    http_client: ReqwestClient,
+    credentials: Credentials,
     secrets_client: SecretsManagerClient,
+    region: String,
 }
 
 impl AppState {
     async fn new() -> Result<Self, LambdaError> {
         let config = aws_config::load_from_env().await;
-        let credentials_provider = config
+        let credentials = config
             .credentials_provider()
-            .expect("No credentials provider found");
+            .expect("No credentials provider found")
+            .provide_credentials()
+            .await?;
+        let region = config.region().expect("No region found").to_string();
 
-        let credentials = credentials_provider.provide_credentials().await?;
         Ok(Self {
-            http_client: ClientBuilder::new().build()?,
-            credentials: Arc::new(credentials),
+            http_client: ReqwestClient::new(),
+            credentials,
             secrets_client: SecretsManagerClient::new(&config),
+            region,
         })
     }
 }
@@ -98,18 +102,18 @@ fn decode_payload(log_record: &LogRecord) -> Result<Vec<u8>, anyhow::Error> {
     http.status_code,
 ))]
 async fn send_event(
-    client: &Client,
+    client: &ReqwestClient,
     endpoint: &str,
     headers: HeaderMap,
     payload: Vec<u8>,
 ) -> Result<(), anyhow::Error> {
     let current_span = tracing::Span::current();
-    if let Some(content_type) = headers.get("content-type") {
-        current_span.record("http.request.headers.content_type", &content_type.to_str().unwrap_or(""));
-    }
-    if let Some(content_encoding) = headers.get("content-encoding") {
-        current_span.record("http.request.headers.content_encoding", &content_encoding.to_str().unwrap_or(""));
-    }
+    headers
+        .get("content-type")
+        .map(|ct| current_span.record("http.request.headers.content_type", ct.as_bytes()));
+    headers
+        .get("content-encoding")
+        .map(|ce| current_span.record("http.request.headers.content_encoding", ce.as_bytes()));
     let response = client
         .post(endpoint)
         .headers(headers.clone())
@@ -121,7 +125,7 @@ async fn send_event(
     let status = response.status();
 
     // Record the HTTP status code
-    current_span.record("http.status_code", &status.as_u16());
+    current_span.record("http.status_code", status.as_u16());
 
     if !status.is_success() {
         current_span.record("otel.status_code", "ERROR");
@@ -149,8 +153,9 @@ async fn send_event(
 /// 5. Sending the request to all collectors in parallel
 async fn process_log_event(
     event: &Value,
-    client: &Client,
+    client: &ReqwestClient,
     credentials: &Credentials,
+    region: &str,
 ) -> Result<()> {
     let record = event["message"]
         .as_str()
@@ -177,8 +182,9 @@ async fn process_log_event(
             let decoded_payload = decoded_payload.clone();
             let headers = match headers::LogRecordHeaders::new()
                 .with_log_record(&log_record)
-                .and_then(|h| h.with_collector_auth(&collector, &decoded_payload, credentials))
-            {
+                .and_then(|h| {
+                    h.with_collector_auth(&collector, &decoded_payload, credentials, region)
+                }) {
                 Ok(h) => h.build(),
                 Err(e) => {
                     tracing::error!("Failed to build headers: {}", e);
@@ -187,7 +193,9 @@ async fn process_log_event(
             };
 
             Ok(async move {
-                if let Err(e) = send_event(&client, &collector.endpoint, headers, decoded_payload).await {
+                if let Err(e) =
+                    send_event(&client, &collector.endpoint, headers, decoded_payload).await
+                {
                     tracing::warn!("Failed to send to collector {}: {}", collector.name, e);
                     return Err(e);
                 }
@@ -200,7 +208,7 @@ async fn process_log_event(
     let results = join_all(futures).await;
 
     let results: Vec<Result<(), _>> = results.into_iter().collect();
-    
+
     match results.iter().find(|r| r.is_ok()) {
         Some(_) => Ok(()), // At least one success
         None => {
@@ -211,7 +219,7 @@ async fn process_log_event(
                 .last()
                 .map(|e| format!("Last error: {}", e))
                 .unwrap_or_else(|| "No error details".to_string());
-            
+
             Err(anyhow::anyhow!("All collectors failed. {}", last_error))
         }
     }
@@ -261,15 +269,17 @@ async fn function_handler(
     let log_events = Arc::new(log_events.clone());
 
     let client = state.http_client.clone();
-    let credentials = Arc::clone(&state.credentials);
+    let credentials = state.credentials.clone();
+    let region = state.region.clone();
     let tasks: Vec<_> = log_events
         .iter()
         .map(|event| {
             let client = client.clone();
             let event = event.clone();
             let credentials = credentials.clone();
+            let region = region.clone();
             async move {
-                let result = process_log_event(&event, &client, &credentials).await;
+                let result = process_log_event(&event, &client, &credentials, &region).await;
                 if let Err(e) = &result {
                     tracing::warn!("Error processing log event: {}", e);
                 }
@@ -294,11 +304,32 @@ async fn function_handler(
     Ok(())
 }
 
-use aws_credential_types::{provider::ProvideCredentials, Credentials};
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
+    let config = aws_config::load_from_env().await;
+    let region = config.region().expect("No region found");
+    let credentials = config
+        .credentials_provider()
+        .expect("No credentials provider found")
+        .provide_credentials()
+        .await?;
+
     // Initialize tracer provider
     let tracer_provider = HttpTracerProviderBuilder::default()
+        .with_http_client(
+            SigV4ClientBuilder::new()
+                .with_client(ReqwestClient::new())
+                .with_credentials(credentials)
+                .with_region(region.to_string())
+                .with_service("xray")
+                .with_signing_predicate(Box::new(|request| {
+                    // Only sign requests to AWS endpoints
+                    request.uri().host().map_or(false, |host| {
+                        host.ends_with(".amazonaws.com")
+                    })
+                }))
+                .build()?,
+        )
         .with_batch_exporter()
         .enable_global(true)
         .build()?;

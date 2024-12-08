@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use crate::collectors::Collector;
-use crate::sigv4::sign_request;
 use aws_credential_types::Credentials;
+use otlp_sigv4_client::signing::sign_request;
 use otlp_stdout_client::{LogRecord, CONTENT_ENCODING_HEADER, CONTENT_TYPE_HEADER};
 
 /// Headers builder for outgoing log record requests.
@@ -41,9 +41,10 @@ impl LogRecordHeaders {
         collector: &Collector,
         payload: &[u8],
         credentials: &Credentials,
+        region: &str,
     ) -> Result<Self> {
         if let Some(auth) = &collector.auth {
-            match auth.as_str() {
+            match auth.to_lowercase().as_str() {
                 "sigv4" | "iam" => {
                     // Create a new HeaderMap with headers required for SigV4
                     let mut headers_to_sign = HeaderMap::new();
@@ -51,10 +52,7 @@ impl LogRecordHeaders {
                         let header_name = key.as_str().to_lowercase();
                         if matches!(
                             header_name.as_str(),
-                            "content-type" | 
-                            "content-encoding" |
-                            "content-length" |
-                            "user-agent"
+                            "content-type" | "content-encoding" | "content-length" | "user-agent"
                         ) {
                             headers_to_sign.insert(key.clone(), value.clone());
                         }
@@ -63,8 +61,11 @@ impl LogRecordHeaders {
                         credentials,
                         &collector.endpoint,
                         &headers_to_sign,
-                        payload
-                    )?;
+                        payload,
+                        region,
+                        "xray",
+                    )
+                    .map_err(|e| anyhow::anyhow!("Failed to sign request: {}", e))?;
                     self.0.extend(signed_headers);
                 }
                 _ if auth.contains('=') => {
