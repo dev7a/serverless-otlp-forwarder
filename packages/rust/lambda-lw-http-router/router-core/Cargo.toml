@@ -1,24 +1,25 @@
 [package]
 name = "lambda-lw-http-router-core"
 version = "0.1.1"
-edition = "2021"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "Core functionality for lambda-lw-http-router"
-license = "MIT"
 repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/rust/lambda-lw-http-router/router-core"
-authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
 
 [dependencies]
-regex = "1.10"
-serde_json = "1.0"
-lambda_runtime = "0.13.0"
-aws_lambda_events = { version = "0.15.1", features = ["alb", "apigw"] }
+serde_json.workspace = true
+lambda_runtime.workspace = true
+aws_lambda_events.workspace = true
+tracing.workspace = true
+opentelemetry.workspace = true
+tracing-opentelemetry.workspace = true
+opentelemetry-http.workspace = true
 lazy_static = "1.4.0"
 ctor = "0.2.5"
-tracing = { version = "0.1" }
-opentelemetry = { version = "0.27.0", features = ["trace"] }
-tracing-opentelemetry = "0.28.0"
-opentelemetry-http = "0.27.0"
+regex = "1.10"
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["rt", "macros", "test-util"] } 
-http = "1.0"
+tokio.workspace = true
+http.workspace = true

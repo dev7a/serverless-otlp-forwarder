@@ -1,11 +1,12 @@
 [package]
 name = "lambda-lw-http-router-macro"
 version = "0.1.1"
-edition = "2021"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "Procedural macros for lambda-lw-http-router"
-license = "MIT"
 repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/rust/lambda-lw-http-router/router-macro"
-authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
 
 [lib]
 proc-macro = true
@@ -17,9 +18,9 @@ syn = { version = "2.0", features = ["full"] }
 darling = "0.20"
 
 [dev-dependencies]
-lambda_runtime = "0.13.0"
-aws_lambda_events = { version = "0.15.1", features = ["alb", "apigw"] }
-serde_json = "1.0"
+lambda_runtime.workspace = true
+aws_lambda_events.workspace = true
+serde_json.workspace = true
 tower = "0.5.1"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tokio.workspace = true
 tokio-test = "0.4.4"

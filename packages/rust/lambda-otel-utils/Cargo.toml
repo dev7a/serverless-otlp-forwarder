@@ -1,10 +1,11 @@
 [package]
 name = "lambda-otel-utils"
 version = "0.2.1"
-edition = "2021"
-authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "A set of utilities for AWS Lambda and OpenTelemetry"
-license = "MIT"
 repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/rust/lambda-otel-utils"
 readme = "README.md"
 keywords = ["opentelemetry", "utilities", "lambda", "aws"]
@@ -13,26 +14,28 @@ homepage = "https://github.com/dev7a/lambda-otlp-forwarder"
 documentation = "https://docs.rs/lambda-otel-utils"
 
 [dependencies]
-opentelemetry = { version = "0.27.0", default-features = false, features = ["trace"] }
-opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.27.0", features = ["http-proto", "reqwest-client"] }
-opentelemetry-http = "0.27.0"
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry-http.workspace = true
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "json"] }
 tracing-opentelemetry = "0.28.0"
 opentelemetry-semantic-conventions = { version = "0.27.0", features=["semconv_experimental"] }
 delegate = "0.13.1"
 lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
-tracing = { version = "0.1" }
+tracing.workspace = true
+thiserror.workspace = true
 pin-project = "1.1.0"
 otlp-stdout-client = { path = "../otlp-stdout-client", version = "0.2.1" }
 opentelemetry-aws = { version = "0.15.0", features = ["detector-aws-lambda"] }
 rustc_version_runtime = "0.3.0"
 
 [dev-dependencies]
-tokio = { version = "1.0", features = ["full", "test-util", "macros"] }
+tokio.workspace = true
 sealed_test = "1.1.0"   
 aws_lambda_events = { version = "0.15.1", default-features = false, features = ["apigw", "alb"] }
 opentelemetry_sdk = { version = "0.27.0", features = ["testing"] }
 mockall = "0.13.0"
 doc-comment = "0.3"
 serde_json = { version = "1.0" }
+reqwest.workspace = true

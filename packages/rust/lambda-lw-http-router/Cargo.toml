@@ -1,26 +1,30 @@
 [package]
 name = "lambda-lw-http-router"
 version = "0.1.1"
-edition = "2021"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "A lightweight, type-safe HTTP router for AWS Lambda functions"
 repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/rust/lambda-lw-http-router"
 documentation = "https://docs.rs/lambda-lw-http-router"
 readme = "README.md"
 keywords = ["lambda", "aws", "router", "serverless", "api"]
 categories = ["web-programming::http-server", "network-programming"]
-authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
-license = "MIT"
 
 [dependencies]
-lambda-lw-http-router-core = { version = "0.1.1", path = "router-core" }
-lambda-lw-http-router-macro = { version = "0.1.1", path = "router-macro" }
+lambda-lw-http-router-core.workspace = true
+lambda-lw-http-router-macro.workspace = true
 ctor = "0.2"
 
 [dev-dependencies]
-lambda_runtime = "0.13.0"
-aws_lambda_events = { version = "0.15.1", features = ["alb", "apigw"] }
-serde_json = "1.0"
+lambda_runtime.workspace = true
+aws_lambda_events.workspace = true
+serde_json.workspace = true
 tower = "0.5.1"
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+tokio.workspace = true
 tokio-test = "0.4.4"
 doc-comment = "0.3"
+
+[package.metadata.cargo-machete]
+ignored = ["ctor"]

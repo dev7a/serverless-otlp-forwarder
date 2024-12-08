@@ -1,22 +1,24 @@
 [package]
 name = "otel-benchmark-cli"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "CLI tool for benchmarking OpenTelemetry Lambda implementations"
 
 [dependencies]
-aws-config = { version = "1.5.5", features = ["behavior-version-latest"] }
+aws-config.workspace = true
 aws-sdk-lambda = "1.59.0"
-tokio = { version = "1.42.0", features = ["full"] }
+tokio.workspace = true
 clap = { version = "4.4.8", features = ["derive"] }
-serde = { version = "1.0.215", features = ["derive"] }
-serde_json = "1.0.133"
-anyhow = "1.0.94"
-tracing = "0.1.41"
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 base64 = "0.22.1" 
-futures = "0.3.31"
-statistical = "1.0.0"
+futures.workspace = true
 indicatif = { version = "0.17", features = ["improved_unicode"] }
 chrono = { version = "0.4", features = ["serde"] }
 tera = "1.19.1"

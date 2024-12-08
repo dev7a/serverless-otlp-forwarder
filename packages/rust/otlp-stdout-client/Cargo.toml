@@ -1,41 +1,39 @@
 [package]
 name = "otlp-stdout-client"
 version = "0.2.1"
-edition = "2021"
-authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
 description = "A custom HTTP client for OpenTelemetry OTLP exporters in serverless environments, writing to stdout for easy integration with AWS Lambda and forwarding to collectors"
-license = "MIT"
 repository = "https://github.com/dev7a/lambda-otlp-forwarder/"
 readme = "README.md"
 keywords = ["opentelemetry", "otlp", "stdout", "lambda", "aws"]
 categories = ["development-tools::debugging", "development-tools::profiling", "web-programming"]
 homepage = "https://github.com/dev7a/lambda-otlp-forwarder"
 documentation = "https://docs.rs/otlp-stdout-client"
-rust-version = "1.70"
 exclude = ["tests/*", "examples/*", "benches/*"]
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tracing = { version = "0.1", features = ["log"] }
-async-trait = "0.1.82"
-http = "1.1.0"
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+http.workspace = true
+opentelemetry-http.workspace = true
+opentelemetry-otlp.workspace = true
+tokio.workspace = true
+futures.workspace = true
 bytes = "1.7.2"
 base64 = "0.22.1"
 flate2 = "1.0"
-opentelemetry-http = "0.27.0"
-opentelemetry-otlp = { version = "0.27.0", features = ["http-proto", "http-json"] }
-tokio = { version = "1.0", features = ["rt", "macros", "rt-multi-thread"] }
-futures = "0.3"
-
 
 [dev-dependencies]
+tokio.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
 sealed_test = "1.1.0"   
-tokio = { version = "1.0", features = ["rt", "macros", "rt-multi-thread", "fs"] }
-opentelemetry = { version = "0.27.0", features = ["trace"] }
-opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio"] }
 doc-comment = "0.3"
-
 
 [[example]]
 name = "basic"
