@@ -16,7 +16,7 @@ pub async fn update_function_memory(
     client
         .update_function_configuration()
         .function_name(function_name)
-        .memory_size(memory_size as i32)
+        .memory_size(memory_size)
         .send()
         .await
         .context("Failed to update function memory")?;
@@ -64,7 +64,7 @@ pub async fn invoke_function(
     // Extract and decode base64 logs
     let logs = output.log_result().context("No logs returned")?;
     let decoded_logs = general_purpose::STANDARD
-        .decode(&logs)
+        .decode(logs)
         .expect("Failed to decode base64 payload");
 
     extract_metrics(&String::from_utf8(decoded_logs).expect("Failed to decode logs"))
@@ -142,7 +142,7 @@ pub async fn run_benchmark(
 
     if let Some(memory_size) = memory {
         config_pb.set_message("Updating function configuration...");
-        update_function_memory(&client, &function_name, memory_size).await?;
+        update_function_memory(client, &function_name, memory_size).await?;
 
         config_pb.set_message("Waiting for function update to complete...");
         tokio::time::sleep(Duration::from_secs(5)).await;
@@ -176,11 +176,11 @@ pub async fn run_benchmark(
         .collect::<Vec<_>>()
         .await;
 
-    for result in results {
-        if let Ok(Ok(metrics)) = result {
-            cold_starts.push(metrics);
-        }
-    }
+    cold_starts.extend(
+        results
+            .into_iter()
+            .filter_map(|r| r.ok().and_then(|r| r.ok())),
+    );
     cold_pb.finish_with_message(format!(
         "✓ Completed {} cold start invocations",
         cold_starts.len()
@@ -212,11 +212,11 @@ pub async fn run_benchmark(
             .collect::<Vec<_>>()
             .await;
 
-        for result in results {
-            if let Ok(Ok(metrics)) = result {
-                warm_starts.push(metrics);
-            }
-        }
+        warm_starts.extend(
+            results
+                .into_iter()
+                .filter_map(|r| r.ok().and_then(|r| r.ok())),
+        );
     }
     warm_pb.finish_with_message(format!(
         "✓ Completed {} warm start invocations",

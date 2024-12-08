@@ -16,7 +16,6 @@ pub async fn generate_chart_visualization(
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_directory)?;
 
-
     // Read all JSON files in the directory
     let mut results = Vec::new();
     let mut function_names = Vec::new();
@@ -221,7 +220,7 @@ pub async fn generate_chart_visualization(
 
     // Take screenshot of cold starts chart if requested
     if take_screenshots {
-        take_chart_screenshot(&cold_path).await?;
+        take_chart_screenshot(cold_path).await?;
     }
 
     // Generate warm starts chart
@@ -240,7 +239,7 @@ pub async fn generate_chart_visualization(
 
     // Take screenshot of warm starts chart if requested
     if take_screenshots {
-        take_chart_screenshot(&warm_path).await?;
+        take_chart_screenshot(warm_path).await?;
     }
 
     // Generate memory usage chart
@@ -259,25 +258,28 @@ pub async fn generate_chart_visualization(
 
     // Take screenshot of memory usage chart if requested
     if take_screenshots {
-        take_chart_screenshot(&memory_path).await?;
+        take_chart_screenshot(memory_path).await?;
     }
 
     Ok(())
 }
 
-async fn take_chart_screenshot(html_path: &PathBuf) -> Result<()> {
+async fn take_chart_screenshot(html_path: PathBuf) -> Result<()> {
     let browser = Browser::new(LaunchOptions::default_builder().build()?)?;
     let tab = browser.new_tab()?;
     let url = format!("file://{}", html_path.canonicalize()?.display());
-    let viewport = tab.navigate_to(&url)?
-       .wait_for_element("body")?
-    .get_box_model()?
-    .margin_viewport();
-    let png_data = tab.capture_screenshot(CaptureScreenshotFormatOption::Png, 
+    let viewport = tab
+        .navigate_to(&url)?
+        .wait_for_element("body")?
+        .get_box_model()?
+        .margin_viewport();
+    let png_data = tab.capture_screenshot(
+        CaptureScreenshotFormatOption::Png,
         Some(75),
-        Some(viewport), 
-        true)?;    
-    
+        Some(viewport),
+        true,
+    )?;
+
     let screenshot_path = html_path.with_extension("png");
     fs::write(screenshot_path, png_data)?;
     Ok(())
