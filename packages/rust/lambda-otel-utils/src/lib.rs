@@ -2,7 +2,10 @@
 //!
 //! `lambda-otel-utils` is a Rust library that provides utilities for integrating
 //! OpenTelemetry tracing and metrics with AWS Lambda functions. It simplifies the process of
-//! setting up and configuring OpenTelemetry for use in serverless environments.
+//! setting up and configuring OpenTelemetry for use in serverless environments. This crate
+//! is part of the [lambda-otlp-forwarder](https://github.com/dev7a/lambda-otlp-forwarder/)
+//! project, which provides a comprehensive solution for OpenTelemetry telemetry collection
+//! in AWS Lambda environments.
 //!
 //! ## Main Components
 //!

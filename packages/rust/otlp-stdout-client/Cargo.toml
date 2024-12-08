@@ -6,7 +6,10 @@ authors.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "OpenTelemetry OTLP stdout client"
-repository = "https://github.com/alessandrobologna/lambda-otlp-forwarder"
+repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/rust/otlp-stdout-client"
+homepage = "https://github.com/dev7a/lambda-otlp-forwarder"
+keywords = ["opentelemetry", "otlp", "aws", "lambda", "telemetry"]
+categories = ["development-tools::debugging", "development-tools::profiling"]
 
 [[example]]
 name = "stdout_export"

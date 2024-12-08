@@ -1,7 +1,10 @@
 //! # otlp-stdout-client
 //!
 //! `otlp-stdout-client` is a Rust library that provides an OpenTelemetry exporter
-//! designed for serverless environments, particularly AWS Lambda functions.
+//! designed for serverless environments, particularly AWS Lambda functions. This crate
+//! is part of the [lambda-otlp-forwarder](https://github.com/dev7a/lambda-otlp-forwarder/)
+//! project, which provides a comprehensive solution for OpenTelemetry telemetry collection
+//! in AWS Lambda environments.
 //!
 //! This exporter implements the `opentelemetry_http::HttpClient` interface and can be used
 //! in an OpenTelemetry OTLP pipeline to send OTLP data (both JSON and Protobuf formats)
