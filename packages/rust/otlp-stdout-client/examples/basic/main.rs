@@ -2,10 +2,7 @@ use opentelemetry::global;
 use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::{
-    runtime::Tokio,
-    trace::TracerProvider,
-};
+use opentelemetry_sdk::{runtime::Tokio, trace::TracerProvider};
 use otlp_stdout_client::StdoutClient;
 
 /// Initialize the tracer provider with the StdoutClient

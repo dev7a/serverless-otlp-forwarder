@@ -84,11 +84,27 @@ fn do_work() {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
+    // Check if RUST_LOG is set appropriately
+    match std::env::var("RUST_LOG") {
+        Ok(level) => {
+            if !level.to_lowercase().contains("info") {
+                println!("Warning: RUST_LOG is set to '{}' but should contain 'info' to see the example output.", level);
+                println!("Try running with: RUST_LOG=info cargo run --example basic");
+            }
+        }
+        Err(_) => {
+            println!(
+                "Warning: RUST_LOG environment variable is not set. No output will be visible."
+            );
+            println!("Try running with: RUST_LOG=info cargo run --example basic");
+        }
+    }
+
     // Initialize tracer provider
     let tracer_provider = HttpTracerProviderBuilder::default()
         .with_stdout_client()
         .with_default_text_map_propagator()
-        .with_simple_exporter()
+        .with_batch_exporter()
         .enable_global(true)
         .build()?;
 
@@ -96,7 +112,7 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
     let meter_provider = HttpMeterProviderBuilder::default()
         .with_stdout_client()
         .with_meter_name("my-service")
-        .with_export_interval(Duration::from_secs(30))
+        .with_export_interval(Duration::from_secs(1))
         .build()?;
 
     // Keep references for shutdown

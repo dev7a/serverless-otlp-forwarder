@@ -26,18 +26,28 @@ The Lambda OTLP Forwarder enables serverless applications to send OpenTelemetry 
 
 ### Why not use the OTEL/ADOT Lambda Layer extension?
 
-This project was created to address the challenges of efficiently sending telemetry data from serverless applications to OTLP collectors without adding to cold start times. The current approaches using the OTEL/ADOT Lambda Layer extension deploys a sidecar agent, which increases resource usage, slows cold starts, and drives up costs. This becomes particularly problematic when running Lambda functions with limited memory, as the [overhead of initializing and running the ADOT/OTEL layer](https://github.com/aws-observability/aws-otel-lambda/issues/228) can negate any cost savings from memory optimization. This solution provides a streamlined approach that maintains full telemetry capabilities while keeping resource consumption and costs minimal.
+This project was created to address the challenges of efficiently sending telemetry data from serverless applications to OTLP collectors without adding to cold start times. The current approaches using the OTEL/ADOT Lambda Layer extension deploys a sidecar agent, which increases resource usage, slows cold starts, and drives up costs. This becomes particularly problematic when running Lambda functions with limited memory, as the [overhead of initializing and running the ADOT/OTEL layer](https://github.com/aws-observability/aws-otel-lambda/issues/228) can negate any cost savings from memory optimization. 
 
+This solution provides a streamlined approach that maintains full telemetry capabilities while keeping resource consumption and costs minimal.
 As a side benefit, if you're running an OTEL collector in your VPC to benefit from the advanced filtering and sampling capabilities, you don't need to expose it to the internet or connect all your lambda functions to your VPC. Since the transport for OLTP is CloudWatch logs, you are keeping all your telemetry data internal.
+The downsides are:
+- You will incur CloudWatch Logs ingestion charges for the telemetry data, which can be significant if you're instrumenting a high volume of requests. You can minimize this by using compression and protobuf instead of json.
+- You will incur additional costs for the forwarder Lambda function, which I wouldn't consider significant compared to the overall cost of your observability stack, but it's not zero.
+- At this stage, no automatic instrumentation is supported, so you would need at the very least to add the instrumentation libraries to your application for the services that you are using.
+
+
+> [!NOTE]
+> AWS has recently announced [Cloudwatch Application Signals for Lambda](https://aws.amazon.com/about-aws/whats-new/2024/11/aws-lambda-application-performance-monitoring-cloudwatch-signals/) and a new set of OpenTelemetry layers for Python and Node.js, which are not using the sidecar approach, and provide better cold start and warm start performances compared to the ADOT/OTEL layer. The UDP based X-Ray localhost endpoint for Lambda now accepts OTLP (over UDP) data, and this allows much lower latency for the telemetry data to be sent to the collector. The Lambda OTLP Forwarder _now supports sending telemetry data to the Cloudwatch Application Signals OLTP endpoint_, so you can use it as your Observability platform as an alternative to the other vendors in this space. See the Application Signals section for more details.
+
 
 ## Supported Languages
-At this time, the languages supported (just experimentally) are Rust, Python, and Node.js.
-In general, the approach to add the "ouput to stdout" capability is to use the OTEL SDK for the language to generate and format the telemetry data, and then to replace the OTLP exporter (or a part of it) with a custom implementation that would instead write to stdout. 
+At this time, the languages supported (just experimentally) are Rust, Python, and Node.js. Java should probably be next, and I'd welcome contributions for other languages.
+In general, the approach is to add the "ouput to stdout" capability is to use the OTEL SDK for the language to generate and format the telemetry data, and then to replace the OTLP exporter (or a part of it) with a custom implementation that would instead write to stdout. 
 
 > [!IMPORTANT]
-> While this may be a little bit _hacky_, it may not be necessary in future, as the OpenTelemetry community is working on a new [OTLP Stdout exporter specification](https://github.com/open-telemetry/opentelemetry-specification/pull/4183) that would allow to potentially not depend on a custom implementation at all.
+> While this approach may be a little bit _hacky_, it may not be necessary in future, as the OpenTelemetry community is working on a new [OTLP Stdout exporter specification](https://github.com/open-telemetry/opentelemetry-specification/pull/4183) that would allow to potentially not depend on a custom implementation at all.
 
-Finally, while the inital proof of concept was written in Rust, and the Rust OTEL SDK provided a convenient "hook" to replace the HTTP client with a custom implementation that would instead write to stdout, and a similar approach has also been used with the Python SDK, the Node.js/Typescript SDK didn't seem to provide a similar way to hook into the HTTP client, and required creating a custom provider. Because of this, the Node.js implementation does not support metrics and logs at this time. 
+Also, while the inital proof of concept was written in Rust, and the Rust OTEL SDK provided a convenient "hook" to replace the HTTP client with a custom implementation that would instead write to stdout, and a similar approach has also been used with the Python SDK, the Node.js/Typescript SDK didn't seem to provide a similar way to hook into the HTTP client, and required creating a custom provider. Because of this, the Node.js implementation does not support metrics and logs at this time. 
 
 
 ### Rust
@@ -303,7 +313,8 @@ The forwarder service configuration is defined in the [template.yaml](template.y
 |-----------|------|---------|-------------|
 | RouteAllLogs | String | 'true' | Route all AWS logs to the Lambda function |
 | DeployDemo | String | 'true' | Deploy the demo application |
-| CollectorsSecretsKeyPrefix | String | 'lambda-otlp-forwarder/keys' | - |
+| CollectorsSecretsKeyPrefix | String | 'lambda-otlp-forwarder/keys' | Location of the secrets containing the collector endpoint and authentication headers |
+| CollectorsCacheTtlSeconds | String | '300' | How long (in seconds) to cache the collector configuration in memory. This is used to reduce the number of requests to the secrets manager. |
 
 
 To change these defaults, you can edit the [samconfig.toml](samconfig.toml) file. For instance, to not subscribe to all log groups, you can set `RouteAllLogs` to `false` and to not deploy the demo application, set `DeployDemo` to `false`:
@@ -321,11 +332,13 @@ parameter_overrides = [
 ]
 ```
 
+### Configuring the Collector Endpoint and Authentication
+
 The forwarder requires a secret in AWS Secrets Manager to define the collector endpoint and authentication headers. This secret configures where the telemetry data will be sent, whether to an observability vendor or a self-hosted OpenTelemetry collector.
 
 By default, the forwarder looks for a secret with the key `lambda-otlp-forwarder/keys/default`. This key prefix can be customized using the `CollectorsSecretsKeyPrefix` parameter in the [SAM template](template.yaml).
 
-To create the default secret, you can just use the AWS CLI (or the AWS console as you prefer):
+To create the default secret, which is used to both send the forwarder telemetry as well as the other applications telemetry data, you can just use the AWS CLI (or the AWS console as you prefer):
 
 ```bash
 aws secretsmanager create-secret \
@@ -337,8 +350,7 @@ aws secretsmanager create-secret \
   }'
 ```
 
-
-where `--name` is the AWS secret manager key for the default collector
+where `--name` is the AWS secret manager key for the default collector. The other fields are:
 
 | Field | Description | Example |
 | ----- | ----------- | ------- |
@@ -354,6 +366,49 @@ If you choose to use `sigv4` or `iam` authentication, the forwarder will use the
 > [!TIP]
 > Please note that the forwarder itself is also instrumented, and its own telemetry data will be sent to the collectors defined as the `default` secret in `CollectorsSecretsKeyPrefix`.
 
+### Forwarder own telemetry destination
+
+The forwarder itself is instrumented and sends its own telemetry data to the collector defined in the `default` secret in `CollectorsSecretsKeyPrefix`. The configuration is defined in the [template.yaml](template.yaml) file by seeting the standard environment variables:
+
+- OTEL_SERVICE_NAME
+- OTEL_EXPORTER_OTLP_ENDPOINT
+- OTEL_EXPORTER_OTLP_HEADERS
+- OTEL_EXPORTER_OTLP_COMPRESSION
+- OTEL_EXPORTER_OTLP_PROTOCOL
+
+By default, the `OTEL_SERVICE_NAME` is set to `lambda-otlp-forwarder` and the `OTEL_EXPORTER_OTLP_COMPRESSION` is set to `gzip`, and the `OTEL_EXPORTER_OTLP_PROTOCOL` is set to `http/protobuf`.
+The endpoint and the authentication headers are taken from the `default` secret in `CollectorsSecretsKeyPrefix`.
+```yaml
+      Environment:
+        Variables:
+          RUST_LOG: info
+          OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
+          OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
+          COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
+```
+
+### Application Signals as a destination
+As mentioned in the [Why Use Lambda OTLP Forwarder?](#why-use-lambda-otlp-forwarder) section, the forwarder now supports sending telemetry data to the [Cloudwatch Application Signals OLTP endpoint](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch-OTLPEndpoint.html). 
+To do so, you can create a secret with the `name` filed set to `appsignals` (or any other name), and the `endpoint` set to the Application Signals OTLP endpoint for your region. 
+For instance, for us-east-1, the endpoint is `https://xray.us-east-1.amazonaws.com` (the `/v1/traces` path is automatically appended to the endpoint). 
+The `auth` field should be set to `sigv4` or `iam`.
+With the AWS cli, you can create the secret with the following command:
+
+```bash
+aws secretsmanager create-secret \
+  --name "lambda-otlp-forwarder/keys/appsignals" \
+  --secret-string '{
+    "name": "appsignals",
+    "endpoint": "https://xray.us-east-1.amazonaws.com",
+    "auth": "sigv4"
+  }'
+```
+
+Please note that if you want Application Signals to be the default destination, you will need to create the key as `lambda-otlp-forwarder/keys/default`.
+
+
 ### Demo Application
 
 The demo application is deployed by default when the forwarder is deployed, and it's instrumented to emit telemetry data using the otel SDK for Rust, Python, and Node.js. The demo application is deployed using a nested stack, and can be configured to use http/json or http/protobuf, and with or without compression.
@@ -368,7 +423,6 @@ For example, to deploy the demo application with http/json and without compressi
 
 ```toml
 [default.deploy.parameters]
-...
 parameters_overrides = [
     "DemoExporterProtocol=http/json",
     "DemoExporterCompression=none"
