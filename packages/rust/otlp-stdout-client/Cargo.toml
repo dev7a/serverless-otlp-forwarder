@@ -5,37 +5,31 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "A custom HTTP client for OpenTelemetry OTLP exporters in serverless environments, writing to stdout for easy integration with AWS Lambda and forwarding to collectors"
-repository = "https://github.com/dev7a/lambda-otlp-forwarder/"
-readme = "README.md"
-keywords = ["opentelemetry", "otlp", "stdout", "lambda", "aws"]
-categories = ["development-tools::debugging", "development-tools::profiling", "web-programming"]
-homepage = "https://github.com/dev7a/lambda-otlp-forwarder"
-documentation = "https://docs.rs/otlp-stdout-client"
-exclude = ["tests/*", "examples/*", "benches/*"]
+description = "OpenTelemetry OTLP stdout client"
+repository = "https://github.com/alessandrobologna/lambda-otlp-forwarder"
+
+[[example]]
+name = "stdout_export"
+path = "examples/stdout_export/main.rs"
 
 [dependencies]
-serde.workspace = true
-serde_json.workspace = true
-tracing.workspace = true
-async-trait.workspace = true
-http.workspace = true
-opentelemetry-http.workspace = true
-opentelemetry-otlp.workspace = true
-tokio.workspace = true
-futures.workspace = true
-bytes = "1.7.2"
-base64 = "0.22.1"
-flate2 = "1.0"
-
-[dev-dependencies]
 tokio.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry-http.workspace = true
+http.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+base64 = "0.21.7"
+flate2 = "1.0.28"
+bytes = "1.5.0"
+
+[dev-dependencies]
 sealed_test = "1.1.0"   
 doc-comment = "0.3"
-
-[[example]]
-name = "basic"
-path = "examples/basic/main.rs"
+futures.workspace = true
 

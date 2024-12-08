@@ -39,9 +39,3 @@ path = "src/frontend/main.rs"
 [[bin]]
 name = "backend"
 path = "src/backend/main.rs"
-
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1
-panic = "abort"

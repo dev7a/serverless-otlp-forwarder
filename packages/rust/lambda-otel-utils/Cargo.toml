@@ -5,37 +5,35 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "A set of utilities for AWS Lambda and OpenTelemetry"
-repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/rust/lambda-otel-utils"
-readme = "README.md"
-keywords = ["opentelemetry", "utilities", "lambda", "aws"]
-categories = ["development-tools::debugging", "development-tools::profiling", "web-programming"]
-homepage = "https://github.com/dev7a/lambda-otlp-forwarder"
-documentation = "https://docs.rs/lambda-otel-utils"
+description = "OpenTelemetry utilities for AWS Lambda"
+repository = "https://github.com/alessandrobologna/lambda-otlp-forwarder"
+
+[[example]]
+name = "tracing_example"
+path = "examples/tracing_example.rs"
 
 [dependencies]
+tokio.workspace = true
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
 opentelemetry-http.workspace = true
-tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "json"] }
-tracing-opentelemetry = "0.28.0"
-opentelemetry-semantic-conventions = { version = "0.27.0", features=["semconv_experimental"] }
-delegate = "0.13.1"
-lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
 tracing.workspace = true
+tracing-opentelemetry.workspace = true
+aws_lambda_events.workspace = true
+lambda_runtime.workspace = true
+http.workspace = true
+otlp-stdout-client.workspace = true
+otlp-sigv4-client.workspace = true
 thiserror.workspace = true
 pin-project = "1.1.0"
-otlp-stdout-client = { path = "../otlp-stdout-client", version = "0.2.1" }
 opentelemetry-aws = { version = "0.15.0", features = ["detector-aws-lambda"] }
+opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "json"] }
 rustc_version_runtime = "0.3.0"
 
 [dev-dependencies]
-tokio.workspace = true
 sealed_test = "1.1.0"   
-aws_lambda_events = { version = "0.15.1", default-features = false, features = ["apigw", "alb"] }
-opentelemetry_sdk = { version = "0.27.0", features = ["testing"] }
-mockall = "0.13.0"
 doc-comment = "0.3"
-serde_json = { version = "1.0" }
+serde_json.workspace = true
 reqwest.workspace = true
