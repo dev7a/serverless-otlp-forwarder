@@ -96,7 +96,7 @@ The crate supports both reqwest and hyper HTTP clients through feature flags:
 ## Examples
 
 Check out the [examples](examples/) directory for more detailed examples:
-- [Basic Usage](examples/basic/): Simple example showing basic configuration and usage
+- [SigV4 Authentication](examples/sigv4_auth/): Example showing AWS SigV4 authentication configuration and usage
 - More examples coming soon...
 
 ## AWS Service Compatibility
