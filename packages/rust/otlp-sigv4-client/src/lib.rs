@@ -2,7 +2,7 @@
 //!
 //! This crate provides a wrapper that adds AWS SigV4 signing capabilities to any OpenTelemetry
 //! HTTP client implementation. It's particularly useful when sending telemetry data to AWS services
-//! that require SigV4 authentication. This crate is part of the 
+//! that require SigV4 authentication. This crate is part of the
 //! [lambda-otlp-forwarder](https://github.com/dev7a/lambda-otlp-forwarder/) project, which provides
 //! a comprehensive solution for OpenTelemetry telemetry collection in AWS Lambda environments.
 //!

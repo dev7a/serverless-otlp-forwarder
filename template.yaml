@@ -27,6 +27,7 @@ Parameters:
 Conditions:
   RouteAllLogs: !Equals [!Ref RouteAllLogs, 'true']
   DeployDemo: !Equals [!Ref DeployDemo, 'true']
+
 Globals:
   Function:
     MemorySize: 128
@@ -37,12 +38,13 @@ Globals:
       ApplicationLogLevel: INFO
       SystemLogLevel: WARN
 
-
 Resources:
   LogProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: log_processor
     Properties:
       FunctionName: !Sub '${AWS::StackName}-log-processor'
       CodeUri: ./forwarder/
@@ -52,6 +54,7 @@ Resources:
       Environment:
         Variables:
           RUST_LOG: info
+          OTEL_SERVICE_NAME: LogProcessor
           OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
           OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
@@ -71,7 +74,7 @@ Resources:
             - Effect: Allow
               Action:
                 - 'secretsmanager:GetSecretValue'
-              Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
+              Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
 
   LogProcessorFunctionPermission:
     Type: AWS::Lambda::Permission
@@ -99,6 +102,58 @@ Resources:
       Scope: "ALL"
       SelectionCriteria: !Sub "LogGroupName NOT IN [\"/aws/${LogProcessorFunction}\"]"
 
+  SpanProcessorFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: span_processor
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-span-processor'
+      CodeUri: ./forwarder/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Description: !Sub 'Processes aws/spans from AWS Account ${AWS::AccountId}'
+      Environment:
+        Variables:
+          RUST_LOG: info
+          OTEL_SERVICE_NAME: SpanProcessor
+          OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
+          OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
+          COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:BatchGetSecretValue'
+                - 'secretsmanager:ListSecrets'
+                - 'xray:PutTraceSegments'
+                - 'xray:PutSpans'
+                - 'xray:PutSpansForIndexing'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
+
+  SpanProcessorSubscription:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: 'aws/spans'
+      FilterPattern: '' # Empty pattern to capture all logs
+      DestinationArn: !GetAtt SpanProcessorFunction.Arn
+
+  SpanProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SpanProcessorFunction
+      Principal: logs.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*'
+
   DemoStack:
     Type: AWS::Serverless::Application
     Condition: DeployDemo
@@ -110,9 +165,9 @@ Resources:
         ExporterCompression: !Ref DemoExporterCompression
 
 Outputs:
-  LogProcessorFunctionArn:
-    Description: 'ARN of the Log Processor Lambda function'
-    Value: !GetAtt LogProcessorFunction.Arn
+  # LogProcessorFunctionArn:
+  #   Description: 'ARN of the Log Processor Lambda function'
+  #   Value: !GetAtt LogProcessorFunction.Arn
   BackendUrl:
     Condition: DeployDemo
     Description: 'URL of the Backend API'

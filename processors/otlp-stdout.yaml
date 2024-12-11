@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: AWS SAM template for OTLP stdout processor in the lambda-otlp-forwarder application.
+
+Parameters:
+  StackName:
+    Type: String
+    Description: The friendly name for resources in this stack.
+  CollectorsSecretsKeyPrefix:
+    Type: String
+    Description: The prefix for the secrets manager key for the collector.
+    Default: 'lambda-otlp-forwarder/keys'
+  CollectorsCacheTtlSeconds:
+    Type: String
+    Description: The TTL for the collector cache.
+    Default: '300'
+
+Globals:
+  Function:
+    MemorySize: 128
+    Architectures:
+      - arm64
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+
+Resources:
+  Processor:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: log_processor
+    Properties:
+      FunctionName: !Sub '${StackName}-otlp-stdout-processor'
+      CodeUri: ./forwarder/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Description: !Sub 'Processes logs from AWS Account ${AWS::AccountId}'
+      Environment:
+        Variables:
+          RUST_LOG: info
+          OTEL_SERVICE_NAME: !Sub '${StackName}-otlp-stdout-processor'
+          OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
+          OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
+          COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:BatchGetSecretValue'
+                - 'secretsmanager:ListSecrets'
+                - 'xray:PutTraceSegments'
+                - 'xray:PutSpans'
+                - 'xray:PutSpansForIndexing'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
+
+  ProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Processor
+      Action: lambda:InvokeFunction
+      Principal: logs.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  LogsAccountPolicy:
+    Type: AWS::Logs::AccountPolicy
+    Condition: RouteAllLogs
+    DependsOn:
+      - ProcessorPermission
+    Properties:
+      PolicyName: "LambdaSubscriptionPolicy"
+      PolicyDocument: 
+        Fn::Sub: |
+          {
+            "DestinationArn": "${Processor.Arn}",
+            "FilterPattern": "{ $.__otel_otlp_stdout = * }",
+            "Distribution": "Random"
+          }
+      PolicyType: "SUBSCRIPTION_FILTER_POLICY"
+      Scope: "ALL"
+      SelectionCriteria: !Sub "LogGroupName NOT IN [\"/aws/${Processor}\"]"
+
+Outputs:
+  ProcessorArn:
+    Description: ARN of the OTLP stdout processor Lambda function
+    Value: !GetAtt Processor.Arn
+  ProcessorName:
+    Description: Name of the OTLP stdout processor Lambda function
+    Value: !Ref Processor

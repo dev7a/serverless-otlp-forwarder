@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: AWS SAM template for AWS appsignals span processor in the lambda-otlp-forwarder application.
+
+Parameters:
+  StackName:
+    Type: String
+    Description: The friendly name for resources in this stack.
+  CollectorsSecretsKeyPrefix:
+    Type: String
+    Description: The prefix for the secrets manager key for the collector.
+    Default: 'lambda-otlp-forwarder/keys'
+  CollectorsCacheTtlSeconds:
+    Type: String
+    Description: The TTL for the collector cache.
+    Default: '300'
+
+Globals:
+  Function:
+    MemorySize: 128
+    Architectures:
+      - arm64
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+
+Resources:
+  Processor:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: span_processor
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-appsignals-span-processor'
+      CodeUri: ./forwarder/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Description: !Sub 'Processes aws/spans from AWS Account ${AWS::AccountId}'
+      Environment:
+        Variables:
+          RUST_LOG: info
+          OTEL_SERVICE_NAME: !Sub '${StackName}-appsignals-span-processor'
+          OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
+          OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
+          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+          COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
+          COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:BatchGetSecretValue'
+                - 'secretsmanager:ListSecrets'
+                - 'xray:PutTraceSegments'
+                - 'xray:PutSpans'
+                - 'xray:PutSpansForIndexing'
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - 'secretsmanager:GetSecretValue'
+              Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
+
+  SpanProcessorSubscription:
+    Type: AWS::Logs::SubscriptionFilter
+    Properties:
+      LogGroupName: 'aws/spans'
+      FilterPattern: '' # Empty pattern to capture all logs
+      DestinationArn: !GetAtt Processor.Arn
+
+  SpanProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref Processor
+      Principal: logs.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*'
+
+Outputs:
+  ProcessorArn:
+    Description: ARN of the AWS AppSignals processor Lambda function
+    Value: !GetAtt Processor.Arn
+  ProcessorName:
+    Description: Name of the AWS AppSignals processor Lambda function
+    Value: !Ref Processor

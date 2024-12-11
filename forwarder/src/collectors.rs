@@ -10,7 +10,8 @@
 use anyhow::{Context, Result};
 use aws_sdk_secretsmanager::types::Filter;
 use aws_sdk_secretsmanager::Client as SecretsManagerClient;
-use serde::{Deserialize, Serialize};
+use regex::Regex;
+use serde::{Deserialize, Deserializer};
 use std::env;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -23,22 +24,40 @@ static COLLECTORS: OnceLock<Arc<CollectorsCache>> = OnceLock::new();
 
 /// Represents a single collector configuration.
 /// Each collector has a name, endpoint, and optional authentication details.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Collector {
+#[derive(Debug, Clone, Deserialize)]
+pub struct Collector {
     /// Unique name identifying the collector
-    pub(crate) name: String,
+    pub name: String,
     /// Base URL endpoint for the collector
-    pub(crate) endpoint: String,
+    pub endpoint: String,
     /// Optional authentication string. Special values:
     /// - "sigv4" or "iam": Use AWS SigV4 signing
     /// - "header_name=value": Add a custom header
     /// - null or empty: No authentication
-    pub(crate) auth: Option<String>,
+    pub auth: Option<String>,
+    /// Optional regex pattern to exclude certain log groups
+    #[serde(default, deserialize_with = "deserialize_regex")]
+    pub exclude: Option<Regex>,
+}
+
+fn deserialize_regex<'de, D>(deserializer: D) -> Result<Option<Regex>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let pattern: Option<String> = Option::deserialize(deserializer)?;
+
+    Ok(pattern.and_then(|p| match Regex::new(&p) {
+        Ok(regex) => Some(regex),
+        Err(e) => {
+            tracing::warn!("Invalid regex pattern: {}. Error: {}", p, e);
+            None
+        }
+    }))
 }
 
 /// Container for managing multiple collector configurations.
 #[derive(Debug)]
-pub(crate) struct Collectors {
+pub struct Collectors {
     items: Vec<Collector>,
 }
 
@@ -79,7 +98,7 @@ impl Collectors {
     }
 
     /// Check if collectors cache is initialized globally.
-    pub(crate) fn is_initialized() -> bool {
+    pub fn is_initialized() -> bool {
         COLLECTORS.get().is_some()
     }
 
@@ -90,7 +109,7 @@ impl Collectors {
     /// 2. Load collector configurations from Secrets Manager if needed
     /// 3. Update the cache with new configurations
     #[instrument(skip(client))]
-    pub(crate) async fn init(client: &SecretsManagerClient) -> Result<()> {
+    pub async fn init(client: &SecretsManagerClient) -> Result<()> {
         // If cache exists, check if it's stale
         if let Some(cache) = COLLECTORS.get() {
             if cache.is_stale() {
@@ -118,33 +137,35 @@ impl Collectors {
         Ok(())
     }
 
-    /// Finds a collector matching the given endpoint
-    #[instrument(skip_all)]
-    pub(crate) fn find_matching(endpoint: &str) -> Option<Collector> {
-        let cache = COLLECTORS.get().expect("Collectors cache not initialized");
-        cache
-            .inner
-            .items
-            .iter()
-            .find(|c| endpoint.starts_with(&c.endpoint))
-            .cloned()
-    }
+    // /// Finds a collector matching the given endpoint
+    // #[instrument(skip_all)]
+    // pub fn find_matching(endpoint: &str) -> Option<Collector> {
+    //     let cache = COLLECTORS.get().expect("Collectors cache not initialized");
+    //     cache
+    //         .inner
+    //         .items
+    //         .iter()
+    //         .find(|c| endpoint.starts_with(&c.endpoint))
+    //         .cloned()
+    // }
 
     /// Returns all collectors with endpoints configured for the given signal path
     #[instrument(skip_all)]
-    pub(crate) fn get_signal_endpoints(original_endpoint: &str) -> Result<Vec<Collector>> {
+    pub fn get_signal_endpoints(original_endpoint: &str, source: &str) -> Result<Vec<Collector>> {
         let cache = COLLECTORS.get().expect("Collectors cache not initialized");
 
         cache
             .inner
             .items
             .iter()
+            .filter(|collector| !collector.should_exclude(source))
             .map(|collector| {
                 let endpoint = collector.construct_signal_endpoint(original_endpoint)?;
                 Ok(Collector {
                     name: collector.name.clone(),
                     endpoint,
                     auth: collector.auth.clone(),
+                    exclude: collector.exclude.clone(),
                 })
             })
             .collect()
@@ -175,6 +196,14 @@ impl Collector {
         // Combine paths
         base.set_path(&format!("{}{}", base.path(), signal_path));
         Ok(base.to_string())
+    }
+
+    /// Checks if a log group should be excluded based on the collector's exclude pattern
+    pub(crate) fn should_exclude(&self, log_group: &str) -> bool {
+        if let Some(pattern) = &self.exclude {
+            return pattern.is_match(log_group);
+        }
+        false
     }
 }
 
@@ -250,6 +279,23 @@ async fn fetch_collectors(client: &SecretsManagerClient) -> Result<Vec<Collector
 }
 
 #[cfg(test)]
+pub(crate) mod test_utils {
+    use super::*;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    /// Initialize collectors with test data
+    pub fn init_test_collectors(collector: Collector) {
+        INIT.call_once(|| {
+            let collectors = Collectors::new(vec![collector]);
+            let cache = Arc::new(CollectorsCache::new(collectors));
+            let _ = COLLECTORS.set(cache);
+        });
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
@@ -298,6 +344,7 @@ mod tests {
             name: "test".to_string(),
             endpoint: "https://collector.example.com".to_string(),
             auth: None,
+            exclude: None,
         };
 
         // Test with simple path
@@ -311,6 +358,7 @@ mod tests {
             name: "test".to_string(),
             endpoint: "https://collector.example.com/base".to_string(),
             auth: None,
+            exclude: None,
         };
         let result = collector_with_path
             .construct_signal_endpoint("https://original.com/v1/traces")
@@ -322,6 +370,7 @@ mod tests {
             name: "test".to_string(),
             endpoint: "https://collector.example.com/".to_string(),
             auth: None,
+            exclude: None,
         };
         let result = collector_with_slash
             .construct_signal_endpoint("https://original.com/v1/traces")
@@ -333,6 +382,7 @@ mod tests {
             name: "test".to_string(),
             endpoint: "not a url".to_string(),
             auth: None,
+            exclude: None,
         };
         assert!(collector
             .construct_signal_endpoint("https://original.com/v1/traces")
@@ -342,6 +392,7 @@ mod tests {
             name: "test".to_string(),
             endpoint: "https://collector.example.com".to_string(),
             auth: None,
+            exclude: None,
         };
         assert!(collector.construct_signal_endpoint("not a url").is_err());
     }
@@ -354,6 +405,7 @@ mod tests {
             name: "test".to_string(),
             endpoint: "https://collector.example.com".to_string(),
             auth: None,
+            exclude: None,
         }]);
 
         let cache = CollectorsCache::new(collectors);
@@ -362,5 +414,66 @@ mod tests {
         // Sleep for 3 seconds to exceed TTL
         std::thread::sleep(Duration::from_secs(3));
         assert!(cache.is_stale());
+    }
+
+    #[test]
+    fn test_collector_exclusion() {
+        let collector: Collector = serde_json::from_value(json!({
+            "name": "test",
+            "endpoint": "https://collector.example.com",
+            "exclude": "/aws/spans"
+        }))
+        .unwrap();
+
+        // Test exact match
+        assert!(collector.should_exclude("/aws/spans"));
+
+        // Test non-matching
+        assert!(!collector.should_exclude("/aws/lambda/function"));
+
+        // Test with regex pattern
+        let collector: Collector = serde_json::from_value(json!({
+            "name": "test",
+            "endpoint": "https://collector.example.com",
+            "exclude": "/aws/spans.*"
+        }))
+        .unwrap();
+
+        assert!(collector.should_exclude("/aws/spans"));
+        assert!(collector.should_exclude("/aws/spans/something"));
+        assert!(!collector.should_exclude("/aws/lambda/function"));
+
+        // Test with invalid regex
+        let collector: Collector = serde_json::from_value(json!({
+            "name": "test",
+            "endpoint": "https://collector.example.com",
+            "exclude": "[invalid regex"
+        }))
+        .unwrap();
+
+        assert!(!collector.should_exclude("/aws/spans")); // Should not exclude when regex is invalid
+    }
+
+    #[test]
+    fn test_collector_deserialization_with_exclude() {
+        let valid_json = json!({
+            "name": "example-collector",
+            "endpoint": "https://collector.example.com",
+            "auth": "x-api-key=your-api-key",
+            "exclude": "/aws/spans"
+        });
+        let collector: Collector = serde_json::from_value(valid_json).unwrap();
+        assert_eq!(
+            collector.exclude.as_ref().map(|r| r.as_str()),
+            Some("/aws/spans")
+        );
+
+        // Test without exclude field
+        let valid_no_exclude = json!({
+            "name": "example-collector",
+            "endpoint": "https://collector.example.com"
+        });
+        let collector: Collector = serde_json::from_value(valid_no_exclude).unwrap();
+        assert_eq!(collector.exclude.as_ref().map(|r| r.as_str()), None);
     }
 }
