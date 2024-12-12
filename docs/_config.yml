@@ -1,20 +1,26 @@
 title: Lambda OTLP Forwarder
 description: Serverless OpenTelemetry data forwarding for AWS Lambda
-theme: just-the-docs
+theme: minima
 
 url: https://dev7a.github.io/lambda-otlp-forwarder
 
-aux_links:
-  "View on GitHub": "https://github.com/dev7a/lambda-otlp-forwarder"
+# Theme settings
+minima:
+  skin: dark
+  header_pages:
+    - getting-started/index.md
+    - concepts/index.md
+    - languages/index.md
+    - deployment/index.md
+    - advanced/index.md
+    - troubleshooting/index.md
+
+# Build settings
+markdown: kramdown
 
 # Enable search
 search_enabled: true
 
-# Enable dark mode
-color_scheme: dark
-
 # Navigation
-nav_external_links:
-  - title: GitHub Repository
-    url: https://github.com/dev7a/lambda-otlp-forwarder
-    hide_icon: false 
+aux_links:
+  "View on GitHub": "https://github.com/dev7a/lambda-otlp-forwarder"
