@@ -1,22 +1,35 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
-Description: AWS SAM template for the lambda-otlp-forwarder application.
+Description: Main stack for lambda-otlp-forwarder with configurable processor selection
 
 Parameters:
+  ProcessorType:
+    Type: String
+    AllowedValues: 
+      - otlp-stdout
+      - aws-appsignals
+    Default: otlp-stdout
+    Description: Type of processor to deploy. Only one can be active at a time.
+  
+  # Pass-through parameters
+  CollectorsSecretsKeyPrefix:
+    Type: String
+    Description: The prefix for the secrets manager key for the collector.
+    Default: 'lambda-otlp-forwarder/keys'
+  CollectorsCacheTtlSeconds:
+    Type: String
+    Description: The TTL for the collector cache.
+    Default: '300'
   RouteAllLogs:
     Type: String
     Default: 'true'
     Description: 'Route all AWS logs to the Lambda function'
+
+  # Demo parameters
   DeployDemo:
     Type: String
     Default: 'true'
     Description: 'Deploy the demo application'
-  CollectorsSecretsKeyPrefix:
-    Type: String
-    Default: 'lambda-otlp-forwarder/keys'
-  CollectorsCacheTtlSeconds:
-    Type: String
-    Default: '300'
   DemoExporterProtocol:
     Type: String
     Default: 'http/protobuf'
@@ -24,135 +37,40 @@ Parameters:
     Type: String
     Default: 'gzip'
 
-Conditions:
-  RouteAllLogs: !Equals [!Ref RouteAllLogs, 'true']
-  DeployDemo: !Equals [!Ref DeployDemo, 'true']
+  # Benchmark parameters
+  DeployBenchmark:
+    Type: String
+    Default: 'false'
+    Description: 'Deploy the benchmark stack for performance testing'
 
-Globals:
-  Function:
-    MemorySize: 128
-    Architectures:
-      - arm64
-    LoggingConfig:
-      LogFormat: JSON
-      ApplicationLogLevel: INFO
-      SystemLogLevel: WARN
+Conditions:
+  IsOtlpStdoutProcessor: !Equals [!Ref ProcessorType, "otlp-stdout"]
+  IsAwsAppSignalsProcessor: !Equals [!Ref ProcessorType, "aws-appsignals"]
+  DeployDemo: !Equals [!Ref DeployDemo, 'true']
+  DeployBenchmark: !Equals [!Ref DeployBenchmark, 'true']
+  RouteAllLogs: !Equals [!Ref RouteAllLogs, 'true']
 
 Resources:
-  LogProcessorFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: rust-cargolambda
-      BuildProperties:
-        Binary: log_processor
+  OtlpStdoutProcessor:
+    Type: AWS::Serverless::Application
+    Condition: IsOtlpStdoutProcessor
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-log-processor'
-      CodeUri: ./forwarder/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Description: !Sub 'Processes logs from AWS Account ${AWS::AccountId}'
-      Environment:
-        Variables:
-          RUST_LOG: info
-          OTEL_SERVICE_NAME: LogProcessor
-          OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
-          OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
-          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
-          COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - 'secretsmanager:BatchGetSecretValue'
-                - 'secretsmanager:ListSecrets'
-                - 'xray:PutTraceSegments'
-                - 'xray:PutSpans'
-                - 'xray:PutSpansForIndexing'
-              Resource: '*'
-            - Effect: Allow
-              Action:
-                - 'secretsmanager:GetSecretValue'
-              Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
+      Location: processors/otlp-stdout.yaml
+      Parameters:
+        StackName: !Ref AWS::StackName
+        CollectorsSecretsKeyPrefix: !Ref CollectorsSecretsKeyPrefix
+        CollectorsCacheTtlSeconds: !Ref CollectorsCacheTtlSeconds
+        RouteAllLogs: !Ref RouteAllLogs
 
-  LogProcessorFunctionPermission:
-    Type: AWS::Lambda::Permission
+  AwsAppSignalsProcessor:
+    Type: AWS::Serverless::Application
+    Condition: IsAwsAppSignalsProcessor
     Properties:
-      FunctionName: !Ref LogProcessorFunction
-      Action: lambda:InvokeFunction
-      Principal: logs.amazonaws.com
-      SourceAccount: !Ref AWS::AccountId
-
-  LogsAccountPolicy:
-    Type: AWS::Logs::AccountPolicy
-    Condition: RouteAllLogs
-    DependsOn:
-      - LogProcessorFunctionPermission
-    Properties:
-      PolicyName: "LambdaSubscriptionPolicy"
-      PolicyDocument: 
-        Fn::Sub: |
-          {
-            "DestinationArn": "${LogProcessorFunction.Arn}",
-            "FilterPattern": "{ $.__otel_otlp_stdout = * }",
-            "Distribution": "Random"
-          }
-      PolicyType: "SUBSCRIPTION_FILTER_POLICY"
-      Scope: "ALL"
-      SelectionCriteria: !Sub "LogGroupName NOT IN [\"/aws/${LogProcessorFunction}\"]"
-
-  SpanProcessorFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: rust-cargolambda
-      BuildProperties:
-        Binary: span_processor
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-span-processor'
-      CodeUri: ./forwarder/
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Description: !Sub 'Processes aws/spans from AWS Account ${AWS::AccountId}'
-      Environment:
-        Variables:
-          RUST_LOG: info
-          OTEL_SERVICE_NAME: SpanProcessor
-          OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
-          OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
-          OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
-          COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - 'secretsmanager:BatchGetSecretValue'
-                - 'secretsmanager:ListSecrets'
-                - 'xray:PutTraceSegments'
-                - 'xray:PutSpans'
-                - 'xray:PutSpansForIndexing'
-              Resource: '*'
-            - Effect: Allow
-              Action:
-                - 'secretsmanager:GetSecretValue'
-              Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
-
-  SpanProcessorSubscription:
-    Type: AWS::Logs::SubscriptionFilter
-    Properties:
-      LogGroupName: 'aws/spans'
-      FilterPattern: '' # Empty pattern to capture all logs
-      DestinationArn: !GetAtt SpanProcessorFunction.Arn
-
-  SpanProcessorPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref SpanProcessorFunction
-      Principal: logs.amazonaws.com
-      SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:aws/spans:*'
+      Location: processors/aws-appsignals.yaml
+      Parameters:
+        StackName: !Ref AWS::StackName
+        CollectorsSecretsKeyPrefix: !Ref CollectorsSecretsKeyPrefix
+        CollectorsCacheTtlSeconds: !Ref CollectorsCacheTtlSeconds
 
   DemoStack:
     Type: AWS::Serverless::Application
@@ -164,10 +82,42 @@ Resources:
         ExporterProtocol: !Ref DemoExporterProtocol
         ExporterCompression: !Ref DemoExporterCompression
 
+  BenchmarkStack:
+    Type: AWS::Serverless::Application
+    Condition: DeployBenchmark
+    Properties:
+      Location: ./benchmark/template.yaml
+      Parameters:
+        StackName: !Ref AWS::StackName
+
 Outputs:
-  # LogProcessorFunctionArn:
-  #   Description: 'ARN of the Log Processor Lambda function'
-  #   Value: !GetAtt LogProcessorFunction.Arn
+  ActiveProcessorType:
+    Description: The type of processor that is currently deployed
+    Value: !Ref ProcessorType
+
+  # OTLP Stdout Processor Outputs
+  OtlpStdoutProcessorArn:
+    Condition: IsOtlpStdoutProcessor
+    Description: ARN of the OTLP stdout processor Lambda function
+    Value: !GetAtt OtlpStdoutProcessor.Outputs.ProcessorArn
+  
+  OtlpStdoutProcessorName:
+    Condition: IsOtlpStdoutProcessor
+    Description: Name of the OTLP stdout processor Lambda function
+    Value: !GetAtt OtlpStdoutProcessor.Outputs.ProcessorName
+
+  # AWS AppSignals Processor Outputs
+  AwsAppSignalsProcessorArn:
+    Condition: IsAwsAppSignalsProcessor
+    Description: ARN of the AWS AppSignals processor Lambda function
+    Value: !GetAtt AwsAppSignalsProcessor.Outputs.ProcessorArn
+  
+  AwsAppSignalsProcessorName:
+    Condition: IsAwsAppSignalsProcessor
+    Description: Name of the AWS AppSignals processor Lambda function
+    Value: !GetAtt AwsAppSignalsProcessor.Outputs.ProcessorName
+
+  # Demo Stack Outputs
   BackendUrl:
     Condition: DeployDemo
     Description: 'URL of the Backend API'
@@ -180,3 +130,29 @@ Outputs:
     Condition: DeployDemo
     Description: 'URL of the Hello World Lambda function'
     Value: !GetAtt DemoStack.Outputs.HelloWorldUrl
+
+  # Benchmark Stack Outputs
+  NodeStdoutFunction:
+    Condition: DeployBenchmark
+    Description: Node.js Manual OTLP Function ARN
+    Value: !GetAtt BenchmarkStack.Outputs.NodeStdoutFunction
+  NodeAdotFunction:
+    Condition: DeployBenchmark
+    Description: Node.js ADOT Function ARN
+    Value: !GetAtt BenchmarkStack.Outputs.NodeAdotFunction
+  NodeAppSignalsFunction:
+    Condition: DeployBenchmark
+    Description: Node.js AppSignals Function ARN
+    Value: !GetAtt BenchmarkStack.Outputs.NodeAppSignalsFunction
+  PythonStdoutFunction:
+    Condition: DeployBenchmark
+    Description: Python Manual OTLP Function ARN
+    Value: !GetAtt BenchmarkStack.Outputs.PythonStdoutFunction
+  PythonAdotFunction:
+    Condition: DeployBenchmark
+    Description: Python ADOT Function ARN
+    Value: !GetAtt BenchmarkStack.Outputs.PythonAdotFunction
+  PythonAppSignalsFunction:
+    Condition: DeployBenchmark
+    Description: Python AppSignals Function ARN
+    Value: !GetAtt BenchmarkStack.Outputs.PythonAppSignalsFunction

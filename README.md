@@ -19,14 +19,13 @@ The Lambda OTLP Forwarder enables serverless applications to send OpenTelemetry 
 
 ### Why Use Lambda OTLP Forwarder?
 
-- 📉 **Lower Costs**: Eliminates need for VPC connectivity or sidecars
-- 🔒 **Enhanced Security**: Keeps telemetry data within AWS infrastructure
 - 🚀 **Reduced Latency**: Minimal impact on Lambda execution and cold start times
-- 💰 **Cost Optimization**: Supports compression and efficient protocols to reduce the ingestion costs
+- 🔒 **Enhanced Security**: Keeps telemetry data within AWS infrastructure
+- 💰 **Cost Optimization**: Reduces Lambda billed execution time, and supports compression and efficient protocols to reduce the ingestion costs
 
 ### Why not use the OTEL/ADOT Lambda Layer extension?
 
-This project was created to address the challenges of efficiently sending telemetry data from serverless applications to OTLP collectors without adding to cold start times. The current approaches using the OTEL/ADOT Lambda Layer extension deploys a sidecar agent, which increases resource usage, slows cold starts, and drives up costs. This becomes particularly problematic when running Lambda functions with limited memory, as the [overhead of initializing and running the ADOT/OTEL layer](https://github.com/aws-observability/aws-otel-lambda/issues/228) can negate any cost savings from memory optimization. 
+This project was created to address the challenges of efficiently sending telemetry data from serverless applications to OTLP collectors without adding to cold start times, or affecting runtime performances. The current approaches using the OTEL/ADOT Lambda Layer extension deploys a sidecar agent, which increases resource usage, slows cold starts, and drives up costs. This becomes particularly problematic when running Lambda functions with limited memory, as the [overhead of initializing and running the ADOT/OTEL layer](https://github.com/aws-observability/aws-otel-lambda/issues/228) can negate any cost savings from memory optimization. 
 
 This solution provides a streamlined approach that maintains full telemetry capabilities while keeping resource consumption and costs minimal.
 As a side benefit, if you're running an OTEL collector in your VPC to benefit from the advanced filtering and sampling capabilities, you don't need to expose it to the internet or connect all your lambda functions to your VPC. Since the transport for OLTP is CloudWatch logs, you are keeping all your telemetry data internal.
@@ -37,7 +36,9 @@ The downsides are:
 
 
 > [!NOTE]
-> AWS has recently announced [Cloudwatch Application Signals for Lambda](https://aws.amazon.com/about-aws/whats-new/2024/11/aws-lambda-application-performance-monitoring-cloudwatch-signals/) and a new set of OpenTelemetry layers for Python and Node.js, which are not using the sidecar approach, and provide better cold start and warm start performances compared to the ADOT/OTEL layer. The UDP based X-Ray localhost endpoint for Lambda now accepts OTLP (over UDP) data, and this allows much lower latency for the telemetry data to be sent to the collector. The Lambda OTLP Forwarder _now supports sending telemetry data to the Cloudwatch Application Signals OLTP endpoint_, so you can use it as your Observability platform as an alternative to the other vendors in this space. See the Application Signals section for more details.
+> AWS has recently announced [Cloudwatch Application Signals for Lambda](https://aws.amazon.com/about-aws/whats-new/2024/11/aws-lambda-application-performance-monitoring-cloudwatch-signals/) and a new set of OpenTelemetry layers for Python and Node.js, which are not using the sidecar approach, and provide better cold start and warm start performances compared to the ADOT/OTEL layer. The UDP based X-Ray localhost endpoint for Lambda now accepts OTLP (over UDP) data, and this allows much lower latency for the telemetry data to be sent to the collector. The Lambda OTLP Forwarder _now supports sending telemetry data to the Cloudwatch Application Signals OTLP endpoint_, so you can use it as your Observability platform as an alternative to the other vendors in this space.
+>
+> **Experimental Feature**: The Lambda OTLP Forwarder also includes an experimental processor specifically for AWS Application Signals spans. This processor is provided mainly for demonstration purposes and should not be enabled simultaneously with the OTLP stdout processor to avoid potential conflicts. See the Configuration section for details on how to select the appropriate processor for your use case.
 
 
 ## Supported Languages
@@ -46,9 +47,6 @@ In general, the approach is to add the "ouput to stdout" capability is to use th
 
 > [!IMPORTANT]
 > While this approach may be a little bit _hacky_, it may not be necessary in future, as the OpenTelemetry community is working on a new [OTLP Stdout exporter specification](https://github.com/open-telemetry/opentelemetry-specification/pull/4183) that would allow to potentially not depend on a custom implementation at all.
-
-Also, while the inital proof of concept was written in Rust, and the Rust OTEL SDK provided a convenient "hook" to replace the HTTP client with a custom implementation that would instead write to stdout, and a similar approach has also been used with the Python SDK, the Node.js/Typescript SDK didn't seem to provide a similar way to hook into the HTTP client, and required creating a custom provider. Because of this, the Node.js implementation does not support metrics and logs at this time. 
-
 
 ### Rust
 [code](packages/rust/otlp-stdout-client) | [docs](packages/rust/otlp-stdout-client/README.md) | [crates.io](https://crates.io/crates/otlp-stdout-client) | [examples](packages/rust/otlp-stdout-client/examples)
@@ -295,7 +293,7 @@ See the [demo/template.yaml](demo/template.yaml) for a complete example with mul
 > [!TIP] 
 >Note that the `OTEL_EXPORTER_OTLP_ENDPOINT` can just be set to localhost, as the actual endpoint will be determined by the forwarder, based on its own configuration, but it's useful to set it to a known value as some SDKs or libraries may not work otherwise.
 
-### Environment Variables
+### Environment Variables for apps
 
 The following environment variables can be set in your instrumented lambda functions to choose the protocol and compression for the OTLP data.
 | Variable | Description | Default |
@@ -307,7 +305,9 @@ The following environment variables can be set in your instrumented lambda funct
 > Even if you're using an observability vendor that requires authentication, you should not set the `OTEL_EXPORTER_OTLP_HEADERS` environment variable to include your credentials in your instrumented lambda functions as they would be sent in the logs (and in any case, ignored by the forwarder). The authentication headers should be added to the collector configuration instead (see [Configuring the Forwarder](#configuring-the-forwarder) below).
 
 ## Configuring the Forwarder
-The forwarder service configuration is defined in the [template.yaml](template.yaml) file, which provides default settings that can be customized for your AWS account through the `samconfig.toml` file. The default configuration enables subscription to all log groups across your account and includes deployment of a demo application for validating telemetry data ingestion. These settings can be adjusted to match your specific requirements.
+The forwarder service configuration is defined in the [template.yaml](template.yaml) file, which provides default settings that can be customized for your AWS account through the `samconfig.toml` file. 
+
+The default configuration enables subscription to all log groups across your account and includes deployment of a demo application for validating telemetry data ingestion. These settings can be adjusted to match your specific requirements.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -407,28 +407,120 @@ aws secretsmanager create-secret \
 
 Please note that if you want Application Signals to be the default destination, you will need to create the key as `lambda-otlp-forwarder/keys/default`.
 
-
 ### Demo Application
 
 The demo application is deployed by default when the forwarder is deployed, and it's instrumented to emit telemetry data using the otel SDK for Rust, Python, and Node.js. The demo application is deployed using a nested stack, and can be configured to use http/json or http/protobuf, and with or without compression.
-The default configuration can be overriden by adding in the `parameters_overrides` section of the `samconfig.toml` file these parameters:
 
-| Parameter | Type | Description | Default |
-| --------- | ---- | ----------- | ------- |
-| ExporterProtocol | String | The protocol of the OTLP exporter | http/protobuf |
-| ExporterCompression | String | The compression of the OTLP exporter | gzip |
+The demo application's behavior can be customized through the parameters described in the [Configuration](#configuration) section above, particularly the `DemoExporterProtocol` and `DemoExporterCompression` parameters.
 
-For example, to deploy the demo application with http/json and without compression, you can add the following to the `parameters_overrides` section of the `samconfig.toml` file:
+The demo application provides a simple but complete example of a serverless application with telemetry instrumentation. It implements a basic "famous quotes" service (from dummyjson.com) that stores quotes in DynamoDB and exposes REST endpoints to create and retrieve them. Though the functionality is straightforward, the application demonstrates practical patterns for adding observability through OpenTelemetry SDKs in Rust, Python and Node.js. This makes it an ideal reference for validating telemetry collection and learning how to instrument your own applications with proper observability.
+
+## Configuration
+
+The Lambda OTLP Forwarder can be configured through CloudFormation/SAM parameters:
+
+### Core Parameters
+
+- `ProcessorType` (String, Default: "otlp-stdout")
+  - Selects which processor to deploy
+  - Allowed values: 
+    - `otlp-stdout`: Standard OTLP processor (default)
+    - `aws-appsignals`: Experimental AWS Application Signals processor
+  - **Important**: Only one processor can be active at a time
+
+- `RouteAllLogs` (String, Default: "true")
+  - Controls whether to automatically route all AWS logs to the OTLP stdout processor
+  - Only applies when ProcessorType is "otlp-stdout"
+  - Set to "false" to manually configure log routing
+
+> [!WARNING]
+> The AWS Application Signals processor is experimental and provided for demonstration purposes. It may not handle all use cases effectively and should not be used in production environments without thorough testing. Do not enable both processors simultaneously as this could lead to duplicate processing of telemetry data.
+
+
+### Optional Features
+
+- `DeployDemo` (String, Default: "true")
+  - Deploys example applications demonstrating the forwarder's capabilities
+  - Set to "false" to skip demo deployment
+
+- `DeployBenchmark` (String, Default: "false")
+  - Deploys benchmark functions for performance testing
+  - Recommended to keep disabled unless actively testing
+
+### Demo Configuration
+
+- `DemoExporterProtocol` (String, Default: "http/protobuf")
+  - Protocol used by demo applications
+  - Available options: "http/protobuf", "http/json"
+
+- `DemoExporterCompression` (String, Default: "gzip")
+  - Compression method for demo applications
+  - Available options: "gzip", "none"
+
+### Example Usage
+
+```bash
+# Deploy with default OTLP stdout processor
+sam deploy --guided
+
+# Deploy with AWS Application Signals processor
+sam deploy --parameter-overrides ProcessorType=aws-appsignals
+
+# Deploy without demo applications
+sam deploy --parameter-overrides DeployDemo=false
+
+# Deploy for benchmarking
+sam deploy --parameter-overrides DeployBenchmark=true
+```
+
+### SAM Configuration
+
+The deployment can be customized for your AWS account through the `samconfig.toml` file. The default configuration enables the OTLP stdout processor, subscription to all log groups across your account, and includes deployment of a demo application for validating telemetry data ingestion.
+
+To customize the deployment, you can edit the `parameter_overrides` section in your `samconfig.toml` file:
 
 ```toml
 [default.deploy.parameters]
-parameters_overrides = [
-    "DemoExporterProtocol=http/json",
-    "DemoExporterCompression=none"
+parameter_overrides = [
+    # Core Parameters
+    "ProcessorType=otlp-stdout",      # or "aws-appsignals" for experimental processor
+    "RouteAllLogs=true",             # Set to false to disable automatic log routing
+    
+    # Optional Features
+    "DeployDemo=true",               # Set to false to skip demo deployment
+    "DeployBenchmark=false",         # Set to true for performance testing
+    
+    # Demo Configuration
+    "DemoExporterProtocol=http/protobuf",  # or "http/json"
+    "DemoExporterCompression=gzip",        # or "none"
 ]
 ```
 
-The demo application provides a simple but complete example of a serverless application with telemetry instrumentation. It implements a basic famous quotes service that stores quotes in DynamoDB and exposes REST endpoints to create and retrieve them. Though the functionality is straightforward, the application demonstrates practical patterns for adding observability through OpenTelemetry SDKs in Rust, Python and Node.js. This makes it an ideal reference for validating telemetry collection and learning how to instrument your own applications with proper observability.
+Common configurations:
+
+1. Standard deployment with OTLP stdout processor:
+```toml
+parameter_overrides = ["ProcessorType=otlp-stdout", "RouteAllLogs=true"]
+```
+
+2. Experimental AWS Application Signals processor:
+```toml
+parameter_overrides = ["ProcessorType=aws-appsignals", "DeployDemo=false"]
+```
+
+3. Development setup with benchmarking:
+```toml
+parameter_overrides = [
+    "ProcessorType=otlp-stdout",
+    "DeployDemo=true",
+    "DeployBenchmark=true",
+    "DemoExporterProtocol=http/json",  # For easier debugging
+    "DemoExporterCompression=none"     # For easier debugging
+]
+```
+
+> [!NOTE]
+> Changes to the `samconfig.toml` file are persistent across deployments. Use `sam deploy --guided` to reset to defaults or `sam deploy --parameter-overrides` for one-time changes.
 
 ### Best Practices
 The following best practices will help you optimize your telemetry collection setup and ensure reliable data transmission. These recommendations are based on real-world experience and common deployment patterns:

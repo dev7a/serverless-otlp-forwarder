@@ -6,7 +6,7 @@ members = [
     "packages/rust/lambda-lw-http-router",
     "packages/rust/lambda-lw-http-router/router-core",
     "packages/rust/lambda-lw-http-router/router-macro",
-    "forwarder",
+    "processors/forwarder",
     "demo/rust",
     "demo/hello",
     "benchmark"
