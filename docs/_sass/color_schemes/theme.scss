@@ -1,0 +1,203 @@
+@import "./color_schemes/dark";
+$link-color: #58a6ff;
+$btn-primary-color: #238636;
+$sidebar-color: #0d1117;
+$body-background-color: #0d1117;
+$body-heading-color: #f0f6fc;
+$body-text-color: #c9d1d9;
+$border-color: #30363d;
+$nav-child-link-color: #8b949e;
+$search-result-preview-color: #8b949e;
+$base-button-color: #21262d;
+$search-background-color: #0d1117;
+$table-background-color: #161b22;
+$feedback-color: darken($sidebar-color, 3%);
+$code-background-color: #161b22;
+$search-result-preview-color: #8b949e;
+
+// Typography
+$body-font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+$mono-font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+
+// Font weights
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+// Font sizes
+$font-size-1: 9px !default;
+$font-size-2: 11px !default;
+$font-size-3: 12px !default;
+$font-size-4: 14px !default;
+$font-size-5: 16px !default;
+$font-size-6: 18px !default;
+$font-size-7: 24px !default;
+$font-size-8: 32px !default;
+$font-size-9: 36px !default;
+$font-size-10: 42px !default;
+
+// Line heights
+$body-line-height: 1.6;
+$body-heading-line-height: 1.25;
+
+// Typography styles
+h1, h2, h3, h4, h5, h6 {
+  font-family: $body-font-family;
+  font-weight: $font-weight-semibold;
+  letter-spacing: -0.02em;
+}
+
+code {
+  font-family: $mono-font-family;
+  font-size: 0.9em;
+}
+
+// Print-only styles
+@media print {
+  .side-bar, .page-header { display: none; }
+  .main-content { max-width: auto; margin: 1em;}
+}
+
+// Custom callouts with Octicons
+$callouts: (
+    info: (#58a6ff, rgba(56, 139, 253, 0.15), "\f05a"),  // info-circle
+    warning: (#d29922, rgba(187, 128, 9, 0.15), "\f071"),  // alert
+    danger: (#f85149, rgba(248, 81, 73, 0.15), "\f06a"),  // exclamation-circle
+    success: (#238636, rgba(35, 134, 54, 0.15), "\f00c")  // check
+);
+
+@each $class, $props in $callouts {
+    .#{$class} {
+        background: nth($props, 2);
+        border-left: 4px solid nth($props, 1);
+        border-radius: $border-radius;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 3px 10px rgba(0, 0, 0, 0.08);
+        padding: 1rem;
+        margin: 1.5rem 0;
+        position: relative;
+        padding-left: 3rem;
+        
+        &::before {
+            content: "";
+            position: absolute;
+            left: 1rem;
+            top: 1rem;
+            width: 1.2em;
+            height: 1.2em;
+            background-color: nth($props, 1);
+            -webkit-mask-image: var(--icon);
+            mask-image: var(--icon);
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-size: contain;
+            mask-size: contain;
+        }
+
+        p {
+            margin-bottom: 0;
+            color: $body-text-color;
+        }
+
+        a {
+            color: nth($props, 1);
+            text-decoration: underline;
+            
+            &:hover {
+                color: lighten(nth($props, 1), 10%);
+            }
+        }
+    }
+}
+
+// Callout icons using Just the Docs built-in icons
+.warning {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.22 1.754a.25.25 0 00-.44 0L1.698 13.132a.25.25 0 00.22.368h12.164a.25.25 0 00.22-.368L8.22 1.754zm-1.763-.707c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0114.082 15H1.918a1.75 1.75 0 01-1.543-2.575L6.457 1.047zM9 11a1 1 0 11-2 0 1 1 0 012 0zm-.25-5.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z"></path></svg>');
+}
+
+.info {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm6.5-.25A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.75h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-2h-.25a.75.75 0 01-.75-.75zM8 6a1 1 0 100-2 1 1 0 000 2z"></path></svg>');
+}
+
+.danger {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4.47.22A.75.75 0 015 0h6a.75.75 0 01.53.22l4.25 4.25c.141.14.22.331.22.53v6a.75.75 0 01-.22.53l-4.25 4.25A.75.75 0 0111 16H5a.75.75 0 01-.53-.22L.22 11.53A.75.75 0 010 11V5a.75.75 0 01.22-.53L4.47.22zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5H5.31zM8 4a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 4zm0 8a1 1 0 100-2 1 1 0 000 2z"></path></svg>');
+}
+
+.success {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path></svg>');
+}
+
+// Custom button styles
+.btn {
+    font-family: $body-font-family;
+    font-weight: $font-weight-medium;
+    letter-spacing: 0.01em;
+}
+
+// Navigation styles
+.nav-list .nav-list-item {
+    font-weight: $font-weight-medium;
+    .nav-list-link {
+        &:hover {
+            background-image: linear-gradient(
+                -90deg,
+                rgba($feedback-color, 1) 0%,
+                rgba($feedback-color, 0.8) 80%,
+                rgba($feedback-color, 0) 100%
+            );
+        }
+    }
+}
+
+// Search styles
+.search-input {
+    font-family: $body-font-family;
+    &::placeholder {
+        color: $grey-dk-000;
+        opacity: 0.6;
+    }
+}
+
+// Breadcrumb styles
+.breadcrumb-nav {
+    margin: 1rem 0;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid $border-color;
+    font-size: 0.9em;
+    
+    .breadcrumb-nav-list {
+        padding-left: 0;
+        margin-bottom: 0;
+    }
+    
+    .breadcrumb-nav-list-item {
+        display: inline-block;
+        font-family: $body-font-family;
+        
+        &::after {
+            content: "/";
+            color: $grey-dk-000;
+            padding: 0 0.5rem;
+        }
+        
+        &:last-child::after {
+            content: "";
+        }
+        
+        a {
+            color: $link-color;
+            text-decoration: none;
+            
+            &:hover {
+                text-decoration: underline;
+            }
+        }
+    }
+}
+
+// Current page breadcrumb
+.breadcrumb-nav-list-item.current {
+    font-weight: $font-weight-medium;
+    color: $body-text-color;
+}
+

@@ -1,26 +1,80 @@
 title: Lambda OTLP Forwarder
 description: Serverless OpenTelemetry data forwarding for AWS Lambda
-theme: minima
-
+theme: just-the-docs
+logo: "/assets/images/lof.png"
 url: https://dev7a.github.io/lambda-otlp-forwarder
 
 # Theme settings
-minima:
-  skin: dark
-  header_pages:
-    - getting-started/index.md
-    - concepts/index.md
-    - languages/index.md
-    - deployment/index.md
-    - advanced/index.md
-    - troubleshooting/index.md
+heading_anchors: true
+footer_content: "Copyright &copy; 2024. Distributed under the <a href=\"https://github.com/dev7a/lambda-otlp-forwarder/blob/main/LICENSE\">MIT license.</a>"
+last_edit_timestamp: true
+last_edit_time_format: "%b %e %Y at %I:%M %p"
+
+# Breadcrumbs settings
+breadcrumb_home_label: 'Home'
+breadcrumb_separator: '/'
+enable_breadcrumbs: true
+
+# Google Fonts
+google_fonts:
+  - url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+
+# External navigation links
+nav_external_links:
+  - title: Lambda OTLP Forwarder on GitHub
+    url: https://github.com/dev7a/lambda-otlp-forwarder
+    hide_icon: false
+
+plugins:
+  - jekyll-include-cache
+  - jekyll-seo-tag
+  - jekyll-github-metadata
+  - jekyll-include-cache
+  - jekyll-sitemap
+
+mermaid:
+  version: "9.1.6"
+
+color_scheme: theme
 
 # Build settings
 markdown: kramdown
 
 # Enable search
 search_enabled: true
+search:
+  heading_level: 3
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+  tokenizer_separator: /[\s/]+/
+  rel_url: true
+  button: false
+
+nav_enabled: true
 
 # Navigation
 aux_links:
   "View on GitHub": "https://github.com/dev7a/lambda-otlp-forwarder"
+
+back_to_top: true
+back_to_top_text: "Back to top"
+
+kramdown:
+  syntax_highlighter_opts:
+    block:
+      line_numbers: false
+
+compress_html:
+  clippings: all
+  comments: all
+  endings: all
+  startings: []
+  blanklines: false
+  profile: false
+
+# Collections for versioned docs (if needed later)
+# collections:
+#   docs:
+#     permalink: "/:collection/:path/"
+#     output: true

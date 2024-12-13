@@ -6,144 +6,310 @@ nav_order: 2
 ---
 
 # Processors
+{: .fs-9 }
 
-The Lambda OTLP Forwarder supports different processors for handling telemetry data. Each processor is designed for specific use cases and can be configured independently.
+Understanding the processor architecture and configuration options in Lambda OTLP Forwarder.
+{: .fs-6 .fw-300 }
 
-## Available Processors
+## Overview
+{: .text-delta }
 
-### OTLP Stdout Processor
+Processors are the core components that handle telemetry data transformation and forwarding:
 
-The standard processor that handles OTLP data from CloudWatch Logs:
-
-- **Features**
-  - Supports both JSON and protobuf formats
-  - Handles GZIP compression
-  - Configurable batching and buffering
-  - Multiple collector support
-  - Custom authentication methods
-
-- **Configuration**
-  ```yaml
-  ProcessorType: otlp-stdout
-  RouteAllLogs: true
-  ```
-
-- **Use Cases**
-  - General telemetry collection
-  - Third-party observability platforms
-  - Custom OTLP collectors
-
-### AWS Application Signals Processor
-
-Experimental processor specifically for AWS Application Signals:
-
-- **Features**
-  - Native CloudWatch integration
-  - Optimized for AWS X-Ray
-  - Simplified configuration
-  - Automatic context propagation
-
-- **Configuration**
-  ```yaml
-  ProcessorType: aws-appsignals
-  ```
-
-- **Use Cases**
-  - AWS-native observability
-  - X-Ray integration
-  - CloudWatch Application Signals
-
-## Record Format
-
-### OTLP Stdout Format
-
-Each log record includes:
-```json
-{
-  "__otel_otlp_stdout": "package-name@version",
-  "source": "service-name",
-  "endpoint": "collector-endpoint",
-  "method": "POST",
-  "content-type": "application/json|application/x-protobuf",
-  "payload": "base64-or-plain-content",
-  "base64": true|false,
-  "content-encoding": "gzip|none"
-}
+```mermaid
+graph TD
+    A[Log Events] -->|Input| B[Processor]
+    B -->|Parse| C[Deserializer]
+    C -->|Transform| D[Transformer]
+    D -->|Batch| E[Batcher]
+    E -->|Export| F[Exporter]
+    
+    classDef input fill:#FF9900,stroke:#FF9900,stroke-width:2px,color:#000;
+    classDef process fill:#3B48CC,stroke:#3B48CC,stroke-width:2px,color:#fff;
+    classDef output fill:#00A4EF,stroke:#00A4EF,stroke-width:2px,color:#fff;
+    
+    class A input;
+    class B,C,D,E process;
+    class F output;
 ```
 
-### Application Signals Format
+## Available Processors
+{: .text-delta }
 
-Application Signals uses AWS X-Ray format with extensions for OTLP data.
+### OTLP Stdout Processor
+{: .text-delta }
 
-## Processor Selection
-
-Choose your processor based on your needs:
-
-1. **OTLP Stdout Processor** if you:
-   - Use third-party observability platforms
-   - Need multiple collector support
-   - Require custom configuration
-   - Want maximum flexibility
-
-2. **Application Signals Processor** if you:
-   - Use AWS X-Ray
-   - Want native CloudWatch integration
-   - Prefer simplified setup
-   - Don't need multiple collectors
-
-> [!WARNING]
-> The AWS Application Signals processor is experimental. Do not enable both processors simultaneously as this could lead to duplicate processing.
-
-## Best Practices
-
-1. **Data Format**
-   - Use protobuf for better performance
-   - Enable compression for large payloads
-   - Consider payload size limits
-
-2. **Processing**
-   - Configure appropriate batch sizes
-   - Set reasonable timeouts
-   - Monitor processing errors
-
-3. **Resource Usage**
-   - Monitor Lambda memory usage
-   - Watch CloudWatch Logs costs
-   - Configure appropriate concurrency
-
-4. **Error Handling**
-   - Implement retry strategies
-   - Set up error alerting
-   - Monitor failed deliveries
-
-## Configuration Examples
-
-### OTLP Stdout with Multiple Collectors
+{: .highlight }
+The standard processor for handling OTLP data from CloudWatch Logs:
+- Supports JSON and protobuf formats
+- Handles GZIP compression
+- Configurable batching
+- Multiple collector support
+- Custom authentication
 
 ```yaml
 ProcessorType: otlp-stdout
-RouteAllLogs: true
-CollectorsSecretsKeyPrefix: lambda-otlp-forwarder/keys
+Configuration:
+  Format: protobuf
+  Compression: gzip
+  BatchSize: 100
+  FlushInterval: 5
 ```
 
-### Application Signals Only
+### AWS Application Signals
+{: .text-delta }
+
+{: .highlight }
+Native integration with AWS observability services:
+- X-Ray tracing
+- CloudWatch metrics
+- Log correlation
+- Automatic context
+- Resource detection
 
 ```yaml
 ProcessorType: aws-appsignals
-DeployDemo: false
+Configuration:
+  XRayEnabled: true
+  MetricsEnabled: true
+  LogCorrelation: true
+  SamplingRate: 0.1
 ```
 
-### Development Setup
+## Processor Architecture
+{: .text-delta }
+
+### Component Pipeline
+{: .text-delta }
+
+```mermaid
+sequenceDiagram
+    participant I as Input Handler
+    participant D as Deserializer
+    participant T as Transformer
+    participant B as Batcher
+    participant E as Exporter
+
+    I->>D: Raw Log Event
+    Note over I,D: Validate & Parse
+    D->>T: Parsed Data
+    Note over D,T: Transform Format
+    T->>B: OTLP Data
+    Note over T,B: Batch & Buffer
+    B->>E: Batched Data
+    Note over B,E: Export & Retry
+```
+
+### Data Flow Stages
+{: .text-delta }
+
+{: .info }
+1. **Input Handling**
+   - Log event validation
+   - Format detection
+   - Initial filtering
+   - Error checking
+
+{: .info }
+2. **Deserialization**
+   - JSON parsing
+   - Protobuf decoding
+   - Compression handling
+   - Schema validation
+
+{: .info }
+3. **Transformation**
+   - Format conversion
+   - Data enrichment
+   - Field mapping
+   - Context propagation
+
+{: .info }
+4. **Batching**
+   - Buffer management
+   - Size control
+   - Time windows
+   - Memory limits
+
+{: .info }
+5. **Export**
+   - Collector routing
+   - Authentication
+   - Retry handling
+   - Error reporting
+
+## Configuration Options
+{: .text-delta }
+
+### Common Settings
+{: .text-delta }
+
+| Setting | Description | Default | Options |
+|:--------|:------------|:--------|:---------|
+| `Format` | Data format | `protobuf` | `protobuf`, `json` |
+| `Compression` | Compression type | `gzip` | `gzip`, `none` |
+| `BatchSize` | Items per batch | `100` | `1` to `1000` |
+| `FlushInterval` | Seconds between flushes | `5` | `1` to `60` |
+| `RetryCount` | Maximum retries | `3` | `0` to `10` |
+| `Timeout` | Operation timeout (s) | `30` | `1` to `300` |
+
+### Advanced Options
+{: .text-delta }
 
 ```yaml
-ProcessorType: otlp-stdout
-DeployDemo: true
-DemoExporterProtocol: http/json
-DemoExporterCompression: none
+AdvancedConfig:
+  Memory:
+    MaxBufferSize: 104857600  # 100MB
+    GCThreshold: 0.8
+    EmergencyFlush: 0.95
+
+  Retry:
+    InitialInterval: 1
+    MaxInterval: 30
+    Multiplier: 2
+    RandomizationFactor: 0.2
+
+  Monitoring:
+    MetricsEnabled: true
+    HealthCheckInterval: 60
+    AlertingEnabled: true
 ```
 
-## Next Steps
+## Performance Tuning
+{: .text-delta }
 
-- [Configure collectors](../deployment/collectors)
-- [Performance optimization](../advanced/performance)
-- [Monitoring setup](../advanced/monitoring) 
+### Batch Processing
+{: .text-delta }
+
+{: .warning }
+Optimize batching for your use case:
+- Larger batches → Better throughput
+- Smaller batches → Lower latency
+- Consider memory usage
+- Monitor performance
+- Handle backpressure
+
+```yaml
+BatchConfig:
+  Size: 100
+  TimeoutSeconds: 5
+  MaxBytes: 1048576
+  MaxConcurrent: 5
+```
+
+### Memory Management
+{: .text-delta }
+
+{: .warning }
+Memory optimization guidelines:
+- Monitor buffer usage
+- Set appropriate limits
+- Configure GC thresholds
+- Handle overflow
+- Implement backpressure
+
+```yaml
+MemoryConfig:
+  MaxBufferMB: 100
+  GCThresholdPercent: 80
+  EmergencyFlushPercent: 95
+  MonitoringIntervalSeconds: 60
+```
+
+## Error Handling
+{: .text-delta }
+
+### Retry Strategy
+{: .text-delta }
+
+```yaml
+RetryConfig:
+  MaxAttempts: 3
+  InitialIntervalSeconds: 1
+  MaxIntervalSeconds: 30
+  Multiplier: 2
+  RandomizationFactor: 0.2
+```
+
+### Dead Letter Queue
+{: .text-delta }
+
+```yaml
+DLQConfig:
+  Enabled: true
+  QueueUrl: sqs://dlq
+  RetentionDays: 14
+  AlertingThreshold: 100
+```
+
+## Monitoring
+{: .text-delta }
+
+### Metrics
+{: .text-delta }
+
+{: .info }
+Key processor metrics:
+- `ProcessedEvents`: Events processed
+- `ProcessingErrors`: Processing failures
+- `BatchSize`: Current batch size
+- `ProcessingLatency`: Processing time
+- `MemoryUsage`: Buffer memory usage
+- `RetryCount`: Retry attempts
+- `DLQMessages`: Failed messages
+
+### Health Checks
+{: .text-delta }
+
+```yaml
+HealthConfig:
+  Enabled: true
+  Interval: 60
+  Endpoints:
+    - /health
+    - /metrics
+  Thresholds:
+    ErrorRate: 0.01
+    Latency: 1000
+```
+
+## Best Practices
+{: .text-delta }
+
+### Performance
+{: .text-delta }
+
+{: .info }
+- Use protobuf for better performance
+- Enable compression for large payloads
+- Configure appropriate batch sizes
+- Monitor and adjust timeouts
+- Implement proper error handling
+
+### Reliability
+{: .text-delta }
+
+{: .info }
+- Configure proper retry policies
+- Use dead letter queues
+- Monitor processor health
+- Set up alerting
+- Handle backpressure
+
+### Security
+{: .text-delta }
+
+{: .info }
+- Encrypt sensitive data
+- Use secure authentication
+- Implement access controls
+- Monitor security events
+- Regular security audits
+
+## Next Steps
+{: .text-delta }
+
+- [Configure Deployment](../deployment)
+- [Advanced Features](../advanced)
+- [Monitoring Setup](../deployment/monitoring)
+- [Troubleshooting](../troubleshooting) 
