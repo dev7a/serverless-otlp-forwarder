@@ -110,8 +110,8 @@ pub trait RoutableHttpEvent: Send + Sync + Clone + 'static {
         span.record("otel.kind", "SERVER");
 
         // HTTP request attributes
-        span.record("http.request.method", self.http_method());
-        span.record("http.route", route_pattern.to_string());
+        span.set_attribute("http.request.method", self.http_method());
+        span.set_attribute("http.route", route_pattern.to_string());
 
         // URL attributes
         span.set_attribute("url.path", self.path().unwrap_or_else(|| "/".to_string()));
