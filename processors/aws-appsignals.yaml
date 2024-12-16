@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
-Description: AWS SAM template for AWS appsignals span processor in the lambda-otlp-forwarder application.
+Description: AWS SAM template for AWS appsignals span processor in the serverless-otlp-forwarder application.
 
 Parameters:
   StackName:
@@ -9,7 +9,7 @@ Parameters:
   CollectorsSecretsKeyPrefix:
     Type: String
     Description: The prefix for the secrets manager key for the collector.
-    Default: 'lambda-otlp-forwarder/keys'
+    Default: 'serverless-otlp-forwarder/keys'
   CollectorsCacheTtlSeconds:
     Type: String
     Description: The TTL for the collector cache.

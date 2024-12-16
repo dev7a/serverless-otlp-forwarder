@@ -8,384 +8,195 @@ nav_order: 2
 # Configuration Guide
 {: .fs-9 }
 
-Configure Lambda OTLP Forwarder for your observability needs.
+Configure Serverless OTLP Forwarder for your observability needs.
 {: .fs-6 .fw-300 }
 
-## Quick Start
+## Overview
 {: .text-delta }
 
-```yaml
-# samconfig.toml
+The Serverless OTLP Forwarder can be configured through:
+- AWS SAM CLI parameters during deployment
+- AWS CloudFormation template parameters
+- Persisted configuration in `samconfig.toml`
+
+{: .note }
+> While you can use `sam deploy --guided` for interactive configuration, we recommend using `samconfig.toml` for reproducible deployments.
+
+## Configuration File
+{: .text-delta }
+
+The `samconfig.toml` file allows you to persist your configuration:
+
+```toml
 version = 0.1
 [default.deploy.parameters]
-stack_name = "lambda-otlp-forwarder"
+stack_name = "serverless-otlp-forwarder"
 resolve_s3 = true
-s3_prefix = "lambda-otlp-forwarder"
+s3_prefix = "serverless-otlp-forwarder"
 region = "us-west-2"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 parameter_overrides = [
-  "ProcessorType=otlp-stdout",
-  "CollectorEndpoint=https://collector.example.com:4318",
-  "CollectorAuthType=basic",
-  "CollectorAuthSecret=otlp-forwarder/collector/auth"
+    "ProcessorType=otlp-stdout",
+    "CollectorsSecretsKeyPrefix=serverless-otlp-forwarder/keys",
+    "CollectorsCacheTtlSeconds=300",
+    "RouteAllLogs=true",
+    "DeployDemo=false"
 ]
 ```
 
-## Core Settings
+{: .important }
+> The configuration file can be created automatically using `sam deploy --guided` and then modified as needed.
+
+## Parameter Reference
 {: .text-delta }
 
-### Processor Configuration
+### Core Parameters
+
+| Parameter | Type | Default | Description |
+|:----------|:-----|:--------|:------------|
+| `ProcessorType` | String | `otlp-stdout` | Processor type to use (`otlp-stdout` or `aws-appsignals`) |
+| `CollectorsSecretsKeyPrefix` | String | `serverless-otlp-forwarder/keys` | Prefix for AWS Secrets Manager keys |
+| `CollectorsCacheTtlSeconds` | String | `300` | TTL for the collector cache in seconds |
+| `RouteAllLogs` | String | `true` | Route all AWS logs to the Lambda function |
+
+### Optional Features
+
+| Parameter | Type | Default | Description |
+|:----------|:-----|:--------|:------------|
+| `DeployDemo` | String | `true` | Deploy the demo application |
+| `DemoExporterProtocol` | String | `http/protobuf` | Protocol for demo exporter |
+| `DemoExporterCompression` | String | `gzip` | Compression for demo exporter |
+| `DeployBenchmark` | String | `false` | Deploy the benchmark stack |
+
+{: .note }
+> The Lambda function uses arm64 architecture and is configured with 128MB memory by default. These settings are optimized for cost and performance.
+
+## Application Configuration
 {: .text-delta }
 
-{: .highlight }
-Choose your processor type:
+To use the Serverless OTLP Forwarder with your applications, you need to configure two components:
+
+1. **OpenTelemetry SDK Integration**: Integrate the OpenTelemetry SDK for your programming language and configure it to write telemetry data to stdout. 
+To do so, you should use our language-specific packages and follow the corresponding guide to instrument your application:
+
+- <i class="devicon-rust-plain colored"></i> [Rust Development Guide](../languages/rust)
+- <i class="devicon-python-plain colored"></i> [Python Development Guide](../languages/python)
+- <i class="devicon-nodejs-plain colored"></i> [Node.js Development Guide](../languages/nodejs)
+
+2. **Environment Variables**: Configure your Lambda function with the following environment variables:
 
 ```yaml
-Parameters:
-  ProcessorType:
-    Type: String
-    Default: otlp-stdout
-    AllowedValues:
-      - otlp-stdout
-      - aws-appsignals
+Environment:
+  Variables:
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+    OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+    OTEL_SERVICE_NAME: my-service-name
 ```
 
-### Collector Settings
-{: .text-delta }
+{: .note }
+> The `OTEL_EXPORTER_OTLP_ENDPOINT` configuration is not required in your instrumented Lambda functions. The forwarder will automatically determine the endpoint based on its own configuration.
 
-{: .highlight }
-Configure your collector endpoint:
+### Environment Variables Reference
 
-```yaml
-Parameters:
-  CollectorEndpoint:
-    Type: String
-    Default: https://collector.example.com:4318
-  
-  CollectorProtocol:
-    Type: String
-    Default: http/protobuf
-    AllowedValues:
-      - http/protobuf
-      - http/json
-  
-  CollectorCompression:
-    Type: String
-    Default: gzip
-    AllowedValues:
-      - gzip
-      - none
-```
-
-## Authentication
-{: .text-delta }
-
-### Basic Auth
-{: .text-delta }
-
-1. Create secret in AWS Secrets Manager:
-```bash
-aws secretsmanager create-secret \
-  --name otlp-forwarder/collector/basic-auth \
-  --secret-string '{"username":"your-username","password":"your-password"}'
-```
-
-2. Configure in template:
-```yaml
-Parameters:
-  CollectorAuthType:
-    Type: String
-    Default: basic
-  
-  CollectorAuthSecret:
-    Type: String
-    Default: otlp-forwarder/collector/basic-auth
-```
-
-### Bearer Token
-{: .text-delta }
-
-1. Create secret:
-```bash
-aws secretsmanager create-secret \
-  --name otlp-forwarder/collector/bearer \
-  --secret-string '{"token":"your-bearer-token"}'
-```
-
-2. Configure in template:
-```yaml
-Parameters:
-  CollectorAuthType:
-    Type: String
-    Default: bearer
-  
-  CollectorAuthSecret:
-    Type: String
-    Default: otlp-forwarder/collector/bearer
-```
-
-### AWS IAM
-{: .text-delta }
-
-```yaml
-Parameters:
-  CollectorAuthType:
-    Type: String
-    Default: aws-iam
-  
-  CollectorRegion:
-    Type: String
-    Default: us-west-2
-```
-
-## Network Configuration
-{: .text-delta }
-
-### VPC Settings
-{: .text-delta }
-
-```yaml
-Parameters:
-  VpcId:
-    Type: AWS::EC2::VPC::Id
-  
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
-  
-  SecurityGroupIds:
-    Type: List<AWS::EC2::SecurityGroup::Id>
-```
-
-### Private Link
-{: .text-delta }
-
-```yaml
-Parameters:
-  EnablePrivateLink:
-    Type: String
-    Default: false
-    AllowedValues: [true, false]
-  
-  VpcEndpointId:
-    Type: String
-    Default: ""
-```
-
-## Performance Tuning
-{: .text-delta }
-
-### Memory and Timeout
-{: .text-delta }
-
-```yaml
-Parameters:
-  MemorySize:
-    Type: Number
-    Default: 256
-    MinValue: 128
-    MaxValue: 10240
-  
-  Timeout:
-    Type: Number
-    Default: 30
-    MinValue: 1
-    MaxValue: 900
-```
-
-### Batch Processing
-{: .text-delta }
-
-```yaml
-Parameters:
-  BatchSize:
-    Type: Number
-    Default: 100
-    MinValue: 1
-    MaxValue: 1000
-  
-  BatchTimeoutSeconds:
-    Type: Number
-    Default: 5
-    MinValue: 1
-    MaxValue: 30
-```
-
-## Monitoring
-{: .text-delta }
-
-### CloudWatch Logs
-{: .text-delta }
-
-```yaml
-Parameters:
-  LogRetentionDays:
-    Type: Number
-    Default: 7
-    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
-  
-  EnableDetailedMetrics:
-    Type: String
-    Default: true
-    AllowedValues: [true, false]
-```
-
-### X-Ray Tracing
-{: .text-delta }
-
-```yaml
-Parameters:
-  EnableXRayTracing:
-    Type: String
-    Default: true
-    AllowedValues: [true, false]
-  
-  XRaySamplingRate:
-    Type: Number
-    Default: 0.1
-    MinValue: 0
-    MaxValue: 1
-```
-
-## Advanced Configuration
-{: .text-delta }
-
-### Error Handling
-{: .text-delta }
-
-```yaml
-Parameters:
-  MaxRetries:
-    Type: Number
-    Default: 3
-    MinValue: 0
-    MaxValue: 10
-  
-  EnableDLQ:
-    Type: String
-    Default: true
-    AllowedValues: [true, false]
-```
-
-### Custom Headers
-{: .text-delta }
-
-1. Create secret:
-```bash
-aws secretsmanager create-secret \
-  --name otlp-forwarder/collector/headers \
-  --secret-string '{"X-Custom-Header":"value"}'
-```
-
-2. Configure in template:
-```yaml
-Parameters:
-  CustomHeadersSecret:
-    Type: String
-    Default: otlp-forwarder/collector/headers
-```
-
-## Environment Variables
-{: .text-delta }
-
-### Common Settings
-{: .text-delta }
+Most of the OTEL environment variables are supported as usual in the OpenTelemetry SDK, but to the very least you should explicitly set the following:
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector endpoint | `http://localhost:4318` |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol to use | `http/protobuf` |
-| `OTEL_EXPORTER_OTLP_COMPRESSION` | Compression type | `gzip` |
-| `OTEL_SERVICE_NAME` | Service name | Function name |
-
-### Advanced Settings
-{: .text-delta }
-
-| Variable | Description | Default |
-|:---------|:------------|:--------|
-| `OTEL_BATCH_MAX_QUEUE_SIZE` | Maximum queue size | `2048` |
-| `OTEL_BATCH_SCHEDULE_DELAY` | Batch delay in ms | `5000` |
-| `OTEL_BATCH_MAX_EXPORT_SIZE` | Maximum batch size | `512` |
-| `OTEL_EXPERIMENTAL_BATCH_SPANS` | Enable batching | `true` |
-
-## Best Practices
-{: .text-delta }
-
-### Security
-{: .text-delta }
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol for OTLP data (`http/protobuf` or `http/json`) | `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_COMPRESSION` | Compression type (`gzip` or `none`) | `gzip` |
+| `OTEL_SERVICE_NAME` | Name of your service for telemetry identification | - |
 
 {: .warning }
-- Use AWS Secrets Manager for credentials
-- Enable encryption in transit
-- Implement least privilege IAM roles
-- Use VPC endpoints for private access
-- Regular credential rotation
+> Do not set `OTEL_EXPORTER_OTLP_HEADERS` in your instrumented Lambda functions. Authentication headers should be configured in the forwarder itself as secrets on AWS Secrets Manager.
 
-### Performance
+## Collector Configuration
 {: .text-delta }
 
-{: .info }
-- Configure appropriate memory size
-- Enable batch processing
-- Use compression
-- Set reasonable timeouts
-- Monitor and adjust settings
+The forwarder uses AWS Secrets Manager to store collector endpoints and authentication details. By default, it looks for secrets under the prefix specified by `CollectorsSecretsKeyPrefix` (default: `serverless-otlp-forwarder/keys`).
 
-### Reliability
-{: .text-delta }
+### Secret Structure
 
-{: .info }
-- Enable retries with backoff
-- Configure DLQ for failed events
-- Set up monitoring and alerts
-- Regular health checks
-- Implement circuit breakers
+Each collector configuration requires a secret with the following structure:
 
-## Validation
-{: .text-delta }
-
-### Configuration Check
-{: .text-delta }
-
-```bash
-# Validate template
-sam validate
-
-# Test configuration
-sam local invoke \
-  --event events/test.json \
-  --env-vars env.json
-
-# Check deployment
-aws cloudformation describe-stacks \
-  --stack-name lambda-otlp-forwarder
+```json
+{
+  "name": "my-collector",
+  "endpoint": "https://collector.example.com",
+  "auth": "x-api-key=your-api-key",
+  "exclude": "^/aws/lambda/excluded-function-.*$"
+}
 ```
 
-### Health Check
-{: .text-delta }
+Configuration fields:
+- `name`: A friendly name for the collector (e.g., `selfhosted`, `honeycomb`, `datadog`)
+- `endpoint`: The OTLP collector endpoint URL
+- `auth`: Authentication header or method (`x-api-key=your-key`, `sigv4`, `iam`, `none`)
+- `exclude`: Optional regex pattern to exclude specific log groups from being forwarded to this collector
 
+{: .note }
+The `exclude` parameter allows you to filter out specific log groups from being forwarded to a particular collector. This is useful when you want to send different telemetry data to different collectors. The pattern is matched against the full log group name.
+
+Example using AWS CLI with exclusion pattern:
 ```bash
-# Test collector connection
-aws lambda invoke \
-  --function-name otlp-forwarder \
-  --payload '{"action":"health"}' \
-  response.json
-
-# Check metrics
-aws cloudwatch get-metric-statistics \
-  --namespace AWS/Lambda \
-  --metric-name Errors \
-  --dimensions Name=FunctionName,Value=otlp-forwarder \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --period 300 \
-  --statistics Sum
+aws secretsmanager create-secret \
+  --name "serverless-otlp-forwarder/keys/default" \
+  --secret-string '{
+    "name": "honeycomb",
+    "endpoint": "https://api.honeycomb.io/v1/traces",
+    "auth": "x-api-key=your-honeycomb-key",
+    "exclude": "^/aws/lambda/internal-.*$"
+  }'
 ```
 
-## Next Steps
-{: .text-delta }
+### Multiple Collectors
 
-- [Set up Language SDKs](../languages)
-- [Understand Architecture](../concepts/architecture)
-- [Configure Processors](../concepts/processors)
-- [View Advanced Features](../advanced) 
+The forwarder can send telemetry data to multiple collectors simultaneously. To configure multiple collectors:
+
+1. Create separate secrets under the same prefix:
+```bash
+# Additional collector
+aws secretsmanager create-secret \
+  --name "serverless-otlp-forwarder/keys/appsignals" \
+  --secret-string '{
+    "name": "appsignals",
+    "endpoint": "https://xray.us-east-1.amazonaws.com",
+    "auth": "sigv4"
+  }'
+```
+
+2. The forwarder will:
+   - Load all collector configurations under the specified prefix
+   - Send telemetry data to all configured collectors in parallel
+   - Cache configurations based on `CollectorsCacheTtlSeconds`
+
+{: .note }
+The forwarder itself is instrumented and sends its telemetry to the collector defined in the `default` secret (e.g., `serverless-otlp-forwarder/keys/default`).
+
+### AWS Application Signals
+
+To use AWS Application Signals as a destination:
+
+1. Create a secret with:
+   - `endpoint`: The Application Signals endpoint for your region (e.g., `https://xray.us-east-1.amazonaws.com`)
+   - `auth`: Set to `sigv4` or `iam`
+
+2. The forwarder will:
+   - Automatically append `/v1/traces` to the endpoint
+   - Use the Lambda function's IAM role for authentication
+   - Require `xray:PutTraceSegments` and `xray:PutSpansForIndexing` permissions
+
+Example configuration:
+```bash
+aws secretsmanager create-secret \
+  --name "serverless-otlp-forwarder/keys/appsignals" \
+  --secret-string '{
+    "name": "appsignals",
+    "endpoint": "https://xray.us-east-1.amazonaws.com",
+    "auth": "sigv4"
+  }'
+```
+
+{: .important }
+To make Application Signals your default destination, create this configuration as `serverless-otlp-forwarder/keys/default`.
+

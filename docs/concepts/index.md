@@ -8,115 +8,64 @@ has_children: true
 # Core Concepts
 {: .fs-9 }
 
-Understanding the fundamental concepts and architecture of Lambda OTLP Forwarder.
+Technical overview of Serverless OTLP Forwarder's architecture and components.
 {: .fs-6 .fw-300 }
 
 ## Overview
 {: .text-delta }
 
-The Lambda OTLP Forwarder is built on several key concepts that work together to provide efficient telemetry data forwarding:
+OpenTelemetry is a vendor-neutral, open-source framework for collecting, processing, and exporting telemetry data. In a serverless environment, the implementation of a telemetry pipeline is not as straightforward as in a traditional environment. Long running processes have the advantage of being able to maintain a persistent network connection to the collector, state in memory to buffer data and to periodically flush it to the collector, and retry logic to handle transient failures. And they can afford longer cold start times, needed to initialize the instrumentation libraries, because the initialization is done once and then the process is kept alive.
 
-{: .highlight }
-**Key Components**
-- Instrumented Lambda functions
-- CloudWatch Logs transport
-- Forwarder Lambda function
-- OTLP collectors
-- Processors and transformers
+Conversely, Lambda functions are short-lived processes that start and stop frequently. They do not have the ability to guarantee a persistent network connection to the collector, and, while they can buffer data in memory, flushing it to the collector periodically is not trivial, because the execution environment is frozen after the function invocation ends. 
 
-## Architecture Overview
+A solution to these challenges is to minimize the cold start impact by limiting the number of instrumentation libraries loaded during initialization, avoiding the establishment of network connections for sending telemetry data, and utilizing the lowest overhead I/O mechanism possible. By writing telemetry data to stdout in a structured format, Lambda functions can leverage the built-in CloudWatch Logs integration as a durable transport layer, without adding significant latency or complexity to the function execution.
+
+The Serverless OTLP Forwarder aims to provide a solution to these challenges, at least on Lambda. It implements a serverless telemetry pipeline using AWS services and the OpenTelemetry Protocol (OTLP). The system consists of several key components:
+
+1. **Transport Layer**: Uses CloudWatch Logs as a durable transport mechanism
+2. **Processing Layer**: Lambda function with pluggable processors
+3. **Protocol Layer**: OTLP-compliant data formatting and transmission
+4. **Integration Layer**: Connections to observability backends
+
+
+## System Architecture
 {: .text-delta }
 
-```mermaid
-graph TD
-    A[Lambda Functions] -->|stdout| B[CloudWatch Logs]
-    B -->|subscription| C[Forwarder Lambda]
-    C -->|process| D[Processors]
-    D -->|forward| E[OTLP Collectors]
-    
-    classDef lambda fill:#FF9900,stroke:#FF9900,stroke-width:2px,color:#000;
-    classDef aws fill:#232F3E,stroke:#232F3E,stroke-width:2px,color:#fff;
-    classDef processor fill:#3B48CC,stroke:#3B48CC,stroke-width:2px,color:#fff;
-    classDef collector fill:#00A4EF,stroke:#00A4EF,stroke-width:2px,color:#fff;
-    
-    class A,C lambda;
-    class B aws;
-    class D processor;
-    class E collector;
-```
+![image](https://github.com/user-attachments/assets/7af44a01-10d5-439c-89bb-27a75cf21c41)
 
-## Key Topics
+## Technical Components
 {: .text-delta }
 
 ### [Architecture](architecture)
 {: .text-delta }
 
-{: .info }
-Learn about:
-- System components
-- Data flow
-- Integration points
-- Scalability design
-- Security model
+The system architecture is designed for:
+- Durability through CloudWatch Logs
+- Scalability via serverless components
+- Reliability with automatic retries
+- Security through AWS IAM and encryption
 
 ### [Processors](processors)
 {: .text-delta }
 
-{: .info }
-Understand:
-- Processor types
-- Data transformation
-- Buffering and batching
-- Error handling
-- Configuration options
+Processors handle:
+- Protocol transformation (JSON/Protobuf)
+- Data buffering and batching
+- Error handling and retries
+- Collector authentication
 
-## Core Principles
+## Implementation Details
 {: .text-delta }
 
-### 1. Efficiency
+### Data Flow
 {: .text-delta }
 
-{: .highlight }
-- Minimal cold start impact
-- Efficient data transport
-- Optimized resource usage
-- Smart batching
-- Compression support
+![Data Flow Diagram](https://github.com/user-attachments/assets/2252d2e4-d30d-4a1c-b433-9b552c1ad383)
 
-### 2. Reliability
-{: .text-delta }
+<details markdown="1">
+<summary>View sequence diagram source code</summary>
 
-{: .highlight }
-- Durable message delivery
-- Automatic retries
-- Error handling
-- Dead letter queues
-- Monitoring and alerts
-
-### 3. Security
-{: .text-delta }
-
-{: .highlight }
-- IAM role-based access
-- Encryption in transit
-- Secure credential storage
-- Network isolation
-- Audit logging
-
-### 4. Scalability
-{: .text-delta }
-
-{: .highlight }
-- Automatic scaling
-- Concurrent processing
-- Load balancing
-- Resource optimization
-- Cost efficiency
-
-## Data Flow
-{: .text-delta }
-
-```mermaid
+```
 sequenceDiagram
     participant App as Lambda Function
     participant CW as CloudWatch Logs
@@ -124,69 +73,50 @@ sequenceDiagram
     participant Proc as Processor
     participant Col as Collector
 
-    App->>CW: Write telemetry to stdout
-    Note over App,CW: JSON or protobuf format
-    CW->>Fwd: Forward matching logs
-    Note over CW,Fwd: Subscription filter
+    App->>CW: Write OTLP data to stdout
+    Note over App,CW: Structured JSON/protobuf
+    CW->>Fwd: Forward via subscription
+    Note over CW,Fwd: Filter pattern match
     Fwd->>Proc: Process log events
     Note over Fwd,Proc: Transform & batch
-    Proc->>Col: Forward OTLP data
-    Note over Proc,Col: Authenticated & compressed
+    Proc->>Col: Forward via OTLP/HTTP
+    Note over Proc,Col: Compressed & authenticated
 ```
 
-## Integration Points
+</details>
+
+### AWS Integration
 {: .text-delta }
 
-### AWS Services
+The forwarder integrates with:
+- **Lambda**: Function runtime and execution
+- **CloudWatch**: Log aggregation and filtering
+- **IAM**: Access control and permissions
+- **Secrets Manager**: Collector credentials
+
+### Performance Considerations
 {: .text-delta }
 
-{: .info }
-- AWS Lambda
-- CloudWatch Logs
-- IAM
-- Secrets Manager
-- X-Ray
-- CloudWatch Metrics
+Key performance factors:
+- Cold start optimization (arm64 architecture)
+- Efficient log processing and filtering
+- Batching and compression strategies
+- Memory and timeout configuration
+- Concurrent execution limits
 
-### External Systems
+### Security Model
 {: .text-delta }
 
-{: .info }
-- OTLP Collectors
-- Observability Platforms
-- Monitoring Systems
-- Alert Managers
-- Visualization Tools
+Security implementation:
+- IAM roles and policies with least privilege
+- TLS encryption for data in transit to the collector
+- Secrets Manager for credentials
+- Network security with VPC support
+- Audit logging capabilities with Cloudtrail
 
-## Best Practices
+## Technical Documentation
 {: .text-delta }
 
-### Design Principles
-{: .text-delta }
-
-{: .warning }
-Follow these guidelines:
-- Keep functions focused
-- Use appropriate batch sizes
-- Enable compression
-- Implement proper error handling
-- Monitor and alert
-
-### Resource Management
-{: .text-delta }
-
-{: .warning }
-Optimize resources:
-- Configure memory appropriately
-- Set proper timeouts
-- Use efficient protocols
-- Enable batching
-- Monitor costs
-
-## Next Steps
-{: .text-delta }
-
-- [Understand the Architecture](architecture)
-- [Learn about Processors](processors)
-- [Configure Deployment](../deployment)
-- [Explore Advanced Features](../advanced) 
+- [Architecture Details](architecture)
+- [Processor Implementation](processors)
+- [Deployment Configuration](../deployment)

@@ -8,7 +8,7 @@ has_children: true
 # Troubleshooting
 {: .fs-9 }
 
-Comprehensive guide to diagnose and resolve issues with Lambda OTLP Forwarder.
+Comprehensive guide to diagnose and resolve issues with Serverless OTLP Forwarder.
 {: .fs-6 .fw-300 }
 
 ## Quick Diagnostics
@@ -177,10 +177,7 @@ Key metrics to monitor:
 - `ProcessingErrors`
 - `ForwardingLatency`
 
-## Advanced Debugging
-{: .text-delta }
-
-### Network Debugging
+## Network Debugging
 {: .text-delta }
 
 ```bash
@@ -202,35 +199,6 @@ aws lambda invoke \
     "hostname": "collector.example.com"
   }' \
   response.json
-```
-
-### Memory Analysis
-{: .text-delta }
-
-```bash
-# Get detailed memory metrics
-aws cloudwatch get-metric-data \
-  --metric-data-queries '[
-    {
-      "Id": "memory",
-      "MetricStat": {
-        "Metric": {
-          "Namespace": "AWS/Lambda",
-          "MetricName": "MemoryUsed",
-          "Dimensions": [
-            {
-              "Name": "FunctionName",
-              "Value": "otlp-forwarder"
-            }
-          ]
-        },
-        "Period": 60,
-        "Stat": "Maximum"
-      }
-    }
-  ]' \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ)
 ```
 
 ## Error Reference
@@ -306,13 +274,11 @@ Common error messages and solutions:
 
 1. Check the [FAQ](faq)
 2. Review [Known Issues](known-issues)
-3. Search [GitHub Issues](https://github.com/dev7a/lambda-otlp-forwarder/issues)
+3. Search [GitHub Issues](https://github.com/dev7a/serverless-otlp-forwarder/issues)
 4. Join our [Discord Community](https://discord.gg/example)
 5. Contact [Support](support)
 
 ## Next Steps
 {: .text-delta }
 
-- [Performance Tuning](../advanced/performance)
-- [Security Configuration](../advanced/security)
 - [Monitoring Setup](../deployment/monitoring) 

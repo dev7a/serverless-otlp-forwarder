@@ -5,14 +5,14 @@ nav_order: 1
 permalink: /
 ---
 
-# Lambda OTLP Forwarder
+# Serverless OTLP Forwarder
 {: .fs-9 }
 
-The Lambda OTLP Forwarder enables serverless applications to send OpenTelemetry data to collectors without the overhead of direct connections or sidecars.
+A serverless solution for forwarding OpenTelemetry data from AWS Lambda functions to collectors with minimal overhead.
 {: .fs-6 .fw-300 }
 
 [Get Started](getting-started){: .btn .btn-primary .fs-5 .mb-4 .mb-md-0 .mr-2 }
-[View on GitHub](https://github.com/dev7a/lambda-otlp-forwarder){: .btn .fs-5 .mb-4 .mb-md-0 }
+[View on GitHub](https://github.com/dev7a/serverless-otlp-forwarder){: .btn .fs-5 .mb-4 .mb-md-0 }
 
 ---
 
@@ -22,53 +22,63 @@ The Lambda OTLP Forwarder enables serverless applications to send OpenTelemetry 
 ![Architecture Diagram](https://github.com/user-attachments/assets/961999d9-bb69-4ba7-92a2-9efef3909b74)
 {: .text-center }
 
-## Quick Links
+## Documentation
 {: .text-delta }
 
-- [Getting Started Guide](getting-started) - Set up and deploy in minutes
-- [Architecture Overview](concepts/architecture) - Understand how it works
-- [Configuration Guide](deployment/configuration) - Configure for your needs
-- [Language Support](languages) - Choose your language
+- [Getting Started Guide](getting-started) - Installation and deployment
+- [Architecture Overview](concepts/architecture) - Technical design and components
+- [Configuration Guide](deployment/configuration) - Configuration options
+- [Language Support](languages) - Supported programming languages
 
 ## Key Features
+
+- **Minimal Performance Impact**  
+  Optimized for Lambda execution and cold start times
+
+- **Secure by Design**  
+  Leverages CloudWatch Logs for data transport, eliminating the need for direct collector exposure
+
+- **Language Support**  
+  Implementation available for Rust, Python, and Node.js
+
+- **AWS Application Signals**  
+  Experimental integration with AWS Application Signals
+
+## Overview
+
+The Serverless OTLP Forwarder implements an alternative approach to collecting OpenTelemetry data from AWS Lambda functions. Instead of using extension layers or sidecars, it utilizes CloudWatch Logs as a transport mechanism, reducing operational complexity and performance overhead.
+
+The implementation consists of three main components:
+
+1. Language-specific libraries that efficiently write telemetry data to standard output
+2. CloudWatch Logs subscription that captures telemetry data
+3. Forwarder function that processes and sends data to OTLP collectors
+
+## Technical Considerations
+
+### Benefits
+
+- Reduced cold start impact compared to extension-based solutions
+- No requirement for VPC connectivity or public collector endpoints
+- Simplified deployment and maintenance
+- Compatible with existing OpenTelemetry instrumentation
+
+### Trade-offs
+
+- CloudWatch Logs ingestion costs for telemetry data
+  - Can be optimized using compression and protocol buffers
+- Additional compute costs for the forwarder function
+- Manual instrumentation required (no automatic instrumentation support)
+
+## Background
+
+This project addresses specific challenges in serverless observability, particularly the performance impact of traditional OpenTelemetry collection methods. The standard approach using OTEL/ADOT Lambda Layer extensions introduces significant overhead through sidecar agents, affecting both cold start times and runtime performance.
+
+This becomes especially relevant in scenarios requiring memory-optimized Lambda functions, where the resource overhead of traditional collectors can offset the benefits of memory optimization. The forwarder approach provides an alternative that maintains telemetry capabilities while minimizing resource utilization. Read more about the underlying [concepts](concepts) and [architecture](concepts/architecture) of the project.
+
+## Next Steps
 {: .text-delta }
 
-- 🚀 **Reduced Latency**
-Minimal impact on Lambda execution and cold start times
-- 🔒 **Enhanced Security**
-Keeps telemetry data within AWS infrastructure
-- 💰 **Cost Optimization**
-Supports compression and efficient protocols
-- 🔄 **Multiple Languages**
-Support for Rust, Python, and Node.js
-- 📊 **AWS Application Signals**
-Experimental support for AWS Application Signals
+Refer to the [Getting Started Guide](getting-started) for installation and deployment instructions.
 
-## TL;DR
-{: .text-delta }
-
-Tired of slow Lambda functions because of telemetry overhead? We've got you covered! 🚀
-
-Lambda OTLP Forwarder makes sending OpenTelemetry data from your AWS Lambda functions super easy and efficient. Here's how it works:
-
-1. Drop in our lightweight libraries for your favorite language (Rust, Python, or Node.js)
-2. Add a few lines of instrumentation code
-3. Let the magic happen - we'll capture your telemetry data from CloudWatch Logs and send it to your collector
-
-That's it! No more dealing with slow extension layers or expensive direct connections. Your functions stay fast (just writing to stdout!) and your wallet stays happy. Plus, your architecture stays clean and simple.
-
-Think of it as a smart pipeline that gets your telemetry data where it needs to go, without getting in your way. Pretty neat, right? 😊
-
-
-## Getting Started
-
-Check out our [Quick Start Guide](getting-started) to begin using the Lambda OTLP Forwarder.
-
----
-
-## Support
-
-Need help? Check out our:
-- [Documentation](getting-started)
-- [GitHub Issues](https://github.com/dev7a/lambda-otlp-forwarder/issues)
-- [Troubleshooting Guide](troubleshooting)
+## 

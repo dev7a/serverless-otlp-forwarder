@@ -1,4 +1,4 @@
-//! Header management for the Lambda OTLP forwarder.
+//! Header management for the Serverless OTLP forwarder.
 //!
 //! This module handles two types of headers:
 //! - Log record specific headers for forwarding requests

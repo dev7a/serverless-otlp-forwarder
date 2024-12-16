@@ -1,4 +1,4 @@
-# Lambda OTLP Forwarder
+# Serverless OTLP Forwarder
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-enabled-blue.svg)](https://opentelemetry.io)
@@ -9,7 +9,7 @@
 
 ![diagram](https://github.com/user-attachments/assets/aa9c2b02-5e66-4829-af08-8ceb509472ff)
 
-The Lambda OTLP Forwarder enables serverless applications to send OpenTelemetry data to collectors without the overhead of direct connections or sidecars.
+The Serverless OTLP Forwarder enables serverless applications to send OpenTelemetry data to collectors without the overhead of direct connections or sidecars.
 
 ## Key Features
 
@@ -33,24 +33,23 @@ The Lambda OTLP Forwarder enables serverless applications to send OpenTelemetry 
 
 2. Deploy the forwarder:
    ```bash
-   git clone https://github.com/dev7a/lambda-otlp-forwarder
-   cd lambda-otlp-forwarder
+   git clone https://github.com/dev7a/serverless-otlp-forwarder
+   cd serverless-otlp-forwarder
    sam build && sam deploy --guided
    ```
 
 3. Instrument your application using our language-specific libraries:
-   - [Rust Guide](https://dev7a.github.io/lambda-otlp-forwarder/languages/rust)
-   - [Python Guide](https://dev7a.github.io/lambda-otlp-forwarder/languages/python)
-   - [Node.js Guide](https://dev7a.github.io/lambda-otlp-forwarder/languages/nodejs)
+   - [Rust Guide](https://dev7a.github.io/serverless-otlp-forwarder/languages/rust)
+   - [Python Guide](https://dev7a.github.io/serverless-otlp-forwarder/languages/python)
+   - [Node.js Guide](https://dev7a.github.io/serverless-otlp-forwarder/languages/nodejs)
 
 ## Documentation
 
-Visit our [documentation site](https://dev7a.github.io/lambda-otlp-forwarder) for:
-- [Getting Started Guide](https://dev7a.github.io/lambda-otlp-forwarder/getting-started)
-- [Architecture Overview](https://dev7a.github.io/lambda-otlp-forwarder/concepts/architecture)
-- [Configuration Guide](https://dev7a.github.io/lambda-otlp-forwarder/deployment)
-- [Advanced Features](https://dev7a.github.io/lambda-otlp-forwarder/advanced)
-- [Troubleshooting](https://dev7a.github.io/lambda-otlp-forwarder/troubleshooting)
+Visit our [documentation site](https://dev7a.github.io/serverless-otlp-forwarder) for:
+- [Getting Started Guide](https://dev7a.github.io/serverless-otlp-forwarder/getting-started)
+- [Architecture Overview](https://dev7a.github.io/serverless-otlp-forwarder/concepts/architecture)
+- [Configuration Guide](https://dev7a.github.io/serverless-otlp-forwarder/deployment)
+- [Troubleshooting](https://dev7a.github.io/serverless-otlp-forwarder/troubleshooting)
 
 ## Contributing
 

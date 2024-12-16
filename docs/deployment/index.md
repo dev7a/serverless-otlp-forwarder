@@ -8,279 +8,151 @@ has_children: true
 # Deployment Guide
 {: .fs-9 }
 
-Deploy and configure Lambda OTLP Forwarder for your observability needs.
+Deploy and configure Serverless OTLP Forwarder for your observability needs.
 {: .fs-6 .fw-300 }
 
-## Quick Deploy
+## Prerequisites
 {: .text-delta }
+
+{: .important }
+Ensure that the IAM role you are using to deploy the application has permissions for the following services:
+- CloudFormation
+- Lambda
+- Logs
+- IAM
+
+If you plan to deploy the demo application, you'll also need these permissions for:
+- API Gateway
+- DynamoDB
+
+## Deployment Steps
+{: .text-delta }
+
+1. Clone the repository:
+```bash
+git clone https://github.com/dev7a/serverless-otlp-forwarder
+cd serverless-otlp-forwarder
+```
+
+2. Configure at least one collector endpoint configuration in AWS Secrets Manager:
+```bash
+aws secretsmanager create-secret \
+  --name "serverless-otlp-forwarder/keys/default" \
+  --secret-string '{
+    "name": "my-collector",
+    "endpoint": "https://collector.example.com",
+    "auth": "x-api-key=your-api-key"
+  }'
+```
+
+3. Build and deploy:
+```bash
+sam build --parallel && sam deploy --guided
+```
+
+{: .note }
+> The `--guided` flag initiates an interactive deployment process that helps you configure deployment parameters and creates a `samconfig.toml` file for future deployments.
+
+## Configuration Parameters
+{: .text-delta }
+
+### Core Parameters
+
+| Parameter | Type | Default | Description |
+|:----------|:-----|:--------|:------------|
+| `ProcessorType` | String | `otlp-stdout` | Processor type to use (`otlp-stdout` or `aws-appsignals`) |
+| `CollectorsSecretsKeyPrefix` | String | `serverless-otlp-forwarder/keys` | Prefix for AWS Secrets Manager keys |
+| `CollectorsCacheTtlSeconds` | String | `300` | TTL for the collector cache in seconds |
+| `RouteAllLogs` | String | `true` | Route all AWS logs to the Lambda function |
+
+### Optional Features
+
+| Parameter | Type | Default | Description |
+|:----------|:-----|:--------|:------------|
+| `DeployDemo` | String | `true` | Deploy the demo application |
+| `DemoExporterProtocol` | String | `http/protobuf` | Protocol for demo exporter |
+| `DemoExporterCompression` | String | `gzip` | Compression for demo exporter |
+| `DeployBenchmark` | String | `false` | Deploy the benchmark stack |
+
+## Configuration File
+{: .text-delta }
+
+The `samconfig.toml` file persists your deployment configuration:
+
+```toml
+version = 0.1
+[default.deploy.parameters]
+stack_name = "serverless-otlp-forwarder"
+resolve_s3 = true
+s3_prefix = "serverless-otlp-forwarder"
+region = "us-west-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = [
+    "ProcessorType=otlp-stdout",
+    "CollectorsSecretsKeyPrefix=serverless-otlp-forwarder/keys",
+    "CollectorsCacheTtlSeconds=300",
+    "RouteAllLogs=true",
+    "DeployDemo=false"
+]
+```
+
+## Collector Configuration
+{: .text-delta }
+
+The forwarder uses AWS Secrets Manager to store collector endpoints and authentication details. Each collector configuration requires a secret with the following structure:
+
+```json
+{
+  "name": "my-collector",
+  "endpoint": "https://collector.example.com",
+  "auth": "x-api-key=your-api-key",
+  "exclude": "^/aws/lambda/excluded-function-.*$"
+}
+```
+
+Configuration fields:
+- `name`: A friendly name for the collector (e.g., `selfhosted`, `honeycomb`, `datadog`)
+- `endpoint`: The OTLP collector endpoint URL
+- `auth`: Authentication header or method (`x-api-key=your-key`, `sigv4`, `iam`, `none`)
+- `exclude`: Optional regex pattern to exclude specific log groups from being forwarded to this collector
+
+{: .note }
+The `exclude` parameter allows you to filter out specific log groups from being forwarded to a particular collector. This is useful when you want to send different telemetry data to different collectors.
+
+### Multiple Collectors
+
+To configure multiple collectors, create separate secrets under the same prefix:
 
 ```bash
-git clone https://github.com/dev7a/lambda-otlp-forwarder
-cd lambda-otlp-forwarder
-sam build && sam deploy --guided
+# Additional collector
+aws secretsmanager create-secret \
+  --name "serverless-otlp-forwarder/keys/appsignals" \
+  --secret-string '{
+    "name": "appsignals",
+    "endpoint": "https://xray.us-east-1.amazonaws.com",
+    "auth": "sigv4"
+  }'
 ```
 
-## Deployment Options
-{: .text-delta }
-
-### Basic Deployment
-{: .text-delta }
-
-{: .highlight }
-Standard setup with OTLP stdout processor:
-- Single AWS account
-- One collector endpoint
-- Basic authentication
-- Default configuration
-
-```yaml
-ProcessorType: otlp-stdout
-RouteAllLogs: true
-CollectorEndpoint: https://collector.example.com:4318
-```
-
-### Application Signals
-{: .text-delta }
-
-{: .highlight }
-Setup with AWS Application Signals processor:
-- Native AWS X-Ray integration
-- CloudWatch integration
-- Simplified configuration
-- Automatic context propagation
-
-```yaml
-ProcessorType: aws-appsignals
-EnableXRayTracing: true
-EnableCloudWatchMetrics: true
-```
-
-### Multi-Account
-{: .text-delta }
-
-{: .highlight }
-Deploying across multiple AWS accounts:
-- Central collector account
-- Multiple source accounts
-- Cross-account IAM roles
-- Consolidated monitoring
-
-```yaml
-ProcessorType: otlp-stdout
-CrossAccountRoleArn: arn:aws:iam::ACCOUNT_ID:role/OTLPForwarderRole
-EnableCrossAccountAccess: true
-```
-
-## SAM Template Parameters
-{: .text-delta }
-
-| Parameter | Description | Default | Required |
-|:----------|:------------|:---------|:---------|
-| `ProcessorType` | Type of processor to deploy | `otlp-stdout` | Yes |
-| `RouteAllLogs` | Automatically route all logs | `true` | No |
-| `CollectorEndpoint` | OTLP collector endpoint | - | Yes* |
-| `CollectorAuthType` | Authentication type | `none` | No |
-| `RetentionInDays` | Log retention period | `7` | No |
-| `MemorySize` | Lambda function memory | `256` | No |
-| `Timeout` | Lambda function timeout | `30` | No |
-
-{: .info }
-\* Required only for `otlp-stdout` processor type
-
-## Authentication
-{: .text-delta }
-
-### Basic Auth
-{: .text-delta }
-
-```yaml
-CollectorAuthType: basic
-CollectorAuthSecret: otlp-forwarder/collector/basic-auth
-```
-
-Store credentials in AWS Secrets Manager:
-```json
-{
-  "username": "your-username",
-  "password": "your-password"
-}
-```
-
-### Bearer Token
-{: .text-delta }
-
-```yaml
-CollectorAuthType: bearer
-CollectorAuthSecret: otlp-forwarder/collector/bearer-token
-```
-
-Store token in AWS Secrets Manager:
-```json
-{
-  "token": "your-bearer-token"
-}
-```
-
-### AWS IAM
-{: .text-delta }
-
-```yaml
-CollectorAuthType: aws-iam
-CollectorRegion: us-west-2
-```
-
-## Network Configuration
-{: .text-delta }
-
-### VPC Access
-{: .text-delta }
-
-```yaml
-VpcConfig:
-  SecurityGroupIds:
-    - sg-xxxxxxxxxxxxxxxxx
-  SubnetIds:
-    - subnet-xxxxxxxxxxxxxxxxx
-    - subnet-yyyyyyyyyyyyyyyyy
-```
-
-### Private Link
-{: .text-delta }
-
-```yaml
-EnablePrivateLink: true
-VpcEndpointId: vpce-xxxxxxxxxxxxxxxxx
-```
-
-## Monitoring
-{: .text-delta }
-
-### CloudWatch Metrics
-{: .text-delta }
-
-{: .info }
-Key metrics to monitor:
-- `ProcessedLogEvents`: Number of log events processed
-- `ForwardedSpans`: Number of spans forwarded
-- `ProcessingErrors`: Number of processing errors
-- `ForwardingLatency`: Time taken to forward data
-
-### Alarms
-{: .text-delta }
-
-```yaml
-Alarms:
-  ProcessingErrorsAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      MetricName: ProcessingErrors
-      Threshold: 10
-      Period: 300
-      EvaluationPeriods: 2
-```
-
-## Cost Optimization
-{: .text-delta }
-
-### Log Filtering
-{: .text-delta }
-
-{: .info }
-Optimize costs by:
-- Using precise subscription filters
-- Setting appropriate retention periods
-- Enabling compression
-- Configuring sampling
-
-Example subscription filter:
-```json
-{
-  "filterPattern": "{ $.source = \"otlp-forwarder\" }",
-  "filterName": "OTLPFilter"
-}
-```
-
-### Batch Configuration
-{: .text-delta }
-
-```yaml
-BatchingConfig:
-  MaxItems: 100
-  MaxBytes: 1048576
-  TimeoutSeconds: 30
-```
-
-## Best Practices
-{: .text-delta }
-
-### Security
-{: .text-delta }
-
-{: .warning }
-Security recommendations:
-- Use AWS Secrets Manager for credentials
-- Enable VPC endpoints for private access
-- Implement least privilege IAM roles
-- Enable encryption in transit
-- Regular security audits
-
-### Performance
-{: .text-delta }
-
-{: .info }
-Performance optimization:
-- Configure appropriate memory size
-- Set optimal batch sizes
-- Enable compression
-- Use efficient protocols
-- Monitor and adjust timeouts
-
-### Reliability
-{: .text-delta }
-
-{: .info }
-Reliability measures:
-- Implement proper error handling
-- Set up monitoring and alerts
-- Configure DLQ for failed events
-- Regular backup and recovery testing
-- Multi-region deployment if needed
-
-### Scaling
-{: .text-delta }
-
-{: .info }
-Scaling considerations:
-- Monitor Lambda concurrency
-- Adjust batch sizes based on load
-- Configure appropriate timeouts
-- Use provisioned concurrency if needed
-- Set up throttling alerts
+The forwarder will:
+- Load all collector configurations under the specified prefix
+- Send telemetry data to all configured collectors in parallel
+- Cache configurations based on `CollectorsCacheTtlSeconds`
 
 ## Troubleshooting
 {: .text-delta }
 
-{: .warning }
 Common deployment issues:
+- Missing or incorrect AWS credentials
+  - Check `~/.aws/credentials`
+  - Verify permissions with `aws sts get-caller-identity`
+- SAM CLI version incompatibility
+  - Update SAM CLI: `brew upgrade aws-sam-cli` or `pip install --upgrade aws-sam-cli`
+  - Clear SAM cache: `sam cache purge`
+- Build errors
+  - Validate template: `sam validate --lint`
+  - Check CloudFormation events
+  - Review IAM permissions
 
-1. **IAM Permissions**
-   - Check role permissions
-   - Verify cross-account access
-   - Review resource policies
-
-2. **Network Issues**
-   - Verify VPC configuration
-   - Check security groups
-   - Test collector connectivity
-
-3. **Authentication Problems**
-   - Validate secrets configuration
-   - Check token expiration
-   - Verify endpoint URLs
-
-## Next Steps
-{: .text-delta }
-
-- [Configure Processors](../concepts/processors)
-- [Set up Monitoring](monitoring)
-- [Advanced Features](../advanced) 
+For detailed troubleshooting steps, refer to the [Troubleshooting Guide](../troubleshooting).

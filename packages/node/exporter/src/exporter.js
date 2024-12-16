@@ -100,7 +100,7 @@ function getEnvConfig() {
 }
 /**
  * StdoutOTLPExporterNode exports OpenTelemetry spans to stdout in a format
- * compatible with lambda-otlp-forwarder.
+ * compatible with serverless-otlp-forwarder.
  *
  * @example
  * ```typescript

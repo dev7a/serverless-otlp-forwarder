@@ -8,26 +8,33 @@ has_children: true
 # Getting Started
 {: .fs-9 }
 
-Get up and running with Lambda OTLP Forwarder in minutes.
+Installation and deployment guide for Serverless OTLP Forwarder.
 {: .fs-6 .fw-300 }
 
 {: .info }
-> New to OpenTelemetry? Check out the [OpenTelemetry documentation](https://opentelemetry.io/docs/) first.
+> For OpenTelemetry concepts and terminology, refer to the [OpenTelemetry documentation](https://opentelemetry.io/docs/).
 
-## Quick Start
+## Prerequisites
 {: .text-delta }
-
 <ol>
-<li>Install prerequisites:
+<li>Install required tools:
 
 <div class="code-example" markdown="1">
 {% capture macos_install %}
 ```bash
 # Install AWS SAM CLI
 brew install aws-sam-cli
+
+# Install AWS CLI (if not installed)
+brew install awscli
+
 # Install rust and cargo-lambda
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cargo install cargo-lambda
+
+# Verify installations
+sam --version
+aws --version
 ```
 {% endcapture %}
 
@@ -35,9 +42,19 @@ cargo install cargo-lambda
 ```bash
 # Install AWS SAM CLI
 pip install aws-sam-cli
+
+# Install AWS CLI (if not installed)
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
 # Install rust and cargo-lambda
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cargo install cargo-lambda
+
+# Verify installations
+sam --version
+aws --version
 ```
 {% endcapture %}
 
@@ -45,9 +62,17 @@ cargo install cargo-lambda
 ```powershell
 # Install AWS SAM CLI
 choco install aws-sam-cli
+
+# Install AWS CLI (if not installed)
+choco install awscli
+
 # Download and run rustup-init.exe from https://rustup.rs/
 # Install rust and cargo-lambda
 cargo install cargo-lambda
+
+# Verify installations
+sam --version
+aws --version
 ```
 {% endcapture %}
 
@@ -68,11 +93,11 @@ cargo install cargo-lambda
 </li>
 
 <li markdown="1">
-Create a default secret in AWS Secrets Manager to define your collector or observability backend endpoint. Replace the `endpoint` and `auth` values with your collector endpoint and API key (if any).
+Configure the collector endpoint by creating a secret in AWS Secrets Manager:
 
 ```bash
 aws secretsmanager create-secret \
-  --name "lambda-otlp-forwarder/keys/default" \
+  --name "serverless-otlp-forwarder/keys/default" \
   --secret-string '{
     "name": "my-collector",
     "endpoint": "https://collector.example.com",
@@ -82,35 +107,60 @@ aws secretsmanager create-secret \
 </li>
 
 <li markdown="1">
-Deploy the forwarder and the demo stack:
+Deploy the forwarder and demo stack:
 
 ```bash
-git clone https://github.com/dev7a/lambda-otlp-forwarder
-cd lambda-otlp-forwarder
-sam build && sam deploy --guided
+# Clone repository
+git clone https://github.com/dev7a/serverless-otlp-forwarder
+cd serverless-otlp-forwarder
+
+# Build and validate
+sam build
+sam validate --lint
+
+# Deploy with guided setup
+sam deploy --guided
 ```
 
-With the `--guided` flag, SAM CLI will prompt you for the necessary parameters. 
-Make sure that you are deploying the demo stack. You will have to reply `y` to the question about deploying a function url without authentication (you can delete the demo stack after testing).
+The `--guided` flag initiates an interactive deployment process. When prompted:
+- Confirm deployment of the demo stack
+- Accept the creation of a function URL without authentication (can be removed after testing)
 </li>
 
-<li>Open your observability backend and you should see traces from the demo stack.</li>
+<li>Verify the deployment by checking your observability backend for demo stack traces.</li>
 </ol>
 
-
-## What's Next?
+## Implementation
 {: .text-delta }
 
-After completing the quick start:
-- Learn about the [Architecture](../concepts/architecture)
-- Configure [Advanced Features](../advanced)
-- Set up [Monitoring](../deployment/monitoring)
+Choose your programming language and follow the corresponding guide to instrument your application:
 
-## Instrument your application
-{: .text-delta }
-Choose your language and follow the development guide to enable your application to send traces to the forwarder:
 - <i class="devicon-rust-plain colored"></i> [Rust Development Guide](../languages/rust)
 - <i class="devicon-python-plain colored"></i> [Python Development Guide](../languages/python)
 - <i class="devicon-nodejs-plain colored"></i> [Node.js Development Guide](../languages/nodejs)
+
+## Configuration Options
+{: .text-delta }
+
+The forwarder supports various configuration options:
+- [Basic Configuration](configuration) - Essential settings
+- [Monitoring](../deployment/monitoring) - Operational visibility
+
+## Troubleshooting
+{: .text-delta }
+
+Common deployment issues:
+- Missing or incorrect AWS credentials
+  - Check `~/.aws/credentials`
+  - Verify permissions with `aws sts get-caller-identity`
+- SAM CLI version incompatibility
+  - Update SAM CLI: `brew upgrade aws-sam-cli` or `pip install --upgrade aws-sam-cli`
+  - Clear SAM cache: `sam cache purge`
+- Build errors
+  - Validate template: `sam validate --lint`
+  - Check CloudFormation events
+  - Review IAM permissions
+
+For detailed troubleshooting steps, refer to the [Troubleshooting Guide](../troubleshooting).
 
 

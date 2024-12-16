@@ -1,12 +1,13 @@
-title: Lambda OTLP Forwarder
+title: Serverless OTLP Forwarder
 description: Serverless OpenTelemetry data forwarding for AWS Lambda
 theme: just-the-docs
-logo: "/assets/images/lof.png"
-url: https://dev7a.github.io/lambda-otlp-forwarder
+logo: "/assets/images/logo.png"
+favicon_ico: "/assets/images/favicon.ico"
+url: https://dev7a.github.io/serverless-otlp-forwarder
 
 # Theme settings
 heading_anchors: true
-footer_content: "Copyright &copy; 2024. Distributed under the <a href=\"https://github.com/dev7a/lambda-otlp-forwarder/blob/main/LICENSE\">MIT license.</a>"
+footer_content: "Copyright &copy; 2024. Distributed under the <a href=\"https://github.com/dev7a/serverless-otlp-forwarder/blob/main/LICENSE\">MIT license.</a>"
 last_edit_timestamp: true
 last_edit_time_format: "%b %e %Y at %I:%M %p"
 
@@ -21,15 +22,14 @@ google_fonts:
 
 # External navigation links
 nav_external_links:
-  - title: Lambda OTLP Forwarder on GitHub
-    url: https://github.com/dev7a/lambda-otlp-forwarder
+  - title: Serverless OTLP Forwarder on GitHub
+    url: https://github.com/dev7a/serverless-otlp-forwarder
     hide_icon: false
 
 plugins:
   - jekyll-include-cache
   - jekyll-seo-tag
   - jekyll-github-metadata
-  - jekyll-include-cache
   - jekyll-sitemap
 
 mermaid:
@@ -55,7 +55,17 @@ nav_enabled: true
 
 # Navigation
 aux_links:
-  "View on GitHub": "https://github.com/dev7a/lambda-otlp-forwarder"
+  "View on GitHub": "https://github.com/dev7a/serverless-otlp-forwarder"
+  "Edit on GitHub": "https://github.com/dev7a/serverless-otlp-forwarder/edit/main/docs/"
+
+# GitHub edit link settings
+gh_edit_link: false
+gh_edit_link_text: "Edit this page on GitHub"
+gh_edit_repository: "https://github.com/dev7a/serverless-otlp-forwarder"
+gh_edit_branch: "main"
+gh_edit_source: docs
+gh_edit_view_mode: "tree"
+gh_root: ""
 
 back_to_top: true
 back_to_top_text: "Back to top"
@@ -73,8 +83,3 @@ compress_html:
   blanklines: false
   profile: false
 
-# Collections for versioned docs (if needed later)
-# collections:
-#   docs:
-#     permalink: "/:collection/:path/"
-#     output: true

@@ -7,7 +7,7 @@ import { IExportTraceServiceResponse } from '@opentelemetry/otlp-transformer';
 import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 /**
  * StdoutOTLPExporterNode exports OpenTelemetry spans to stdout in a format
- * compatible with lambda-otlp-forwarder.
+ * compatible with serverless-otlp-forwarder.
  *
  * @example
  * ```typescript

@@ -50,7 +50,20 @@ h1, h2, h3, h4, h5, h6 {
 
 code {
   font-family: $mono-font-family;
-  font-size: 0.9em;
+  font-size: 0.95em;
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+}
+
+code.language-plaintext {
+  font-size: 1em;  // Larger size for inline code blocks
+}
+
+pre {
+  code {
+    font-size: 1em;  // Slightly larger for code blocks
+    padding: 0;  // Remove padding in code blocks as they're already padded by pre
+  }
 }
 
 // Print-only styles
@@ -61,8 +74,12 @@ code {
 
 // Custom callouts with Octicons
 $callouts: (
-    info: (#58a6ff, rgba(56, 139, 253, 0.15), "\f05a"),  // info-circle
+    note: (#58a6ff, rgba(56, 139, 253, 0.15), "\f059"),  // info-circle
+    info: (#58a6ff, rgba(56, 139, 253, 0.15), "\f059"),  // info-circle
+    tip: (#238636, rgba(35, 134, 54, 0.15), "\f00c"),  // check
+    important: (#8957e5, rgba(137, 87, 229, 0.15), "\f0f6"),  // file
     warning: (#d29922, rgba(187, 128, 9, 0.15), "\f071"),  // alert
+    caution: (#d29922, rgba(187, 128, 9, 0.15), "\f071"),  // alert
     danger: (#f85149, rgba(248, 81, 73, 0.15), "\f06a"),  // exclamation-circle
     success: (#238636, rgba(35, 134, 54, 0.15), "\f00c")  // check
 );
@@ -76,13 +93,14 @@ $callouts: (
         padding: 1rem;
         margin: 1.5rem 0;
         position: relative;
-        padding-left: 3rem;
+        padding-left: 3.5rem;
+        min-height: 3rem;
         
         &::before {
             content: "";
             position: absolute;
-            left: 1rem;
-            top: 1rem;
+            left: 1.2rem;
+            top: 1.2rem;
             width: 1.2em;
             height: 1.2em;
             background-color: nth($props, 1);
@@ -97,6 +115,17 @@ $callouts: (
         p {
             margin-bottom: 0;
             color: $body-text-color;
+            line-height: 1.5;
+        }
+
+        // Add specific styling for lists within callouts with higher specificity
+        ul, ol {
+            margin-bottom: 0;
+            padding-left: 0;
+            
+            li, li:first-of-type, li:last-of-type {
+                margin: 0.25em 2em !important;  // Using !important to override any other styles
+            }
         }
 
         a {
@@ -111,20 +140,24 @@ $callouts: (
 }
 
 // Callout icons using Just the Docs built-in icons
-.warning {
-    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.22 1.754a.25.25 0 00-.44 0L1.698 13.132a.25.25 0 00.22.368h12.164a.25.25 0 00.22-.368L8.22 1.754zm-1.763-.707c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0114.082 15H1.918a1.75 1.75 0 01-1.543-2.575L6.457 1.047zM9 11a1 1 0 11-2 0 1 1 0 012 0zm-.25-5.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z"></path></svg>');
+.note, .info {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm6.5-.25A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.75h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-2h-.25a.75.75 0 01-.75-.75zM8 6a1 1 0 100-2 1 1 0 000 2z"></path></svg>');
 }
 
-.info {
-    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8zm6.5-.25A.75.75 0 017.25 7h1a.75.75 0 01.75.75v2.75h.25a.75.75 0 010 1.5h-2a.75.75 0 010-1.5h.25v-2h-.25a.75.75 0 01-.75-.75zM8 6a1 1 0 100-2 1 1 0 000 2z"></path></svg>');
+.tip, .success {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path></svg>');
+}
+
+.important {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M3.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 00.25-.25V6h-2.75A1.75 1.75 0 019 4.25V1.5H3.75zm6.75.062V4.25c0 .138.112.25.25.25h2.688a.252.252 0 00-.011-.013l-2.914-2.914a.272.272 0 00-.013-.011zM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0113.25 16h-9.5A1.75 1.75 0 012 14.25V1.75z"></path></svg>');
+}
+
+.warning, .caution {
+    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8.22 1.754a.25.25 0 00-.44 0L1.698 13.132a.25.25 0 00.22.368h12.164a.25.25 0 00.22-.368L8.22 1.754zm-1.763-.707c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0114.082 15H1.918a1.75 1.75 0 01-1.543-2.575L6.457 1.047zM9 11a1 1 0 11-2 0 1 1 0 012 0zm-.25-5.25a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z"></path></svg>');
 }
 
 .danger {
     --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M4.47.22A.75.75 0 015 0h6a.75.75 0 01.53.22l4.25 4.25c.141.14.22.331.22.53v6a.75.75 0 01-.22.53l-4.25 4.25A.75.75 0 0111 16H5a.75.75 0 01-.53-.22L.22 11.53A.75.75 0 010 11V5a.75.75 0 01.22-.53L4.47.22zm.84 1.28L1.5 5.31v5.38l3.81 3.81h5.38l3.81-3.81V5.31L10.69 1.5H5.31zM8 4a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 018 4zm0 8a1 1 0 100-2 1 1 0 000 2z"></path></svg>');
-}
-
-.success {
-    --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"></path></svg>');
 }
 
 // Custom button styles
@@ -137,6 +170,7 @@ $callouts: (
 // Navigation styles
 .nav-list .nav-list-item {
     font-weight: $font-weight-medium;
+    
     .nav-list-link {
         &:hover {
             background-image: linear-gradient(
@@ -145,8 +179,48 @@ $callouts: (
                 rgba($feedback-color, 0.8) 80%,
                 rgba($feedback-color, 0) 100%
             );
+            text-decoration: none;
+            color: lighten($link-color, 10%);
+        }
+        
+        &.active {
+            background-image: linear-gradient(
+                -90deg,
+                rgba($link-color, 0.1) 0%,
+                rgba($link-color, 0.08) 80%,
+                rgba($link-color, 0) 100%
+            );
+            color: $link-color;
+            font-weight: $font-weight-semibold;
         }
     }
+    
+    &.active {
+        > .nav-list-link {
+            color: $link-color;
+            font-weight: $font-weight-semibold;
+        }
+        
+        > .nav-list {
+            display: block;
+        }
+    }
+}
+
+// Parent items of active page
+.nav-list-item.active-ancestor {
+    > .nav-list-link {
+        color: $link-color;
+        font-weight: $font-weight-semibold;
+    }
+}
+
+// Current page in navigation
+.nav-list-link.active {
+    border-left: 4px solid $link-color;
+    margin-left: -4px;
+    color: $link-color !important;
+    font-weight: $font-weight-semibold !important;
 }
 
 // Search styles
@@ -199,5 +273,32 @@ $callouts: (
 .breadcrumb-nav-list-item.current {
     font-weight: $font-weight-medium;
     color: $body-text-color;
+}
+
+// Custom text-delta styling
+.text-delta {
+    font-size: $font-size-7 !important;  // Increased to 24px
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: $font-weight-semibold !important;  // Made bolder
+    color: $body-heading-color;
+    margin-bottom: 1em;
+    opacity: 0.9;  // Slight transparency for visual hierarchy
+}
+
+// Additional specificity for text-delta
+.main-content h2.text-delta {
+    font-size: $font-size-7 !important;
+    margin-top: 2rem !important;
+}
+
+// Callout list item margins
+.main-content {
+    .info, .warning, .note, .important, .caution, .danger, .success, .tip {
+        li {
+            margin-left: 2.8em !important;
+            margin-right: 2em !important;
+        }
+    }
 }
 

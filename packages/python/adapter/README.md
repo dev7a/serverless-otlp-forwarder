@@ -2,7 +2,7 @@
 
 The `otlp-stdout-adapter` library is designed to export OpenTelemetry data to stdout in a formatted JSON structure, suitable for serverless environments like AWS Lambda. It implements a custom HTTP adapter that can be used with OpenTelemetry OTLP exporters to send telemetry data to stdout.
 
-By outputting telemetry data to stdout, this library enables seamless integration with log management systems in serverless environments. For instance, in AWS Lambda, CloudWatch Logs can capture this output, allowing tools like the [lambda-otlp-forwarder](https://github.com/dev7a/lambda-otlp-forwarder) to efficiently collect and forward the data to centralized OpenTelemetry collectors.
+By outputting telemetry data to stdout, this library enables seamless integration with log management systems in serverless environments. For instance, in AWS Lambda, CloudWatch Logs can capture this output, allowing tools like the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder) to efficiently collect and forward the data to centralized OpenTelemetry collectors.
 
 >[!IMPORTANT]
 >This package is highly experimental and should not be used in production. Contributions are welcome.

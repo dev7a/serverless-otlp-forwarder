@@ -5,162 +5,172 @@ parent: Concepts
 nav_order: 1
 ---
 
-# Architecture
+# Architecture Details
 {: .fs-9 }
 
-Understanding how Lambda OTLP Forwarder works.
+Technical implementation details of the Serverless OTLP Forwarder components.
 {: .fs-6 .fw-300 }
 
-{: .info }
-The Lambda OTLP Forwarder uses a unique architecture that leverages AWS CloudWatch Logs as a transport layer for telemetry data, providing several benefits over traditional sidecar-based solutions.
-
-## System Overview
+## Component Implementation
 {: .text-delta }
 
-```mermaid
-graph LR
-    A[Lambda Function] -->|stdout| B[CloudWatch Logs]
-    B -->|subscription| C[Forwarder Lambda]
-    C -->|OTLP| D[Collector]
-    
-    classDef lambda fill:#FF9900,stroke:#FF9900,stroke-width:2px,color:#000;
-    classDef aws fill:#232F3E,stroke:#232F3E,stroke-width:2px,color:#fff;
-    classDef collector fill:#00A4EF,stroke:#00A4EF,stroke-width:2px,color:#fff;
-    
-    class A,C lambda;
-    class B aws;
-    class D collector;
+### Application Instrumentation
+{: .text-delta }
+
+The Serverless OTLP Forwarder implements language-specific packages that adapt the OpenTelemetry SDK for serverless environments. Instead of sending telemetry data directly to collectors over HTTP, these packages serialize the data to stdout in a structured format:
+
+- **Node.js**: [`@aws-lambda/otlp-stdout-exporter`](../languages/nodejs)
+- **Python**: [`stdout-adapter`](../languages/python) 
+- **Rust**: [`otlp-stdout-client`](../languages/rust)
+
+The packages integrate with the standard OpenTelemetry SDK interfaces while avoiding network connections during function execution. This approach reduces cold start overhead since the telemetry data is processed asynchronously by the forwarder after the function completes.
+
+Key design principles:
+- Lightweight initialization to minimize cold start impact
+- Efficient serialization to stdout with compression support
+- Simple integration with OpenTelemetry SDKs
+- Zero network overhead during function execution
+
+{: .note }
+In serverless environments, there's an important tradeoff between instrumentation and cold start time. While the OpenTelemetry SDK components are required, additional instrumentation libraries should be loaded selectively based on your needs. This helps maintain a balance between observability and function startup time.
+
+### CloudWatch Transport
+{: .text-delta }
+
+CloudWatch Logs serves as a durable message queue with several advantages:
+
+- **Durability**: AWS-managed storage with configurable retention (can be as low as 1 day, to save on storage costs)
+- **Scalability**: Automatic scaling with Lambda concurrency
+- **Cost-efficiency**: Pay only for ingestion and storage, minimize costs with short retention periods
+- **Security**: Integrated with IAM and KMS encryption
+
+The forwarder can subscribe to all logs in an AWS account while efficiently filtering only relevant telemetry data:
+
+```json
+{ $.__otel_otlp_stdout = * }
 ```
 
-## Components
+{: .note }
+By combining account-wide log subscription with precise filtering, the forwarder processes only the logs containing OTLP data, making it both comprehensive and efficient.
+
+### Forwarder Implementation
 {: .text-delta }
 
-### 1. Application Instrumentation
+The forwarder Lambda function is optimized for performance:
+
+- **Runtime**: Rust for minimal cold start and memory usage
+- **Architecture**: arm64 for cost optimization
+- **Memory**: Configurable based on workload (default: 128MB)
+- **Concurrency**: Automatic scaling with CloudWatch Logs
+
+Processing pipeline:
+1. Log event validation and parsing
+2. OTLP data extraction and decompression
+3. Protocol transformation (if needed)
+4. Collector authentication and forwarding
+
+{: .note }
+Batching and buffering should be configured in your instrumented applications using the OpenTelemetry SDK's BatchSpanProcessor. This reduces the number of log entries and collector requests, improving efficiency and reducing costs.
+
+### Processing Options
 {: .text-delta }
 
-Language-specific libraries format telemetry data and write to stdout/CloudWatch Logs:
+The forwarder supports two processor types:
 
-{: .highlight }
-> - Integrates with OpenTelemetry SDKs
-> - Captures traces, metrics, and logs in OTLP format
-> - Serializes and optionally compresses telemetry data
-> - Writes formatted data to stdout
+#### OTLP Stdout Processor
+- Forwards OTLP data directly to collectors
+- Supports two authentication methods:
+  - API key via custom headers (OTEL_EXPORTER_OTLP_HEADERS format)
+  - AWS SigV4 for AWS Application Signals
+- Authentication credentials stored securely in AWS Secrets Manager
+- Respects compression configuration from the application
 
-### 2. CloudWatch Logs
+{: .warning }
+> The AWS AppSignals Processor is experimental and should not be used in production environments.
+
+#### AWS AppSignals Processor (Experimental)
+- Parses trace data from the `aws/span` log group
+- Converts AWS Application Signals format to OTLP JSON
+- Provides compatibility with standard OTLP collectors
+- May have limitations and known issues
+
+### Performance Characteristics
 {: .text-delta }
 
-Transport layer for telemetry data:
+The system scales automatically based on:
+- Lambda concurrency limits
+- CloudWatch Logs subscription throughput
+- Collector endpoint capacity
+- Network bandwidth
 
-{: .highlight }
-> - Automatically captures stdout/stderr from Lambda functions
-> - Provides durable storage and routing
-> - Enables subscription filters
-> - Handles log retention and encryption
-
-### 3. Forwarder Lambda
+## Security Implementation
 {: .text-delta }
 
-Processes and forwards data to collectors:
-
-{: .highlight }
-> - Receives log events via CloudWatch Logs subscription
-> - Decompresses and deserializes OTLP data
-> - Routes telemetry to appropriate collectors
-> - Handles authentication and retries
-> - Provides buffering and batching
-
-### 4. OTLP Collector
+### Authentication Flow
 {: .text-delta }
 
-Your chosen observability platform:
+The forwarder supports two authentication mechanisms:
 
-{: .highlight }
-> - Receives OTLP data over HTTP/HTTPS
-> - Provides advanced sampling and filtering
-> - Supports multiple backend destinations
-> - Handles data aggregation and processing
+1. **Custom Headers Authentication**:
+   - Headers are stored in AWS Secrets Manager
+   - Retrieved and cached in memory for a configurable TTL
+   - Follows OTEL_EXPORTER_OTLP_HEADERS format
+   - Supports any collector-specific authentication scheme
 
-## Data Flow
+2. **AWS SigV4 Authentication**:
+   - Uses the forwarder's IAM role to sign requests
+   - No additional credentials needed
+   - Compatible with AWS Application Signals
+   - Automatic credential rotation
+
+{: .note }
+Credential caching helps minimize Secrets Manager API calls while ensuring credentials are regularly refreshed for security.
+
+### Access Control
 {: .text-delta }
 
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant CWL as CloudWatch Logs
-    participant FL as Forwarder Lambda
-    participant OC as OTLP Collector
-
-    App->>CWL: Emit telemetry data to stdout
-    Note over App,CWL: Data is serialized & compressed
-    CWL->>FL: Capture output and send log events
-    Note over CWL,FL: Subscription filter matches OTLP data
-    FL->>FL: Process matching log entries
-    Note over FL: Deserialize & decompress
-    FL->>OC: Forward data to OTLP collector
-    Note over FL,OC: Batched & authenticated
+Required IAM permissions for the forwarder:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:BatchGetSecretValue",
+        "secretsmanager:ListSecrets",
+        "xray:PutTraceSegments",
+        "xray:PutSpans",
+        "xray:PutSpansForIndexing"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:${Partition}:secretsmanager:${Region}:${AccountId}:secret:${CollectorsSecretsKeyPrefix}/*"
+    }
+  ]
+}
 ```
 
-## Benefits
+{: .note }
+The policy includes permissions for Secrets Manager operations (for collector credentials) and X-Ray API operations (required for sending telemetry to AWS Application Signals).
+
+## Monitoring and Observability
 {: .text-delta }
 
-{: .success }
-**Reduced Cold Start**
-No sidecar initialization means faster function startup
+The forwarder provides observability through two channels:
 
-{: .success }
-**Cost Effective**
-Minimal resource overhead and efficient data transport
+1. **OpenTelemetry Traces**:
+   - Rich span attributes for operational insights
+   - Detailed processing information
+   - Can be used to derive operational metrics
 
-{: .success }
-**Secure**
-Data stays within AWS infrastructure with proper IAM controls
-
-{: .success }
-**Flexible**
-Support for multiple languages and collectors
-
-{: .success }
-**Reliable**
-Durable transport via CloudWatch Logs with retry capabilities
-
-## Best Practices
-{: .text-delta }
-
-### Data Format
-{: .text-delta }
-
-{: .info }
-- Use protobuf for better performance
-- Enable compression for large payloads
-- Consider payload size limits
-
-### Processing
-{: .text-delta }
-
-{: .info }
-- Configure appropriate batch sizes
-- Set reasonable timeouts
-- Monitor processing errors
-
-### Resource Usage
-{: .text-delta }
-
-{: .info }
-- Monitor Lambda memory usage
-- Watch CloudWatch Logs costs
-- Configure appropriate concurrency
-
-### Error Handling
-{: .text-delta }
-
-{: .info }
-- Implement retry strategies
-- Set up error alerting
-- Monitor failed deliveries
-
-## Next Steps
-{: .text-delta }
-
-- [Configure Processors](../concepts/processors)
-- [Set up Monitoring](../deployment/monitoring)
-- [Performance Tuning](../advanced/performance) 
+2. **Lambda CloudWatch Metrics**:
+   - Standard Lambda execution metrics
+   - Invocation counts
+   - Error rates
+   - Duration

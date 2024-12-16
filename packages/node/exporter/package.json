@@ -32,10 +32,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/dev7a/lambda-otlp-forwarder.git",
+    "url": "git+https://github.com/dev7a/serverless-otlp-forwarder.git",
     "directory": "packages/node/exporter"
   },
-  "homepage": "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/node/exporter",
+  "homepage": "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/node/exporter",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"

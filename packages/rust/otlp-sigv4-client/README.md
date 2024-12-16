@@ -116,4 +116,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-This crate is part of the [lambda-otlp-forwarder](https://github.com/dev7a/lambda-otlp-forwarder) project. 
+This crate is part of the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder) project. 

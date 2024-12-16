@@ -6,7 +6,7 @@ authors.workspace = true
 license.workspace = true
 rust-version.workspace = true
 description = "Core functionality for lambda-lw-http-router"
-repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/rust/lambda-lw-http-router/router-core"
+repository = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/rust/lambda-lw-http-router/router-core"
 
 [dependencies]
 serde_json.workspace = true

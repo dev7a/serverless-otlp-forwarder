@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.2] - 2024-12-13
 
 ### Fixed
-- Fixed https://github.com/dev7a/lambda-otlp-forwarder/issues/22
+- Fixed https://github.com/dev7a/serverless-otlp-forwarder/issues/22
 - Updated dependency for lambda-lw-http-router-core dependency to version 0.1.2
 
 ## [0.1.1] - 2024-11-23

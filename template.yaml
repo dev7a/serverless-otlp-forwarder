@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
-Description: Main stack for lambda-otlp-forwarder with configurable processor selection
+Description: Main stack for serverless-otlp-forwarder with configurable processor selection
 
 Parameters:
   ProcessorType:
@@ -15,7 +15,7 @@ Parameters:
   CollectorsSecretsKeyPrefix:
     Type: String
     Description: The prefix for the secrets manager key for the collector.
-    Default: 'lambda-otlp-forwarder/keys'
+    Default: 'serverless-otlp-forwarder/keys'
   CollectorsCacheTtlSeconds:
     Type: String
     Description: The TTL for the collector cache.
@@ -48,7 +48,6 @@ Conditions:
   IsAwsAppSignalsProcessor: !Equals [!Ref ProcessorType, "aws-appsignals"]
   DeployDemo: !Equals [!Ref DeployDemo, 'true']
   DeployBenchmark: !Equals [!Ref DeployBenchmark, 'true']
-  RouteAllLogs: !Equals [!Ref RouteAllLogs, 'true']
 
 Resources:
   OtlpStdoutProcessor:

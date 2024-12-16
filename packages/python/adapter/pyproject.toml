@@ -32,8 +32,8 @@ dependencies = [
 requires-python = ">=3.12"
 
 [project.urls]
-Homepage = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/python/adapter"
-Repository = "https://github.com/dev7a/lambda-otlp-forwarder/tree/main/packages/python/adapter"
+Homepage = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/python/adapter"
+Repository = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/python/adapter"
 
 [tool.setuptools]
 include-package-data = true

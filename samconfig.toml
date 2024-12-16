@@ -1,11 +1,11 @@
 version = 0.1
 [default.global.parameters]
-stack_name = "lambda-otlp-forwarder"
+stack_name = "serverless-otlp-forwarder"
 beta_features = "yes"
 
 [default.deploy.parameters]
 resolve_s3 = true
-s3_prefix = "lambda-otlp-forwarder"
+s3_prefix = "serverless-otlp-forwarder"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
 parameter_overrides = [

@@ -8,7 +8,7 @@ has_children: true
 # Language Support
 {: .fs-9 }
 
-Choose your preferred programming language and get started with Lambda OTLP Forwarder.
+Language-specific packages for Serverless OTLP Forwarder integration.
 {: .fs-6 .fw-300 }
 
 ## Supported Languages
@@ -16,11 +16,20 @@ Choose your preferred programming language and get started with Lambda OTLP Forw
 
 | Language | Package | Version | Status |
 |:---------|:--------|:--------|:-------|
-| [Rust](rust) | `otlp-stdout-client` | [![Crates.io](https://img.shields.io/crates/v/otlp-stdout-client.svg)](https://crates.io/crates/otlp-stdout-client) | Stable |
-| [Python](python) | `otlp-stdout-adapter` | [![PyPI](https://img.shields.io/pypi/v/otlp-stdout-adapter.svg)](https://pypi.org/project/otlp-stdout-adapter/) | Stable |
-| [Node.js](nodejs) | `@dev7a/otlp-stdout-exporter` | [![npm](https://img.shields.io/npm/v/@dev7a/otlp-stdout-exporter.svg)](https://www.npmjs.com/package/@dev7a/otlp-stdout-exporter) | Stable |
+| [Rust](rust) | `otlp-stdout-client` | [![Crates.io](https://img.shields.io/crates/v/otlp-stdout-client.svg)](https://crates.io/crates/otlp-stdout-client) | Alpha |
+| [Python](python) | `otlp-stdout-adapter` | [![PyPI](https://img.shields.io/pypi/v/otlp-stdout-adapter.svg)](https://pypi.org/project/otlp-stdout-adapter/) | Alpha |
+| [Node.js](nodejs) | `@dev7a/otlp-stdout-exporter` | [![npm](https://img.shields.io/npm/v/@dev7a/otlp-stdout-exporter.svg)](https://www.npmjs.com/package/@dev7a/otlp-stdout-exporter) | Alpha |
 
-## Quick Comparison
+## Integration Overview
+{: .text-delta }
+
+Each language package provides a lightweight adapter that:
+- Serializes OTLP data to stdout
+- Supports both JSON and protobuf formats
+- Handles compression when configured
+- Integrates with standard OpenTelemetry SDKs
+
+## Quick Examples
 {: .text-delta }
 
 <div class="code-example" markdown="1">
@@ -74,65 +83,16 @@ const exporter = new StdoutOTLPExporterNode({
 </div>
 </div>
 
-## Features by Language
+## Configuration
 {: .text-delta }
 
-### Common Features
-{: .text-delta }
-
-{: .highlight }
-All language implementations provide:
-- OTLP format support (protobuf and JSON)
-- Compression options (gzip)
-- Automatic AWS Lambda context integration
-- Configurable through environment variables
-- Batch processing capabilities
-
-### Language-Specific Features
-{: .text-delta }
-
-{: .success }
-**Rust**
-- Full async support with Tokio
-- Zero-copy serialization
-- Comprehensive error handling
-- Memory-efficient implementation
-
-{: .success }
-**Python**
-- Sync and async support
-- Context propagation
-- Integration with popular frameworks
-- Automatic resource detection
-
-{: .success }
-**Node.js**
-- Promise-based API
-- TypeScript support
-- Express/Fastify middleware
-- Custom attribute processors
-
-## Environment Variables
-{: .text-delta }
-
-Common configuration options across all languages:
+All language implementations support standard OpenTelemetry environment variables:
 
 | Variable | Description | Default |
 |:---------|:------------|:--------|
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` or `http/json` | `http/protobuf` |
-| `OTEL_EXPORTER_OTLP_COMPRESSION` | `gzip` or `none` | `gzip` |
-| `OTEL_SERVICE_NAME` | Name of your service | Function name |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol for OTLP data (`http/protobuf` or `http/json`) | `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_COMPRESSION` | Compression type (`gzip` or `none`) | `gzip` |
+| `OTEL_SERVICE_NAME` | Name of your service for telemetry identification | - |
 
-{: .info }
-> See language-specific pages for additional configuration options.
-
-## Coming Soon
-{: .text-delta }
-
-{: .warning }
-We're working on support for:
-- Java
-- .NET
-- Go
-
-Want to contribute? Check out our [Contributing Guide](../contributing) to help add support for more languages! 
+{: .note }
+See the language-specific guides for detailed integration instructions and examples. 

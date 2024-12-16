@@ -392,7 +392,7 @@ async fn main() -> Result<(), LambdaError> {
     OpenTelemetrySubscriberBuilder::new()
         .with_env_filter(true)
         .with_tracer_provider(tracer_provider.clone())
-        .with_service_name("lambda-otlp-forwarder")
+        .with_service_name("serverless-otlp-forwarder")
         .init()?;
 
     let target_url = env::var("TARGET_URL").expect("TARGET_URL must be set");

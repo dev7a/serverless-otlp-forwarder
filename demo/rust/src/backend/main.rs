@@ -263,7 +263,7 @@ async fn main() -> Result<(), LambdaError> {
     OpenTelemetrySubscriberBuilder::new()
         .with_env_filter(true)
         .with_tracer_provider(tracer_provider.clone())
-        .with_service_name("lambda-otlp-forwarder")
+        .with_service_name("serverless-otlp-forwarder")
         .init()?;
 
     let aws_config = aws_config::load_from_env().await;

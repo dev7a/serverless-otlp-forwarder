@@ -1,4 +1,4 @@
-//! Collector configuration management for the Lambda OTLP forwarder.
+//! Collector configuration management for the Serverless OTLP forwarder.
 //!
 //! This module handles:
 //! - Loading collector configurations from AWS Secrets Manager
