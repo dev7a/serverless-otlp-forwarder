@@ -4,8 +4,71 @@ use aws_lambda_events::{
     http::HeaderMap,
 };
 use lambda_runtime::tracing::Span;
+use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::RwLock;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+lazy_static! {
+    /// Default set of safe HTTP headers to capture in spans.
+    ///
+    /// Following OpenTelemetry semantic conventions for HTTP headers:
+    /// - Includes common, non-sensitive headers useful for debugging and monitoring
+    /// - Excludes sensitive headers like `Authorization` and `Cookie` to avoid security risks
+    /// - Can be overridden via `configure_captured_*_headers()` if different headers are needed
+    /// - `User-Agent` is handled separately via `user_agent.original` attribute
+    /// - `Content-Length` is handled separately via `http.request.body.size` and `http.response.body.size` attributes
+    static ref COMMON_HEADERS: Vec<&'static str> = vec![
+        "accept",
+        "accept-encoding",
+        "accept-language",
+        "cache-control",
+        "content-encoding",
+        "content-language",
+        "content-type",
+        "etag",
+        "forwarded",
+        "if-match",
+        "if-modified-since",
+        "if-none-match",
+        "if-unmodified-since",
+        "last-modified",
+        "location",
+        "origin",
+        "range",
+        "vary",
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-forwarded-proto",
+    ];
+    static ref CAPTURED_REQUEST_HEADERS: RwLock<HashSet<String>> = {
+        let mut headers = HashSet::new();
+        headers.extend(COMMON_HEADERS.iter().map(|&h| h.to_string()));
+        RwLock::new(headers)
+    };
+    static ref CAPTURED_RESPONSE_HEADERS: RwLock<HashSet<String>> = {
+        let mut headers = HashSet::new();
+        headers.extend(COMMON_HEADERS.iter().map(|&h| h.to_string()));
+        RwLock::new(headers)
+    };
+}
+
+/// Configure which request headers should be captured in spans
+#[allow(dead_code)]
+pub fn configure_captured_request_headers(headers: &[&str]) {
+    let mut captured = CAPTURED_REQUEST_HEADERS.write().unwrap();
+    captured.clear();
+    captured.extend(headers.iter().map(|&h| h.to_lowercase()));
+}
+
+/// Configure which response headers should be captured in spans
+#[allow(dead_code)]
+pub fn configure_captured_response_headers(headers: &[&str]) {
+    let mut captured = CAPTURED_RESPONSE_HEADERS.write().unwrap();
+    captured.clear();
+    captured.extend(headers.iter().map(|&h| h.to_lowercase()));
+}
 
 /// A trait for HTTP events that can be routed by the router.
 ///
@@ -73,6 +136,11 @@ pub trait RoutableHttpEvent: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Returns the response headers
+    fn response_headers(&self) -> Option<&HeaderMap> {
+        None
+    }
+
     /// Returns the user agent string
     fn user_agent(&self) -> Option<String> {
         self.http_headers()
@@ -112,6 +180,48 @@ pub trait RoutableHttpEvent: Send + Sync + Clone + 'static {
         // HTTP request attributes
         span.set_attribute("http.request.method", self.http_method());
         span.set_attribute("http.route", route_pattern.to_string());
+
+        // Capture configured request headers
+        if let Some(headers) = self.http_headers() {
+            let captured = CAPTURED_REQUEST_HEADERS.read().unwrap();
+            if !captured.is_empty() {
+                for name in captured.iter() {
+                    let values = headers.get_all(name).iter().collect::<Vec<_>>();
+                    if !values.is_empty() {
+                        let header_values: Vec<String> = values
+                            .iter()
+                            .filter_map(|v| v.to_str().ok())
+                            .map(String::from)
+                            .collect();
+                        span.set_attribute(
+                            format!("http.request.header.{}", name),
+                            header_values.join(","),
+                        );
+                    }
+                }
+            }
+        }
+
+        // Capture configured response headers
+        if let Some(headers) = self.response_headers() {
+            let captured = CAPTURED_RESPONSE_HEADERS.read().unwrap();
+            if !captured.is_empty() {
+                for name in captured.iter() {
+                    let values = headers.get_all(name).iter().collect::<Vec<_>>();
+                    if !values.is_empty() {
+                        let header_values: Vec<String> = values
+                            .iter()
+                            .filter_map(|v| v.to_str().ok())
+                            .map(String::from)
+                            .collect();
+                        span.set_attribute(
+                            format!("http.response.header.{}", name),
+                            header_values.join(","),
+                        );
+                    }
+                }
+            }
+        }
 
         // URL attributes
         span.set_attribute("url.path", self.path().unwrap_or_else(|| "/".to_string()));

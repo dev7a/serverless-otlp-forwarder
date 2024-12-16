@@ -19,6 +19,7 @@ Parameters:
     Description: Whether to route all logs to the processor.
     Default: 'true'
 
+
 Conditions:
   RouteAllLogs: !Equals [!Ref RouteAllLogs, 'true']
 
