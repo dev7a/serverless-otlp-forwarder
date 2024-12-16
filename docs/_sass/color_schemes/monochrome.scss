@@ -1,0 +1,63 @@
+$color-scheme: monochrome;
+
+// Colors
+$link-color: #ffffff;
+$btn-primary-color: #ffffff;
+$sidebar-color: #000000;
+$body-background-color: #000000;
+$body-heading-color: #ffffff;
+$body-text-color: #ffffff;
+$border-color: #ffffff;
+$nav-child-link-color: #cccccc;
+$search-result-preview-color: #cccccc;
+$base-button-color: #333333;
+$search-background-color: #000000;
+$table-background-color: #1a1a1a;
+$feedback-color: lighten($sidebar-color, 10%);
+$code-background-color: #1a1a1a;
+
+// Typography
+$body-font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+$mono-font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+
+// Font weights
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+$font-weight-bold: 700;
+
+// Custom callouts with monochrome colors
+$callouts: (
+    note: (#ffffff, rgba(255, 255, 255, 0.1), "\f059"),
+    info: (#ffffff, rgba(255, 255, 255, 0.1), "\f059"),
+    tip: (#ffffff, rgba(255, 255, 255, 0.1), "\f00c"),
+    important: (#ffffff, rgba(255, 255, 255, 0.1), "\f0f6"),
+    warning: (#ffffff, rgba(255, 255, 255, 0.1), "\f071"),
+    caution: (#ffffff, rgba(255, 255, 255, 0.1), "\f071"),
+    danger: (#ffffff, rgba(255, 255, 255, 0.1), "\f06a")
+);
+
+// Monochrome specific styles
+img {
+    filter: grayscale(100%) invert(1);
+}
+
+a:hover {
+    color: darken($link-color, 15%);
+    text-decoration: underline;
+}
+
+.btn {
+    border: 1px solid $border-color;
+    
+    &:hover {
+        background-color: $body-text-color;
+        color: $body-background-color;
+    }
+}
+
+// High contrast adjustments
+* {
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
