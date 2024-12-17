@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "otlp-stdout-adapter"
-version = "0.1.1"
+version = "0.3.0"
 description = "A custom requests HTTPAdapter that serializes spans to stdout for OpenTelemetry OTLP exporters"
 readme = "README.md"
 authors = [{name = "Alessandro Bologna", email = "alessandro.bologna@gmail.com"}]

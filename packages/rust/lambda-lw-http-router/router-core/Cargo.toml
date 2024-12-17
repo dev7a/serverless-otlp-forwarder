@@ -1,6 +1,6 @@
 [package]
 name = "lambda-lw-http-router-core"
-version = "0.1.3"
+version = "0.3.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
