@@ -269,15 +269,6 @@ Common error messages and solutions:
 - Check performance
 - Verify security
 
-## Getting Help
-{: .text-delta }
-
-1. Check the [FAQ](faq)
-2. Review [Known Issues](known-issues)
-3. Search [GitHub Issues](https://github.com/dev7a/serverless-otlp-forwarder/issues)
-4. Join our [Discord Community](https://discord.gg/example)
-5. Contact [Support](support)
-
 ## Next Steps
 {: .text-delta }
 

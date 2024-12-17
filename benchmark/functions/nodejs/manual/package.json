@@ -4,7 +4,7 @@
   "description": "OpenTelemetry Lambda Benchmark Function",
   "main": "index.js",
   "dependencies": {
-    "@dev7a/otlp-stdout-exporter": "^0.1.0",
+    "@dev7a/otlp-stdout-exporter": "^0.3.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/core": "^1.22.0",
     "@opentelemetry/resources": "^1.27.0",

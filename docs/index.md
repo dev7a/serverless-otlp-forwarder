@@ -27,7 +27,7 @@ A serverless solution for forwarding OpenTelemetry data from AWS Lambda function
 
 - [Getting Started Guide](getting-started) - Installation and deployment
 - [Architecture Overview](concepts/architecture) - Technical design and components
-- [Configuration Guide](deployment/configuration) - Configuration options
+- [Configuration Guide](getting-started/configuration) - Configuration options
 - [Language Support](languages) - Supported programming languages
 
 ## Key Features
@@ -80,5 +80,3 @@ This becomes especially relevant in scenarios requiring memory-optimized Lambda 
 {: .text-delta }
 
 Refer to the [Getting Started Guide](getting-started) for installation and deployment instructions.
-
-## 

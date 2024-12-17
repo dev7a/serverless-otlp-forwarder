@@ -144,23 +144,4 @@ Choose your programming language and follow the corresponding guide to instrumen
 
 The forwarder supports various configuration options:
 - [Basic Configuration](configuration) - Essential settings
-- [Monitoring](../deployment/monitoring) - Operational visibility
-
-## Troubleshooting
-{: .text-delta }
-
-Common deployment issues:
-- Missing or incorrect AWS credentials
-  - Check `~/.aws/credentials`
-  - Verify permissions with `aws sts get-caller-identity`
-- SAM CLI version incompatibility
-  - Update SAM CLI: `brew upgrade aws-sam-cli` or `pip install --upgrade aws-sam-cli`
-  - Clear SAM cache: `sam cache purge`
-- Build errors
-  - Validate template: `sam validate --lint`
-  - Check CloudFormation events
-  - Review IAM permissions
-
-For detailed troubleshooting steps, refer to the [Troubleshooting Guide](../troubleshooting).
-
 

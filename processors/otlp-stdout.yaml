@@ -17,11 +17,11 @@ Parameters:
   RouteAllLogs:
     Type: String
     Description: Whether to route all logs to the processor.
-    Default: 'true'
+    Default: 'yes'
 
 
 Conditions:
-  RouteAllLogs: !Equals [!Ref RouteAllLogs, 'true']
+  RouteAllLogs: !Equals [!Ref RouteAllLogs, 'yes']
 
 Globals:
   Function:
@@ -41,7 +41,7 @@ Resources:
       BuildProperties:
         Binary: log_processor
     Properties:
-      FunctionName: !Sub '${StackName}-otlp-stdout-processor'
+      FunctionName: !Sub '${StackName}-stdout-processor'
       CodeUri: ./forwarder/
       Handler: bootstrap
       Runtime: provided.al2023
@@ -49,7 +49,7 @@ Resources:
       Environment:
         Variables:
           RUST_LOG: info
-          OTEL_SERVICE_NAME: !Sub '${StackName}-otlp-stdout-processor'
+          OTEL_SERVICE_NAME: !Sub '${StackName}-stdout-processor'
           OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
           OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
@@ -99,8 +99,8 @@ Resources:
 
 Outputs:
   ProcessorArn:
-    Description: ARN of the OTLP stdout processor Lambda function
+    Description: ARN of the stdout processor Lambda function
     Value: !GetAtt Processor.Arn
   ProcessorName:
-    Description: Name of the OTLP stdout processor Lambda function
+    Description: Name of the stdout processor Lambda function
     Value: !Ref Processor

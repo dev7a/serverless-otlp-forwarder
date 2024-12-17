@@ -36,20 +36,20 @@ The processor supports two authentication methods:
    - Supports any collector-specific authentication scheme
 
 2. **AWS SigV4**:
-   - For sending data to AWS Application Signals
+   - For sending data to AWS Application Signals OTLP endpoint
    - Uses the forwarder's IAM role
    - No additional credentials needed
 
 {: .note }
 For detailed configuration instructions, including how to set up multiple collectors, see the [Collector Configuration](../getting-started/configuration#collector-configuration) section.
 
-## AWS AppSignals Processor (Experimental)
+## AWS Spans Processor (Experimental)
 {: .text-delta }
 
 {: .warning }
 This processor is experimental and should not be used in production environments.
 
-The AWS AppSignals processor provides compatibility between AWS Application Signals and standard OTLP collectors.
+The AWS Spans processor provides compatibility between AWS Application Signals and standard OTLP collectors.
 
 ### Features
 - Reads trace data from the `aws/span` log group
@@ -62,11 +62,11 @@ The AWS AppSignals processor provides compatibility between AWS Application Sign
 
 1. **Processor Selection**:
    - Use the OTLP Stdout processor for standard observability platforms
-   - Consider the experimental status of the AWS AppSignals processor
+   - Consider the experimental status of the AWS Spans processor
 
 2. **Authentication**:
    - Store collector credentials securely in Secrets Manager
-   - Use SigV4 when sending data to AWS Application Signals
+   - Use SigV4 when sending data to AWS Application Signals OTLP endpoint
    - Rotate API keys regularly
 
 3. **Performance**:

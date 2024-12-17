@@ -18,7 +18,7 @@ OpenTelemetry is a vendor-neutral, open-source framework for collecting, process
 
 Conversely, Lambda functions are short-lived processes that start and stop frequently. They do not have the ability to guarantee a persistent network connection to the collector, and, while they can buffer data in memory, flushing it to the collector periodically is not trivial, because the execution environment is frozen after the function invocation ends. 
 
-A solution to these challenges is to minimize the cold start impact by limiting the number of instrumentation libraries loaded during initialization, avoiding the establishment of network connections for sending telemetry data, and utilizing the lowest overhead I/O mechanism possible. By writing telemetry data to stdout in a structured format, Lambda functions can leverage the built-in CloudWatch Logs integration as a durable transport layer, without adding significant latency or complexity to the function execution.
+> A possible solution to these challenges is to minimize the cold start impact by limiting the number of instrumentation libraries loaded during initialization, avoiding the establishment of network connections for sending telemetry data, and utilizing the lowest overhead I/O mechanism possible. By writing telemetry data to stdout in a structured format, Lambda functions can leverage the built-in CloudWatch Logs integration as a durable transport layer, without adding significant latency or complexity to the function execution.
 
 The Serverless OTLP Forwarder aims to provide a solution to these challenges, at least on Lambda. It implements a serverless telemetry pipeline using AWS services and the OpenTelemetry Protocol (OTLP). The system consists of several key components:
 

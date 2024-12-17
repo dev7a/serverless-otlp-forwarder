@@ -86,9 +86,9 @@ The forwarder supports two processor types:
 - Respects compression configuration from the application
 
 {: .warning }
-> The AWS AppSignals Processor is experimental and should not be used in production environments.
+> The AWS Spans Processor is experimental and should not be used in production environments.
 
-#### AWS AppSignals Processor (Experimental)
+#### AWS Spans Processor (Experimental)
 - Parses trace data from the `aws/span` log group
 - Converts AWS Application Signals format to OTLP JSON
 - Provides compatibility with standard OTLP collectors
@@ -120,7 +120,7 @@ The forwarder supports two authentication mechanisms:
 2. **AWS SigV4 Authentication**:
    - Uses the forwarder's IAM role to sign requests
    - No additional credentials needed
-   - Compatible with AWS Application Signals
+   - Compatible with AWS Application Signals OTLP endpoint
    - Automatic credential rotation
 
 {: .note }
@@ -157,7 +157,7 @@ Required IAM permissions for the forwarder:
 ```
 
 {: .note }
-The policy includes permissions for Secrets Manager operations (for collector credentials) and X-Ray API operations (required for sending telemetry to AWS Application Signals).
+The policy includes permissions for Secrets Manager operations (for collector credentials) and X-Ray API operations (required for sending telemetry to AWS Application Signals OTLP endpoint).
 
 ## Monitoring and Observability
 {: .text-delta }

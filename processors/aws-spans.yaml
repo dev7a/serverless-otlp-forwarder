@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
-Description: AWS SAM template for AWS appsignals span processor in the serverless-otlp-forwarder application.
+Description: AWS SAM template for AWS Spans span processor in the serverless-otlp-forwarder application.
 
 Parameters:
   StackName:
@@ -33,7 +33,7 @@ Resources:
       BuildProperties:
         Binary: span_processor
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-appsignals-span-processor'
+      FunctionName: !Sub '${AWS::StackName}-spans-processor'
       CodeUri: ./forwarder/
       Handler: bootstrap
       Runtime: provided.al2023
@@ -41,7 +41,7 @@ Resources:
       Environment:
         Variables:
           RUST_LOG: info
-          OTEL_SERVICE_NAME: !Sub '${StackName}-appsignals-span-processor'
+          OTEL_SERVICE_NAME: !Sub '${StackName}-spans-processor'
           OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
           OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
@@ -80,8 +80,8 @@ Resources:
 
 Outputs:
   ProcessorArn:
-    Description: ARN of the AWS AppSignals processor Lambda function
+    Description: ARN of the spans processor Lambda function
     Value: !GetAtt Processor.Arn
   ProcessorName:
-    Description: Name of the AWS AppSignals processor Lambda function
+    Description: Name of the spans processor Lambda function
     Value: !Ref Processor

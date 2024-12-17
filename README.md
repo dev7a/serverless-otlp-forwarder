@@ -45,17 +45,11 @@ The Serverless OTLP Forwarder enables serverless applications to send OpenTeleme
 
 ## Documentation
 
-Visit our [documentation site](https://dev7a.github.io/serverless-otlp-forwarder) for:
+Visit the [documentation site](https://dev7a.github.io/serverless-otlp-forwarder) for:
 - [Getting Started Guide](https://dev7a.github.io/serverless-otlp-forwarder/getting-started)
+- [Configuration Guide](https://dev7a.github.io/serverless-otlp-forwarder/getting-started/configuration)
 - [Architecture Overview](https://dev7a.github.io/serverless-otlp-forwarder/concepts/architecture)
-- [Configuration Guide](https://dev7a.github.io/serverless-otlp-forwarder/deployment)
-- [Troubleshooting](https://dev7a.github.io/serverless-otlp-forwarder/troubleshooting)
 
-## Contributing
-
-- [Contributing Guidelines](CONTRIBUTING.md)
-- [Security Policy](SECURITY.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
 
 ## License
 

@@ -55,7 +55,7 @@ parameter_overrides = [
 
 | Parameter | Type | Default | Description |
 |:----------|:-----|:--------|:------------|
-| `ProcessorType` | String | `otlp-stdout` | Processor type to use (`otlp-stdout` or `aws-appsignals`) |
+| `ProcessorType` | String | `otlp-stdout` | Processor type to use (`otlp-stdout` or `aws-spans`) |
 | `CollectorsSecretsKeyPrefix` | String | `serverless-otlp-forwarder/keys` | Prefix for AWS Secrets Manager keys |
 | `CollectorsCacheTtlSeconds` | String | `300` | TTL for the collector cache in seconds |
 | `RouteAllLogs` | String | `true` | Route all AWS logs to the Lambda function |
@@ -175,10 +175,10 @@ The forwarder itself is instrumented and sends its telemetry to the collector de
 
 ### AWS Application Signals
 
-To use AWS Application Signals as a destination:
+To use AWS Application Signals OTLP endpoint as a destination:
 
 1. Create a secret with:
-   - `endpoint`: The Application Signals endpoint for your region (e.g., `https://xray.us-east-1.amazonaws.com`)
+   - `endpoint`: The Application Signals OTLPendpoint for your region (e.g., `https://xray.us-east-1.amazonaws.com`)
    - `auth`: Set to `sigv4` or `iam`
 
 2. The forwarder will:

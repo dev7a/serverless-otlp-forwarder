@@ -60,7 +60,7 @@ sam build --parallel && sam deploy --guided
 
 | Parameter | Type | Default | Description |
 |:----------|:-----|:--------|:------------|
-| `ProcessorType` | String | `otlp-stdout` | Processor type to use (`otlp-stdout` or `aws-appsignals`) |
+| `ProcessorType` | String | `otlp-stdout` | Processor type to use (`otlp-stdout` or `aws-spans`) |
 | `CollectorsSecretsKeyPrefix` | String | `serverless-otlp-forwarder/keys` | Prefix for AWS Secrets Manager keys |
 | `CollectorsCacheTtlSeconds` | String | `300` | TTL for the collector cache in seconds |
 | `RouteAllLogs` | String | `true` | Route all AWS logs to the Lambda function |
@@ -154,5 +154,3 @@ Common deployment issues:
   - Validate template: `sam validate --lint`
   - Check CloudFormation events
   - Review IAM permissions
-
-For detailed troubleshooting steps, refer to the [Troubleshooting Guide](../troubleshooting).

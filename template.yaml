@@ -7,7 +7,7 @@ Parameters:
     Type: String
     AllowedValues: 
       - otlp-stdout
-      - aws-appsignals
+      - aws-spans
     Default: otlp-stdout
     Description: Type of processor to deploy. Only one can be active at a time.
   
@@ -22,13 +22,13 @@ Parameters:
     Default: '300'
   RouteAllLogs:
     Type: String
-    Default: 'true'
+    Default: 'yes'
     Description: 'Route all AWS logs to the Lambda function'
 
   # Demo parameters
   DeployDemo:
     Type: String
-    Default: 'true'
+    Default: 'yes'
     Description: 'Deploy the demo application'
   DemoExporterProtocol:
     Type: String
@@ -40,14 +40,14 @@ Parameters:
   # Benchmark parameters
   DeployBenchmark:
     Type: String
-    Default: 'false'
+    Default: 'yes'
     Description: 'Deploy the benchmark stack for performance testing'
 
 Conditions:
   IsOtlpStdoutProcessor: !Equals [!Ref ProcessorType, "otlp-stdout"]
-  IsAwsAppSignalsProcessor: !Equals [!Ref ProcessorType, "aws-appsignals"]
-  DeployDemo: !Equals [!Ref DeployDemo, 'true']
-  DeployBenchmark: !Equals [!Ref DeployBenchmark, 'true']
+  IsAwsSpansProcessor: !Equals [!Ref ProcessorType, "aws-spans"]
+  DeployDemo: !Equals [!Ref DeployDemo, 'yes']
+  DeployBenchmark: !Equals [!Ref DeployBenchmark, 'yes']
 
 Resources:
   OtlpStdoutProcessor:
@@ -61,11 +61,11 @@ Resources:
         CollectorsCacheTtlSeconds: !Ref CollectorsCacheTtlSeconds
         RouteAllLogs: !Ref RouteAllLogs
 
-  AwsAppSignalsProcessor:
+  AwsSpansProcessor:
     Type: AWS::Serverless::Application
-    Condition: IsAwsAppSignalsProcessor
+    Condition: IsAwsSpansProcessor
     Properties:
-      Location: processors/aws-appsignals.yaml
+      Location: processors/aws-spans.yaml
       Parameters:
         StackName: !Ref AWS::StackName
         CollectorsSecretsKeyPrefix: !Ref CollectorsSecretsKeyPrefix
@@ -105,16 +105,16 @@ Outputs:
     Description: Name of the OTLP stdout processor Lambda function
     Value: !GetAtt OtlpStdoutProcessor.Outputs.ProcessorName
 
-  # AWS AppSignals Processor Outputs
-  AwsAppSignalsProcessorArn:
-    Condition: IsAwsAppSignalsProcessor
-    Description: ARN of the AWS AppSignals processor Lambda function
-    Value: !GetAtt AwsAppSignalsProcessor.Outputs.ProcessorArn
+  # AWS spans Processor Outputs
+  AwsSpansProcessorArn:
+    Condition: IsAwsSpansProcessor
+    Description: ARN of the span processor Lambda function
+    Value: !GetAtt AwsSpansProcessor.Outputs.ProcessorArn
   
-  AwsAppSignalsProcessorName:
-    Condition: IsAwsAppSignalsProcessor
-    Description: Name of the AWS AppSignals processor Lambda function
-    Value: !GetAtt AwsAppSignalsProcessor.Outputs.ProcessorName
+  AwsSpansProcessorName:
+    Condition: IsAwsSpansProcessor
+    Description: Name of the span processor Lambda function
+    Value: !GetAtt AwsSpansProcessor.Outputs.ProcessorName
 
   # Demo Stack Outputs
   BackendUrl:
