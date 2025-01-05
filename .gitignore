@@ -33,6 +33,7 @@ __pycache__/
 
 # Node.js build artifacts
 node_modules/
+dist/
 
 # python artifacts
 __pycache__/
@@ -45,3 +46,4 @@ notes/**
 docs/_site/
 docs/.sass-cache/
 docs/Gemfile.lock
+collector.yaml
