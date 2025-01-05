@@ -141,7 +141,7 @@ def init_extension(
 
 
 @contextmanager
-def debug_timing(logger: logging.Logger, operation_name: str) -> None:
+def debug_timing(logger: logging.Logger, operation_name: str):
     """Context manager for debug-level timing of operations."""
     if logger.isEnabledFor(logging.DEBUG):
         import time  # Only import if debug logging is enabled

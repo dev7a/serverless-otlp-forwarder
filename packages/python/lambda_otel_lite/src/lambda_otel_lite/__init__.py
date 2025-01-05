@@ -7,7 +7,6 @@ functions with minimal overhead and configuration.
 
 import os
 from enum import Enum
-from typing import Optional
 
 __version__ = "0.1.0"
 
@@ -28,7 +27,7 @@ class ProcessorMode(str, Enum):
     FINALIZE = "finalize"
 
     @classmethod
-    def from_env(cls, env_var: str, default: Optional["ProcessorMode"] = None) -> "ProcessorMode":
+    def from_env(cls, env_var: str, default: "ProcessorMode | None" = None) -> "ProcessorMode":
         """Create ProcessorMode from environment variable.
 
         Args:
@@ -53,9 +52,10 @@ class ProcessorMode(str, Enum):
 # Package exports
 __all__ = [
     "ProcessorMode",
-    "init_telemetry",  # Will be imported from processor.py
-    "traced_handler",  # Will be imported from processor.py
+    "init_telemetry",  # Will be imported from telemetry.py
+    "traced_handler",  # Will be imported from handler.py
 ]
 
 # Import public API
-from .processor import init_telemetry, traced_handler  # noqa: E402
+from .handler import traced_handler  # noqa: E402
+from .telemetry import init_telemetry  # noqa: E402

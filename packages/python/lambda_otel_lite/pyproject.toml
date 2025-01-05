@@ -1,6 +1,6 @@
 [project]
-name = "lambda-otel-lite"
-version = "0.1.1"
+name = "lambda_otel_lite"
+version = "0.2.0"
 description = "Lightweight OpenTelemetry instrumentation for AWS Lambda"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -62,7 +62,7 @@ known-first-party = ["lambda_otel_lite"]
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q --cov=lambda_otel_lite"
+addopts = "-ra -q --cov=lambda_otel_lite --cov-report=term-missing"
 testpaths = ["tests"]
 
 [tool.mypy]
