@@ -11,6 +11,7 @@ documentation = "https://docs.rs/lambda-otel-lite"
 readme = "README.md"
 keywords = ["aws", "lambda", "opentelemetry", "tracing", "telemetry"]
 categories = ["development-tools::debugging", "web-programming::http-server"]
+exclude = ["examples/"]
 
 [dependencies]
 opentelemetry.workspace = true
@@ -35,7 +36,7 @@ bon = "3.3"
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt", "sync", "macros", "test-util"] }
 mockall = "0.13.1"
-serial_test = "3.2"
+serial_test = "2.0.0"
 opentelemetry-otlp = { workspace = true, features = ["http-proto", "http-json", "reqwest-client"] }
 libc = "0.2"
 doc-comment = "0.3"
