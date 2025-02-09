@@ -4,6 +4,30 @@
 //! in a serverless environment. It uses a ring buffer to store spans in memory and supports different
 //! processing modes to balance latency and reliability.
 //!
+//! # Processing Modes
+//!
+//! The processor supports three modes for span export:
+//!
+//! 1. **Sync Mode** (default):
+//!    - Direct, synchronous export in handler thread
+//!    - Recommended for low-volume telemetry or when latency is not critical
+//!    - Best for development and debugging
+//!    - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=sync`
+//!
+//! 2. **Async Mode**:
+//!    - Export via Lambda extension using AWS Lambda Extensions API
+//!    - Spans are queued and exported after handler completion
+//!    - Uses channel-based communication between handler and extension
+//!    - Best for production use with high telemetry volume
+//!    - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=async`
+//!
+//! 3. **Finalize Mode**:
+//!    - Only registers extension with no events
+//!    - Ensures SIGTERM handler for graceful shutdown
+//!    - Compatible with BatchSpanProcessor for custom export strategies
+//!    - Best for specialized export requirements
+//!    - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=finalize`
+//!
 //! # Architecture
 //!
 //! The processor is designed specifically for the Lambda execution environment:
@@ -15,20 +39,7 @@
 //!    - Efficient batch removal for export
 //!    - When full, new spans are dropped (with warning logs)
 //!
-//! 2. **Processing Modes**:
-//!    - `Sync`: Immediate flush in handler thread
-//!      - Best for development and debugging
-//!      - Higher latency but guaranteed delivery
-//!    - `Async`: Flush via Lambda extension
-//!      - Best for production use
-//!      - Minimal latency impact on handler
-//!      - Reliable delivery through extension
-//!    - `Finalize`: Delegated to processor
-//!      - Best for custom export strategies
-//!      - Compatible with BatchSpanProcessor
-//!      - Full control over export timing
-//!
-//! 3. **Thread Safety**:
+//! 2. **Thread Safety**:
 //!    - All operations are thread-safe
 //!    - Uses Mutex for span buffer access
 //!    - Atomic operations for state management
