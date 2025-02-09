@@ -11,41 +11,48 @@
 //! - **Lambda Extension Integration**: Built-in extension for efficient telemetry export
 //! - **Efficient Memory Usage**: Fixed-size ring buffer to prevent memory growth
 //! - **AWS Event Support**: Automatic extraction of attributes from common AWS event types
+//! - **Flexible Context Propagation**: Support for W3C Trace Context and custom propagators
 //!
 //! # Architecture
 //!
 //! The crate is organized into several modules, each handling a specific aspect of telemetry:
 //!
 //! - [`telemetry`]: Core initialization and configuration
-//! - [`processor`]: Span processing and export strategies
-//! - [`extension`]: Lambda extension implementation
-//! - [`layer`]: Tower middleware for automatic instrumentation
-//! - [`handler`]: Function wrapper for manual instrumentation
+//!   - Main entry point via `init_telemetry`
+//!   - Configures global tracer and span processors
+//!   - Returns a `TelemetryCompletionHandler` for span lifecycle management
 //!
-//! # Quick Start
+//! - [`processor`]: Lambda-optimized span processor
+//!   - Fixed-size ring buffer implementation
+//!   - Multiple processing modes
+//!   - Coordinates with extension for async export
 //!
-//! ```no_run
-//! use lambda_otel_lite::{init_telemetry, TelemetryConfig};
-//! use lambda_runtime::{service_fn, Error, LambdaEvent};
-//! use serde_json::Value;
+//! - [`extension`]: Lambda Extension implementation
+//!   - Manages extension lifecycle and registration
+//!   - Handles span export coordination
+//!   - Implements graceful shutdown
 //!
-//! async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
-//!     Ok(event.payload)
-//! }
+//! - [`resource`]: Resource attribute management
+//!   - Automatic Lambda attribute detection
+//!   - Environment-based configuration
+//!   - Custom attribute support
 //!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Error> {
-//!     // Initialize telemetry with default configuration
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+//! - [`extractors`]: Event processing
+//!   - Built-in support for API Gateway and ALB events
+//!   - Extensible trait system for custom events
+//!   - W3C Trace Context propagation
 //!
-//!     // Run the Lambda function
-//!     lambda_runtime::run(service_fn(|event| async {
-//!         let result = handler(event).await;
-//!         completion_handler.complete();
-//!         result
-//!     })).await
-//! }
-//! ```
+//! The crate provides two integration patterns:
+//!
+//! - [`layer`]: Tower middleware integration
+//!   - Best for complex services with middleware chains
+//!   - Integrates with Tower's service ecosystem
+//!   - Standardized instrumentation across services
+//!
+//! - [`handler`]: Direct function wrapper
+//!   - Best for simple Lambda functions
+//!   - Lower overhead for basic use cases
+//!   - Quick integration with existing handlers
 //!
 //! # Processing Modes
 //!
@@ -94,12 +101,15 @@
 //!
 //! ```no_run
 //! use lambda_otel_lite::{init_telemetry, TelemetryConfig, OtelTracingLayer};
-//! use lambda_runtime::{service_fn, Error, LambdaEvent};
-//! use tower::ServiceBuilder;
-//! use aws_lambda_events::apigw::ApiGatewayV2httpRequest;
+//! use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
+//! use lambda_runtime::tower::ServiceBuilder;
+//! use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
 //!
 //! async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_json::Value, Error> {
-//!     Ok(serde_json::json!({"status": "ok"}))
+//!     Ok(serde_json::json!({
+//!         "statusCode": 200,
+//!         "body": format!("Hello from request {}", event.context.request_id)
+//!     }))
 //! }
 //!
 //! #[tokio::main]
@@ -107,54 +117,58 @@
 //!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
 //!
 //!     let service = ServiceBuilder::new()
-//!         .layer(OtelTracingLayer::new(completion_handler.clone()))
+//!         .layer(OtelTracingLayer::new(completion_handler).with_name("tower-handler"))
 //!         .service_fn(handler);
 //!
-//!     lambda_runtime::run(service).await
+//!     let runtime = Runtime::new(service);
+//!     runtime.run().await
 //! }
 //! ```
 //!
 //! See [`layer`] module for more examples of automatic instrumentation.
 //!
-//! ## Manual Instrumentation
+//! ## Using the Handler Wrapper
 //!
 //! ```no_run
-//! use lambda_otel_lite::{init_telemetry, TelemetryConfig, traced_handler, TracedHandlerOptions};
-//! use lambda_runtime::{service_fn, Error, LambdaEvent};
-//! use serde_json::Value;
+//! use lambda_otel_lite::{init_telemetry, TelemetryConfig, traced_handler};
+//! use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
+//! use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
 //!
-//! async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
-//!     Ok(event.payload)
+//! async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_json::Value, Error> {
+//!     Ok(serde_json::json!({
+//!         "statusCode": 200,
+//!         "body": format!("Hello from request {}", event.context.request_id)
+//!     }))
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
 //!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+//!     
+//!     let runtime = Runtime::new(service_fn(|event| {
+//!         traced_handler("my-handler", event, completion_handler.clone(), handler)
+//!     }));
 //!
-//!     lambda_runtime::run(service_fn(|event: LambdaEvent<Value>| {
-//!         traced_handler(
-//!             TracedHandlerOptions::default().with_name("my-handler"),
-//!             completion_handler.clone(),
-//!             handler,
-//!         )
-//!     })).await
+//!     runtime.run().await
 //! }
 //! ```
-//!
-//! See [`handler`] module for more examples of manual instrumentation.
 
 pub use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 
-mod extension;
-mod handler;
-mod layer;
-mod processor;
-mod telemetry;
+pub mod extension;
+pub mod extractors;
+pub mod handler;
+pub mod layer;
+pub mod processor;
+pub mod resource;
+pub mod telemetry;
 
 pub use extension::{register_extension, OtelInternalExtension};
-pub use handler::{traced_handler, TracedHandlerOptions};
-pub use layer::{OtelTracingLayer, SpanAttributes, SpanAttributesExtractor};
+pub use extractors::{SpanAttributes, SpanAttributesExtractor, TriggerType};
+pub use handler::traced_handler;
+pub use layer::OtelTracingLayer;
 pub use processor::{LambdaSpanProcessor, ProcessorConfig, ProcessorMode};
+pub use resource::get_lambda_resource;
 pub use telemetry::{
     init_telemetry, TelemetryCompletionHandler, TelemetryConfig, TelemetryConfigBuilder,
 };

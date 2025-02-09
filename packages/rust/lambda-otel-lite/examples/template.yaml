@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: AWS SAM template for the serverless-otlp-forwarder application.
+
+
+Globals:
+  Function:
+    MemorySize: 128
+    Timeout: 30
+    Architectures:
+      - arm64
+    Runtime: provided.al2023
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+  
+
+Resources:
+
+  HandlerExample:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: handler-example
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-lambda-handler-example'
+      CodeUri: ./
+      Handler: bootstrap
+      Description: 'Demo Handler Example Lambda function to showcase OpenTelemetry integration'
+      FunctionUrlConfig:
+        AuthType: NONE
+
+  TowerExample:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: tower-example
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-lambda-tower-example'
+      CodeUri: ./
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Description: 'Demo Tower Example Lambda function to showcase OpenTelemetry integration'
+      FunctionUrlConfig:
+        AuthType: NONE
+
+Outputs:
+  HandlerExampleLambdaFunctionArn:
+    Description: 'ARN of the Demo Handler Example Lambda function'
+    Value: !GetAtt HandlerExample.Arn
+  TowerExampleLambdaFunctionArn:
+    Description: 'ARN of the Demo Tower Example Lambda function'
+    Value: !GetAtt TowerExample.Arn
+  HandlerExampleFunctionUrl:
+    Description: 'URL of the Demo Handler Example Lambda function'
+    Value: !GetAtt HandlerExampleUrl.FunctionUrl
+  TowerExampleFunctionUrl:
+    Description: 'URL of the Demo Tower Example Lambda function'
+    Value: !GetAtt TowerExampleUrl.FunctionUrl

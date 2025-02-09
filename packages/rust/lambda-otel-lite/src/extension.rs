@@ -1,17 +1,39 @@
 //! Lambda Extension for OpenTelemetry span processing.
 //!
 //! This module provides an internal Lambda extension that manages the lifecycle of OpenTelemetry spans.
-//! The extension is responsible for:
-//! - Registering with the Lambda Runtime API
-//! - Listening for Lambda invocation events
-//! - Flushing spans after each invocation
-//! - Handling graceful shutdown
+//! The extension integrates with AWS Lambda's Extensions API to efficiently manage telemetry data
+//! collection and export.
 //!
 //! # Architecture
 //!
-//! The extension operates in two modes:
-//! - `Async`: Registers for INVOKE events and flushes spans after each invocation
-//! - `Finalize`: Registers for no events, letting the processor handle span export
+//! The extension operates as a background task within the Lambda function process and communicates
+//! with both the Lambda Runtime API and the function handler through asynchronous channels:
+//!
+//! 1. **Extension Registration**: On startup, the extension task registers with the Lambda Extensions API
+//!    and subscribes to the appropriate events based on the processing mode.
+//!
+//! 2. **Handler Communication**: The extension uses a channel-based communication pattern to
+//!    coordinate with the function handler for span export timing.
+//!
+//! 3. **Processing Modes**:
+//!    - `Async`: Registers for INVOKE events and exports spans after handler completion
+//!      - Spans are queued during handler execution
+//!      - Export occurs after response is sent to user
+//!      - Best for high-volume telemetry
+//!    - `Finalize`: Registers with no events
+//!      - Only installs SIGTERM handler
+//!      - Lets application code control span export
+//!      - Compatible with BatchSpanProcessor
+//!
+//! 4. **Graceful Shutdown**: The extension implements proper shutdown handling to ensure
+//!    no telemetry data is lost when the Lambda environment is terminated.
+//!
+//! # Error Handling
+//!
+//! The extension implements robust error handling:
+//! - Logs all export errors without failing the function
+//! - Implements graceful shutdown on SIGTERM
+//! - Handles channel communication failures
 //!
 //! # Example
 //!
@@ -47,6 +69,27 @@ use tokio::{
 /// - Flushing spans at the appropriate time
 /// - Managing the lifecycle of the tracer provider
 ///
+/// # Thread Safety
+///
+/// The extension is designed to be thread-safe:
+/// - Uses `Arc` for shared ownership of the tracer provider
+/// - Implements proper synchronization through `Mutex` for the channel receiver
+/// - Safely handles concurrent access from multiple tasks
+///
+/// # Performance Characteristics
+///
+/// The extension is optimized for Lambda environments:
+/// - Minimizes memory usage through efficient buffering
+/// - Uses non-blocking channel communication
+/// - Implements backpressure handling to prevent memory exhaustion
+///
+/// # Error Handling
+///
+/// The extension handles various error scenarios:
+/// - Channel closed: Logs error and continues processing
+/// - Export failures: Logs errors without failing the function
+/// - Shutdown signals: Ensures final flush of spans
+///
 /// The extension operates asynchronously to minimize impact on handler latency.
 /// It uses a channel-based communication pattern to coordinate with the handler.
 pub struct OtelInternalExtension {
@@ -75,10 +118,46 @@ impl OtelInternalExtension {
 
     /// Handles extension events and flushes telemetry after each invocation.
     ///
-    /// This method:
-    /// 1. Waits for an INVOKE event
-    /// 2. Waits for the handler to signal completion
-    /// 3. Flushes all pending spans
+    /// This method implements the core event handling logic for the extension.
+    /// It coordinates with the Lambda function handler to ensure spans are
+    /// exported at the appropriate time.
+    ///
+    /// # Operation Flow
+    ///
+    /// 1. **Event Reception**:
+    ///    - Receives Lambda extension events
+    ///    - Filters for INVOKE events
+    ///    - Ignores other event types
+    ///
+    /// 2. **Handler Coordination**:
+    ///    - Waits for handler completion signal
+    ///    - Uses async channel communication
+    ///    - Handles channel closure gracefully
+    ///
+    /// 3. **Span Export**:
+    ///    - Forces flush of all pending spans
+    ///    - Handles export errors without failing
+    ///    - Logs any export failures
+    ///
+    /// # Error Handling
+    ///
+    /// The method handles several failure scenarios:
+    ///
+    /// - **Channel Errors**:
+    ///    - Channel closure: Returns error with descriptive message
+    ///    - Send/receive failures: Properly propagated
+    ///
+    /// - **Export Errors**:
+    ///    - Individual span export failures are logged
+    ///    - Continues processing despite errors
+    ///    - Maintains extension stability
+    ///
+    /// # Performance
+    ///
+    /// The method is optimized for Lambda environments:
+    /// - Uses async/await for efficient execution
+    /// - Minimizes blocking operations
+    /// - Implements proper error recovery
     ///
     /// # Arguments
     ///
@@ -86,7 +165,9 @@ impl OtelInternalExtension {
     ///
     /// # Returns
     ///
-    /// Returns Ok(()) if successful, or an Error if something went wrong
+    /// Returns `Ok(())` if the event was processed successfully, or an `Error`
+    /// if something went wrong during processing. Note that export errors are
+    /// logged but do not cause the method to return an error.
     pub async fn invoke(&self, event: lambda_extension::LambdaEvent) -> Result<(), Error> {
         if let NextEvent::Invoke(_e) = event.next {
             // Wait for runtime to finish processing event
@@ -117,14 +198,52 @@ impl OtelInternalExtension {
 /// and should not be called directly in your code. Use [`init_telemetry`](crate::init_telemetry)
 /// instead to set up telemetry for your Lambda function.
 ///
-/// This function:
-/// - Creates an internal extension that listens for Lambda events
-/// - Sets up a SIGTERM signal handler for graceful shutdown
-/// - Returns a sender for signaling handler completion
+/// # Initialization Sequence
 ///
-/// The extension's behavior depends on the processor mode:
-/// - In `Async` mode: Registers for INVOKE events and flushes after each invocation
-/// - In other modes: Registers for no events, letting the processor handle exports
+/// 1. **Channel Setup**:
+///    - Creates an unbounded channel for handler-extension communication
+///    - Channel sender is returned to the handler
+///    - Channel receiver is managed by the extension
+///
+/// 2. **Extension Registration**:
+///    - Creates a new Lambda extension instance
+///    - Configures event subscriptions based on processor mode
+///    - Registers with the Lambda Extensions API
+///    - Starts the extension in a background task
+///
+/// 3. **Signal Handler Setup**:
+///    - Registers a SIGTERM handler for graceful shutdown
+///    - Ensures pending spans are flushed before termination
+///
+/// # Processing Modes
+///
+/// The extension's behavior varies by processor mode:
+///
+/// - **Async Mode**:
+///    - Registers for INVOKE events
+///    - Waits for handler completion signal
+///    - Flushes spans after each invocation
+///    - Best for scenarios with high span counts
+///
+/// - **Finalize Mode**:
+///    - Registers for no events
+///    - Relies on processor's internal timing
+///    - Minimal overhead on handler
+///
+/// # Error Handling
+///
+/// The function handles these error scenarios:
+///
+/// - **Registration Failures**:
+///    - Extension API errors
+///    - Invalid configuration
+///    - Network issues
+///
+/// - **Runtime Errors**:
+///    - Extension execution failures
+///    - Channel communication errors
+///    - Span export failures
+///
 ///
 /// # Arguments
 ///
@@ -133,7 +252,8 @@ impl OtelInternalExtension {
 ///
 /// # Returns
 ///
-/// Returns a channel sender for signaling completion, or an Error if registration fails
+/// Returns a channel sender for signaling completion, or an Error if registration fails.
+/// The sender should be used by the handler to signal completion of request processing.
 ///
 /// # Example
 ///

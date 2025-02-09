@@ -30,11 +30,13 @@ tracing-opentelemetry = "0.28.0"
 pin-project = "1.1.8"
 serde.workspace = true
 aws_lambda_events.workspace = true
+bon = "3.3"
 
 [dev-dependencies]
 tokio = { version = "1.0", features = ["rt", "sync", "macros", "test-util"] }
 mockall = "0.13.1"
-serial_test = "3.2.0"
+serial_test = "3.2"
 opentelemetry-otlp = { workspace = true, features = ["http-proto", "http-json", "reqwest-client"] }
 libc = "0.2"
 doc-comment = "0.3"
+sealed_test = "1.0"

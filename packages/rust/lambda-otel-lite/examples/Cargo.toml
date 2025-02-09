@@ -1,0 +1,23 @@
+[package]
+name = "lambda-otel-lite-examples"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde_json.workspace = true
+lambda_runtime.workspace = true
+tracing.workspace = true
+aws_lambda_events.workspace = true
+lambda-otel-lite.workspace = true
+
+[[bin]]
+name = "handler-example"
+path = "handler/main.rs"
+
+[[bin]]
+name = "tower-example"
+path = "tower/main.rs"
