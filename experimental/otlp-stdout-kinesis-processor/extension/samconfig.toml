@@ -1,4 +1,7 @@
 version = 0.1
+[default.build.parameters]
+build_in_source = true
+
 [default.deploy.parameters]
 stack_name = "kinesis-extension"
 resolve_s3 = true

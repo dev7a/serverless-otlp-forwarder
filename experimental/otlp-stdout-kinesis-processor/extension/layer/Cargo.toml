@@ -1,18 +1,15 @@
 [package]
-name = "otlp-stdout-kinesis-extension"
+name = "otlp-stdout-kinesis-extension-layer"
 version = "0.1.0"
 edition = "2021"
-authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
-license = "MIT"
-rust-version = "1.70"
+authors.workspace = true
+license.workspace = true
 description = "OpenTelemetry Lambda extension for sending otlp data to Kinesis"
 
-[workspace]
-
 [dependencies]
-aws-config = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
+tokio.workspace = true
+tracing.workspace = true
+aws-config.workspace = true
 aws-sdk-kinesis = { version = "1", default-features = false, features = ["rt-tokio"] }
 lambda-extension = { version = "0.11.0" }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-tracing = { version = "0.1", features = ["log"] }
 uuid = { version = "1.0", features = ["v4"] }

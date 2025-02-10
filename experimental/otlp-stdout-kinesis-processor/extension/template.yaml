@@ -8,6 +8,7 @@ Resources:
     Type: AWS::Serverless::LayerVersion
     Metadata:
       BuildMethod: makefile
+      BuildArchitecture: arm64
     Properties:
       LayerName: !Sub '${AWS::StackName}-rust-extension'
       ContentUri: layer/
