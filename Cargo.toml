@@ -4,30 +4,32 @@ members = [
     "processors/forwarder",
     "experimental/aws-span-processor/processor",
     "experimental/otlp-stdout-kinesis-processor/processor",
+    "experimental/otlp-stdout-kinesis-processor/extension/layer",
     "demo/rust",
     "benchmark",
     "benchmark/proxy", 
+    "packages/rust/lambda-otel-lite/examples"
 ]
 
 resolver = "2"
 
 [workspace.package]
-version = "0.1.2"
+version = "0.6.0"
 edition = "2021"
 authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
 license = "MIT"
-rust-version = "1.70"
+rust-version = "1.80"
 
 [workspace.dependencies]
 # Local packages
-otlp-stdout-client = { path = "packages/rust/otlp-stdout-client", version = "0.3.0" }
-otlp-sigv4-client = { path = "packages/rust/otlp-sigv4-client", version = "0.3.0" }
-lambda-otel-utils = { path = "packages/rust/lambda-otel-utils", version = "0.3.0" }
-lambda-lw-http-router = { path = "packages/rust/lambda-lw-http-router", version = "0.3.0" }
-lambda-lw-http-router-core = { path = "packages/rust/lambda-lw-http-router/router-core", version = "0.3.0" }
-lambda-lw-http-router-macro = { path = "packages/rust/lambda-lw-http-router/router-macro", version = "0.3.0" }
-otlp-stdout-span-exporter = { path = "packages/rust/otlp-stdout-span-exporter", version = "0.1.2" }
-lambda-otel-lite = { path = "packages/rust/lambda-otel-lite", version = "0.1.0" }
+otlp-stdout-client = { path = "packages/rust/otlp-stdout-client" }
+otlp-sigv4-client = { path = "packages/rust/otlp-sigv4-client" }
+lambda-otel-utils = { path = "packages/rust/lambda-otel-utils" }
+lambda-lw-http-router = { path = "packages/rust/lambda-lw-http-router" }
+lambda-lw-http-router-core = { path = "packages/rust/lambda-lw-http-router/router-core" }
+lambda-lw-http-router-macro = { path = "packages/rust/lambda-lw-http-router/router-macro" }
+otlp-stdout-span-exporter = { version = "0.6.0", path = "packages/rust/otlp-stdout-span-exporter" }
+lambda-otel-lite = { path = "packages/rust/lambda-otel-lite" }
 # Runtime and async
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1.82"
