@@ -1,4 +1,26 @@
-node_modules/
+# Build output
 dist/
+*.js
+*.d.ts
+
+# Dependencies
+node_modules/
+
+# Example files
+examples/**/package-lock.json
+examples/**/node_modules/
+
+# Test coverage
 coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
 *.tgz
