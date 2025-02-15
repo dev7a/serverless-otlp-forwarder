@@ -1,0 +1,52 @@
+{
+  "rules": {
+    "require-name": "error",
+    "require-version": "error",
+    "require-description": "error",
+    "require-license": "error",
+    "require-keywords": "error",
+    "require-repository": "error",
+    "require-homepage": "error",
+    "require-bugs": "error",
+    "require-main": "error",
+    "require-types": "error",
+    "valid-values-license": ["error", [
+      "MIT",
+      "Apache-2.0",
+      "ISC"
+    ]],
+    "valid-values-type": ["error", [
+      "git"
+    ]],
+    "prefer-caret-version-dependencies": "error",
+    "prefer-caret-version-devDependencies": "error",
+    "prefer-alphabetical-dependencies": "error",
+    "prefer-alphabetical-devDependencies": "error",
+    "prefer-alphabetical-scripts": "error",
+    "no-duplicate-properties": "error",
+    "no-repeated-dependencies": "error",
+    "description-format": ["error", {
+      "requireCapitalFirstLetter": true,
+      "requireEndingPeriod": false
+    }],
+    "require-scripts": "error",
+    "require-files": "error",
+    "bin-type": "error",
+    "config-type": "error",
+    "dependencies-type": "error",
+    "devDependencies-type": "error",
+    "directories-type": "error",
+    "engines-type": "error",
+    "files-type": "error",
+    "homepage-type": "error",
+    "keywords-type": "error",
+    "license-type": "error",
+    "main-type": "error",
+    "name-format": "error",
+    "name-type": "error",
+    "repository-type": "error",
+    "require-engines": "warning",
+    "version-format": "error",
+    "version-type": "error"
+  }
+} 

@@ -1,12 +1,45 @@
 {
-  "name": "examples",
-  "version": "1.0.0",
-  "description": "This directory contains examples demonstrating how to use `lambda-otel-lite` in AWS Lambda functions.",
-  "main": "index.js",
+  "name": "@dev7a/lambda-otel-lite-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Example AWS Lambda function using lambda-otel-lite",
+  "license": "MIT",
+  "keywords": [
+    "opentelemetry",
+    "aws",
+    "lambda",
+    "example",
+    "serverless"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dev7a/serverless-otlp-forwarder.git"
+  },
+  "homepage": "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/node/lambda-otel-lite/examples/handler#readme",
+  "bugs": {
+    "url": "https://github.com/dev7a/serverless-otlp-forwarder/issues"
+  },
+  "main": "app.js",
+  "types": "app.d.ts",
+  "files": [
+    "*.js",
+    "*.d.ts",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "clean": "rm -rf *.js *.d.ts",
+    "start": "sam local start-api"
   },
   "dependencies": {
-    "@dev7a/lambda-otel-lite": "file:../../"
+    "@dev7a/lambda-otel-lite": "^0.6.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.131",
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3"
   }
 }

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2025-02-15
+
+### Added
+- Package metadata improvements:
+  - Added `engines` field specifying Node.js version requirement
+  - Added comprehensive publishing checklist
+  - Added package.json linting configuration
+- Example package improvements:
+  - Added proper package metadata
+  - Added correct dependency versions
+  - Added build and start scripts
+
+### Fixed
+- Fixed dependency version formats to use caret (^) instead of tilde (~)
+- Fixed scripts ordering in package.json
+- Added missing license and repository information
+
 ## [0.6.0] - 2025-02-15
 
 ### Breaking Changes
@@ -98,7 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extension initialization and event handling sequence
 - Removed unused `processDetectorSync` from resource detectors
 
-## [0.1.1] - 2024-01-05
+## [0.1.1] - 2025-01-05
 
 ### Fixed
 - Aligned `faas.trigger` attribute behavior with Python implementation:
@@ -106,7 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Simplified HTTP request detection logic
   - Fixed attribute setting order
 
-## [0.1.0] - 2024-01-05
+## [0.1.0] - 2025-01-05
 
 ### Added
 - Initial release with basic Lambda instrumentation support
