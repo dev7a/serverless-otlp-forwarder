@@ -1,0 +1,12 @@
+{
+  "name": "examples",
+  "version": "1.0.0",
+  "description": "This directory contains examples demonstrating how to use `lambda-otel-lite` in AWS Lambda functions.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@dev7a/lambda-otel-lite": "file:../../"
+  }
+}

@@ -1,4 +1,5 @@
-import { ProcessorMode } from './types';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { ProcessorMode } from '../mode';
 import logger from './logger';
 
 /**
@@ -32,12 +33,26 @@ class Signal {
   }
 }
 
+/** Interface for the global state */
+interface LambdaOtelState {
+  provider: NodeTracerProvider | null;
+  mode: ProcessorMode | null;
+  extensionInitialized: boolean;
+  handlerComplete: Signal;
+}
+
+/** Extend NodeJS.Global to include our state */
+declare global {
+  // eslint-disable-next-line no-var
+  var _lambdaOtelState: LambdaOtelState;
+}
+
 // Initialize global state if not exists
-if (!(global as any)._lambdaOtelState) {
+if (!global._lambdaOtelState) {
   logger.debug('initializing lambda-otel state');
-  (global as any)._lambdaOtelState = {
+  global._lambdaOtelState = {
     provider: null,
-    mode: null as ProcessorMode | null,
+    mode: null,
     extensionInitialized: false,
     handlerComplete: new Signal()
   };
@@ -46,7 +61,7 @@ if (!(global as any)._lambdaOtelState) {
 /**
  * Shared state for extension-processor communication
  */
-export const state = (global as any)._lambdaOtelState;
+export const state = global._lambdaOtelState;
 
 // Export the handler complete signal for convenience
 export const handlerComplete = state.handlerComplete; 

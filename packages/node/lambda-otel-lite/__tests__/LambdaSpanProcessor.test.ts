@@ -1,5 +1,5 @@
-import { SpanKind, TraceFlags, context } from '@opentelemetry/api';
-import { LambdaSpanProcessor } from '../src/telemetry/processor';
+import { TraceFlags, context } from '@opentelemetry/api';
+import { LambdaSpanProcessor } from '../src/internal/telemetry/processor';
 import { TestSpanExporter, createTestSpan, createSpan, EnvVarManager } from './utils';
 import { describe, it, beforeEach, afterEach, expect } from '@jest/globals';
 import { ExportResultCode } from '@opentelemetry/core';

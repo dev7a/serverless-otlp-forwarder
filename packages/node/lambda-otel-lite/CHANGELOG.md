@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-02-15
+
+### Breaking Changes
+- Complete overhaul of the handler interface:
+  - Removed direct tracer/provider parameters from `TracedHandlerOptions`
+  - Introduced `completionHandler` from `initTelemetry` as the main configuration point
+  - Changed function signature to `tracedHandler(options, event, context, fn)`
+  - Removed legacy interface with `fn` in options object
+- Moved all span configuration to extractors:
+  - Moved `links` from handler options to extractor attributes
+  - Removed `startTime` parameter
+  - Removed `parentContext` parameter (now handled via carrier in extractors)
+  - Changed span name precedence: extractor's `spanName` takes priority over handler's `name`
+- Simplified attribute extraction:
+  - Removed built-in HTTP attribute extraction from handler
+  - All attribute extraction now happens through extractors
+  - Removed `getCarrier` option (now part of extractor interface)
+- Restructured project layout:
+  - Moved internal modules to `internal` directory
+  - Removed `telemetry` directory
+  - Consolidated types into respective modules
+
+### Added
+- New attribute extractor interface with comprehensive documentation
+- Built-in extractors for common AWS event types:
+  - API Gateway v1/v2
+  - Application Load Balancer (ALB)
+- Type definitions for AWS Lambda events
+- Improved TypeScript type safety throughout
+
+### Changed
+- Improved logging with more specific prefix `[lambda-otel-lite]` instead of `[runtime]`
+- Better error handling and logging in extension
+- Simplified extension initialization
+- Improved documentation and examples
+- Better alignment with Rust implementation
+
+### Fixed
+- Documentation improvements and corrections
+- More consistent error handling
+- Better type safety in internal APIs
+
 ## [0.5.0] - 2025-01-18
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "@dev7a/lambda-otel-lite",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Lightweight OpenTelemetry instrumentation for AWS Lambda",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -23,21 +23,21 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "clean": "rimraf dist",
+    "build": "rm -rf dist && tsc",
+    "clean": "rm -rf dist",
     "test": "jest -c jest.config.ts",
     "test:watch": "jest -c jest.config.ts --watch",
     "test:coverage": "jest -c jest.config.ts --coverage",
-    "lint": "eslint src --ext .ts,.js"
+    "lint": "eslint 'src/**/*.{js,ts}' '__tests__/**/*.{js,ts}' --fix"
   },
   "dependencies": {
-    "@opentelemetry/api": "^1.7.0",
+    "@dev7a/otlp-stdout-span-exporter": "^0.1.0",
+    "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/core": "^1.19.0",
     "@opentelemetry/resources": "^1.19.0",
-    "@opentelemetry/sdk-trace-base": "^1.19.0",
-    "@opentelemetry/sdk-trace-node": "^1.19.0",
-    "@opentelemetry/semantic-conventions": "^1.19.0",
-    "@dev7a/otlp-stdout-span-exporter": "^0.1.0"
+    "@opentelemetry/sdk-trace-base": "^1.30.1",
+    "@opentelemetry/sdk-trace-node": "^1.30.1",
+    "@opentelemetry/semantic-conventions": "^1.19.0"
   },
   "devDependencies": {
     "@jest/globals": "^29.7.0",

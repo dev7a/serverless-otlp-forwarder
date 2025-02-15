@@ -1,340 +1,410 @@
-# @dev7a/lambda-otel-lite
+# Lambda OTel Lite
 
-The `lambda-otel-lite` library provides a lightweight, efficient OpenTelemetry implementation specifically designed for AWS Lambda environments. It features a custom span processor and internal extension mechanism that optimizes telemetry collection for Lambda's unique execution model.
+The `@dev7a/lambda-otel-lite` package provides a lightweight, efficient OpenTelemetry implementation specifically designed for AWS Lambda environments in Node.js. It features a custom span processor and internal extension mechanism that optimizes telemetry collection for Lambda's unique execution model.
 
-By leveraging Lambda's execution lifecycle and providing multiple processing modes, this library enables efficient telemetry collection with minimal impact on function latency. By default, it uses the [@dev7a/otlp-stdout-span-exporter](https://www.npmjs.com/package/@dev7a/otlp-stdout-span-exporter) to export spans to stdout for the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder) project.
+By leveraging Lambda's execution lifecycle and providing multiple processing modes, this package enables efficient telemetry collection with minimal impact on function latency. By default, it uses the `@dev7a/otlp-stdout-span-exporter` to export spans to CloudWatch Logs, where they can be collected and forwarded by the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder). It is also possible to use other standard exporters, such as the OTLP/gRPC exporter.
 
+The serverless-otlp-forwarder is a companion project that:
+- Collects OTLP-formatted spans from CloudWatch Logs
+- Forwards them to your OpenTelemetry backend
+- Supports multiple backends (Jaeger, Zipkin, etc.)
+- Provides automatic batching and retry mechanisms
 
 >[!IMPORTANT]
 >This package is highly experimental and should not be used in production. Contributions are welcome.
 
 ## Features
 
-- Lambda-optimized span processor with queue-based buffering
-- Three processing modes for different use cases:
-  - Synchronous: Immediate span export
-  - Asynchronous: Background processing via internal extension
-  - Finalize: Compatible with standard BatchSpanProcessor
-- Internal extension event loop for asynchronous mode
-- Sigterm handler for asynchronous and finalize mode
-- Automatic Lambda resource detection
-- Automatic FAAS attributes from Lambda context and events (HTTP only)
-- Cold start detection and tracking
-- Configurable through environment variables
-- Optimized for cold start performance
+- **Flexible Processing Modes**: Support for synchronous, asynchronous, and custom export strategies
+- **Automatic Resource Detection**: Automatic extraction of Lambda environment attributes
+- **Lambda Extension Integration**: Built-in extension for efficient telemetry export
+- **AWS Event Support**: Automatic extraction of attributes from common AWS event types (API Gateway v1/v2, ALB)
+- **Flexible Context Propagation**: Support for W3C Trace Context
+- **TypeScript Support**: Full TypeScript type definitions included
+
+## Architecture and Modules
+
+The package follows a modular architecture where each component has a specific responsibility while working together efficiently:
+
+```mermaid
+graph TD
+    A[core] --> B[processor]
+    A --> C[extension]
+    B <--> C
+    D[resource] --> A
+    E[extractors] --> F[handler]
+    F --> B
+    A --> F
+```
+
+- **Core**: Core initialization and configuration
+  - Main entry point via `initTelemetry`
+  - Configures global tracer and span processors
+  - Returns a `TelemetryCompletionHandler` for span lifecycle management
+
+- **Processor**: Lambda-optimized span processor
+  - Configurable queue size implementation
+  - Multiple processing modes
+  - Coordinates with extension for async export
+
+- **Extension**: Lambda Extension implementation
+  - Manages extension lifecycle and registration
+  - Handles span export coordination
+  - Implements graceful shutdown
+
+- **Resource**: Resource attribute management
+  - Automatic Lambda attribute detection
+  - Environment-based configuration
+  - Custom attribute support
+
+- **Extractors**: Event processing
+  - Built-in support for API Gateway (v1/v2) and ALB events
+  - Extensible interface for custom events
+  - W3C Trace Context propagation
 
 ## Installation
 
-You can install the `lambda-otel-lite` package using npm:
-
+Add the package to your project:
 ```bash
-npm install @dev7a/lambda-otel-lite
+npm install --save @dev7a/lambda-otel-lite
 ```
+
+## Processing Modes
+
+The package supports three processing modes for span export:
+
+1. **Sync Mode** (default):
+   - Direct, synchronous export in handler thread
+   - Recommended for low-volume telemetry or when latency is not critical
+   - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=sync`
+   - Does not install a sigterm handler
+
+2. **Async Mode**:
+   - Export via Lambda extension using AWS Lambda Extensions API
+   - Spans are queued and exported after handler completion
+   - Best for production use with high telemetry volume
+   - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=async`
+   - Requires extension initialization: `NODE_OPTIONS=--require @dev7a/lambda-otel-lite/extension`
+   - Install a sigterm handler to ensure spans are flushed on shutdown
+
+3. **Finalize Mode**:
+   - Leaves span export to the processor implementation
+   - Best for use with BatchSpanProcessor
+   - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=finalize`
+   - Install a sigterm handler to ensure spans are flushed on shutdown
+
+## Processing Modes Architecture
+
+The async mode leverages Lambda's extension API to optimize perceived latency by deferring span export until after the response is sent to the user. The extension is loaded via Node.js's `--require` flag and uses an event-driven architecture:
+
+```mermaid
+sequenceDiagram
+    participant Lambda Runtime
+    participant Extension
+    participant Event Emitter
+    participant Handler
+    participant LambdaSpanProcessor
+    participant OTLPStdoutSpanExporter
+
+    Note over Extension: Loaded via --require
+    Extension->>Lambda Runtime: Register extension (POST /register)
+    alt Registration Success
+        Lambda Runtime-->>Extension: Extension ID
+        Extension->>Extension: Setup SIGTERM handler
+    else Registration Failure
+        Lambda Runtime-->>Extension: Error
+        Note over Extension: Log error and continue
+    end
+
+    Extension->>Lambda Runtime: Request next event (GET /next)
+    Lambda Runtime-->>Extension: INVOKE event
+
+    Note over Handler: Function execution starts
+    Handler->>LambdaSpanProcessor: Add spans during execution
+    Handler->>Event Emitter: Emit 'handlerComplete'
+    
+    Event Emitter->>Extension: Handle completion
+    Extension->>LambdaSpanProcessor: Force flush spans
+    LambdaSpanProcessor->>OTLPStdoutSpanExporter: Export spans
+    Extension->>Lambda Runtime: Request next event
+
+    Note over Extension: On SIGTERM
+    Lambda Runtime->>Extension: SHUTDOWN event
+    Extension->>LambdaSpanProcessor: Force flush spans
+    LambdaSpanProcessor->>OTLPStdoutSpanExporter: Export remaining spans
+    Extension->>Process: Exit(0)
+```
+
+Key aspects of the implementation:
+1. The extension is loaded at startup via `--require` flag
+2. Uses Node.js's built-in `http` module for Lambda API communication
+3. Leverages event emitters for handler completion notification
+4. Single event loop handles both extension and handler code
+5. SIGTERM handler ensures graceful shutdown with span flushing
 
 ## Usage
 
 ### Basic Usage
 
-```javascript
-const { SpanKind } = require('@opentelemetry/api');
-const { initTelemetry, tracedHandler } = require('@dev7a/lambda-otel-lite');
+```typescript
+import { initTelemetry, tracedHandler } from '@dev7a/lambda-otel-lite';
 
-// Initialize telemetry once at module load
-const { tracer, provider } = initTelemetry('my-service');
+// Initialize telemetry (do this once, outside the handler)
+const completionHandler = initTelemetry('my-service');
 
-exports.handler = async (event, context) => {
-    return tracedHandler(
-        {
-            tracer,
-            provider,
-            name: 'my-handler',
-            kind: SpanKind.SERVER,
-            event,  // Optional: Enables automatic FAAS attributes from event
-            context,  // Optional: Enables automatic FAAS attributes from context
-        },
-        async (span) => {
-            // Your handler code here
-            await processEvent(event);
-            return { statusCode: 200 };
-        }
-    );
-};
-
-async function processEvent(event) {
-    return tracer.startActiveSpan('process_event', async (span) => {
-        span.setAttribute('event.type', event.type);
-        // Process the event
-        span.end();
-    });
-}
-
-```
-
-### Automatic FAAS Attributes
-
-The library automatically sets relevant FAAS attributes based on the Lambda context and event. Both `event` and `context` parameters must be passed to `tracedHandler` to enable all automatic attributes:
-
-- Resource Attributes (set at initialization):
-  - `cloud.provider`: "aws"
-  - `cloud.region`: from AWS_REGION
-  - `faas.name`: from AWS_LAMBDA_FUNCTION_NAME
-  - `faas.version`: from AWS_LAMBDA_FUNCTION_VERSION
-  - `faas.instance`: from AWS_LAMBDA_LOG_STREAM_NAME
-  - `faas.max_memory`: from AWS_LAMBDA_FUNCTION_MEMORY_SIZE
-  - `service.name`: from OTEL_SERVICE_NAME (defaults to function name)
-  - Additional attributes from OTEL_RESOURCE_ATTRIBUTES (URL-decoded)
-
-- Span Attributes (set per invocation when passing context):
-  - `faas.cold_start`: true on first invocation
-  - `cloud.account.id`: extracted from context's invokedFunctionArn
-  - `faas.invocation_id`: from awsRequestId
-  - `cloud.resource_id`: from context's invokedFunctionArn
-
-- HTTP Attributes (set for API Gateway events):
-  - `faas.trigger`: "http"
-  - `http.status_code`: from handler response
-  - `http.route`: from routeKey (v2) or resource (v1)
-  - `http.method`: from requestContext (v2) or httpMethod (v1)
-  - `http.target`: from path
-  - `http.scheme`: from protocol
-
-The library automatically detects API Gateway v1 and v2 events and sets the appropriate HTTP attributes. For HTTP responses, the status code is automatically extracted from the handler's response and set as `http.status_code`. For 5xx responses, the span status is set to ERROR.
-
-### Distributed Tracing
-
-The library supports distributed tracing across service boundaries. Context propagation is handled automatically when you pass the `event` parameter and it contains a `headers` property. You can also provide a custom carrier extraction function for more complex scenarios:
-
-```javascript
-const { SpanKind } = require('@opentelemetry/api');
-const { initTelemetry, tracedHandler } = require('@dev7a/lambda-otel-lite');
-
-// Initialize telemetry once at module load
-const { tracer, provider } = initTelemetry('my-service');
-
-exports.handler = async (event, context) => {
-    // Context propagation is handled automatically if event has 'headers'
-    return tracedHandler(
-        {
-            tracer,
-            provider,
-            name: 'my-handler',
-            kind: SpanKind.SERVER,
-            event,  // Will automatically extract context from event.headers if present
-            context,
-            attributes: { 'custom.attribute': 'value' }
-        },
-        async (span) => {
-            // Your handler code here
-            return { statusCode: 200 };
-        }
-    );
-};
-
-// For custom carrier extraction:
-function extractFromSQS(event) {
-    // Extract tracing headers from the first record's message attributes
-    if (event.Records && event.Records[0] && event.Records[0].messageAttributes) {
-        return event.Records[0].messageAttributes;
-    }
-    return {};
-}
-
-exports.handlerWithCustomExtraction = async (event, context) => {
-    return tracedHandler(
-        {
-            tracer,
-            provider,
-            name: 'my-handler',
-            kind: SpanKind.SERVER,
-            event,
-            context,
-            getCarrier: extractFromSQS  // Custom function to extract carrier from event
-        },
-        async (span) => {
-            // Your handler code here
-            return { statusCode: 200 };
-        }
-    );
+export const handler = async (event: any, context: any) => {
+  return tracedHandler({
+    completionHandler,
+    name: 'my-handler'
+  }, event, context, async (span) => {
+    // Your handler code here
+    return {
+      statusCode: 200,
+      body: 'Success'
+    };
+  });
 };
 ```
 
-Please note that in a real world scenario, for SQS events you should probably use span links instead.
+### Deployment Examples
 
-### Custom Telemetry Configuration
+For complete deployment examples using AWS SAM, including both standard Node.js and ESBuild bundling approaches, see the [examples directory](./examples/).
 
-You can customize the telemetry setup by providing your own span processors and chaining them:
+### With API Gateway Event Extraction
 
-```javascript
-const { initTelemetry, tracedHandler } = require('@dev7a/lambda-otel-lite');
-const { BatchSpanProcessor, NoopSpanProcessor, ConsoleSpanExporter } = require('@opentelemetry/sdk-trace-base');
+```typescript
+import { initTelemetry, tracedHandler } from '@dev7a/lambda-otel-lite';
+import { apiGatewayV2Extractor } from '@dev7a/lambda-otel-lite';
 
-// Simple processor example
-class SimpleProcessor extends NoopSpanProcessor {
-    onStart(span) {
-        span.setAttribute('example.timestamp', Date.now());
-    }
-}
+const completionHandler = initTelemetry('my-service');
 
-// Initialize with custom processor and exporter
-const { tracer, provider } = initTelemetry('my-lambda-function', {
-    spanProcessors: [
-        new SimpleProcessor(),         // First add attributes
-        new BatchSpanProcessor(        // Then export spans
-            new ConsoleSpanExporter()
-        )
-    ]
+export const handler = async (event: any, context: any) => {
+  return tracedHandler({
+    completionHandler,
+    name: 'my-handler',
+    attributesExtractor: apiGatewayV2Extractor
+  }, event, context, async (span) => {
+    // Your handler code here
+    return {
+      statusCode: 200,
+      body: 'Success'
+    };
+  });
+};
+```
+
+### Custom Resource Attributes
+
+```typescript
+import { initTelemetry, tracedHandler } from '@dev7a/lambda-otel-lite';
+import { Resource } from '@opentelemetry/resources';
+
+const resource = new Resource({
+  'service.version': '1.0.0',
+  'deployment.environment': 'production'
+});
+
+const completionHandler = initTelemetry('my-service', {
+  resource
+});
+
+export const handler = async (event: any, context: any) => {
+  // ... handler implementation
+};
+```
+
+### Custom Span Processor
+
+```typescript
+import { initTelemetry } from '@dev7a/lambda-otel-lite';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter';
+
+const processor = new BatchSpanProcessor(new OTLPStdoutSpanExporter());
+
+const completionHandler = initTelemetry('my-service', {
+  spanProcessors: [processor]
 });
 ```
-If no processors are provided, the library defaults to using a `LambdaSpanProcessor` with `OTLPStdoutSpanExporter` for integration with the serverless-otlp-forwarder.
 
-## Processing Modes
+### Using Different Exporters and Processors
 
-The library supports three processing modes, controlled by the `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` environment variable:
+The package supports any OpenTelemetry-compatible exporter and processor. Here are some examples:
 
-1. **Synchronous Mode** (`sync`, default)
-   - Spans are exported immediately in the handler thread
-   - Best for development and debugging
-   - Highest latency but immediate span visibility
-   - Does not install the internal extension thread and the sigterm handler
-   - Recommended for lower memory configurations (< 256MB)
+#### Console Exporter with Simple Processor
+Good for development and debugging, outputs spans directly to console:
 
-2. **Asynchronous Mode** (`async`)
-   - Spans are queued and processed by the internal extension thread
-   - Export occurs after handler completion
-   - Best for production use with higher memory configurations (>= 256MB)
-   - Minimal impact on handler latency at higher memory configurations
-   - Install the sigterm handler to flush remaining spans on termination
-   - **Important**: Requires setting `NODE_OPTIONS=--require @dev7a/lambda-otel-lite/extension` to load the extension thread
+```typescript
+import { initTelemetry } from '@dev7a/lambda-otel-lite';
+import { ConsoleSpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 
-3. **Finalize Mode** (`finalize`)
-   - Install only the sigterm handler to flush remaining spans on termination
-   - Typically used with the BatchSpanProcessor from the OpenTelemetry SDK for periodic flushes
+const consoleExporter = new ConsoleSpanExporter();
+const simpleProcessor = new SimpleSpanProcessor(consoleExporter);
 
-### Async Mode Architecture
-
-The async mode leverages Lambda's extension API to optimize perceived latency by deferring span export until after the response is sent to the user. Here's how it works:
-
-```mermaid
-sequenceDiagram
-    participant Lambda Runtime
-    participant Extension Process
-    participant Handler
-    participant Span Queue
-    participant OTLP Exporter
-
-    Note over Extension Process: Loaded via NODE_OPTIONS=--require
-    Extension Process->>Lambda Runtime: Register extension (POST /register)
-    Lambda Runtime-->>Extension Process: Extension ID
-    Extension Process->>Lambda Runtime: Request next event (GET /next)
-    
-    Note over Handler: Lambda invocation starts
-    Lambda Runtime->>Handler: Invoke handler
-    Handler->>Span Queue: Queue spans during execution
-    Handler->>Lambda Runtime: Return response
-    Note right of Handler: User gets response immediately
-    
-    Handler->>Extension Process: Signal handler complete (via event emitter)
-    Extension Process->>OTLP Exporter: Force flush spans
-    OTLP Exporter-->>Extension Process: Flush complete
-    Extension Process->>Lambda Runtime: Request next event
-    Note over Extension Process: Event loop continues for next invocation
-    
-    Note over Lambda Runtime: On SIGTERM
-    Lambda Runtime->>Extension Process: SIGTERM
-    Extension Process->>OTLP Exporter: Final flush & shutdown
-    Extension Process->>Lambda Runtime: Exit
+const completionHandler = initTelemetry('my-service', {
+  spanProcessors: [simpleProcessor]
+});
 ```
 
-#### Performance Considerations
+#### OTLP/HTTP Exporter with Batch Processor
+Suitable for production use with an OTLP-compatible backend:
 
-While async mode can improve perceived latency by deferring span export, there are important performance considerations:
+```typescript
+import { initTelemetry } from '@dev7a/lambda-otel-lite';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 
-- **Memory Impact**: The coordination between the handler and extension process adds overhead. For functions with low memory configurations (< 256MB), this overhead might actually increase overall latency. In such cases, sync mode is recommended.
+const otlpExporter = new OTLPTraceExporter({
+  url: 'https://your-otlp-endpoint:4318/v1/traces'
+});
+const batchProcessor = new BatchSpanProcessor(otlpExporter);
 
-- **Cold Starts**: The extension initialization adds a small overhead to cold starts. This is usually negligible but should be considered for latency-sensitive applications.
+const completionHandler = initTelemetry('my-service', {
+  spanProcessors: [batchProcessor]
+});
+```
 
-- **Resource Usage**: Async mode requires additional resources for the extension process. This is generally not an issue with higher memory configurations (>= 256MB) but can impact performance on constrained environments.
+#### Multiple Processors
+Useful for debugging while still sending spans to your production backend:
 
-For optimal performance:
-- Use sync mode for functions with < 256MB memory
-- Use async mode for functions with >= 256MB memory where perceived latency is critical
-- Monitor and adjust based on your specific workload and requirements
+```typescript
+import { initTelemetry } from '@dev7a/lambda-otel-lite';
+import { ConsoleSpanExporter, SimpleSpanProcessor, BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 
-## Environment Variables
+const completionHandler = initTelemetry('my-service', {
+  spanProcessors: [
+    new SimpleSpanProcessor(new ConsoleSpanExporter()),
+    new BatchSpanProcessor(new OTLPTraceExporter({
+      url: 'https://your-otlp-endpoint:4318/v1/traces'
+    }))
+  ]
+});
+```
 
-The library can be configured using the following environment variables:
+Note: When using processors other than the default `LambdaSpanProcessor`, make sure to:
+1. Consider the processing mode (`sync`, `async`, `finalize`) that best fits your exporter
+2. Ensure proper shutdown handling in your processor configuration
+3. Be mindful of Lambda's execution time limits when using batch processors
+
+### Creating Custom Event Extractors
+
+You can create custom extractors for different event types by implementing the attribute extraction interface. This is useful when working with custom event sources or AWS services not covered by the built-in extractors.
+
+```typescript
+import { SpanKind } from '@opentelemetry/api';
+import { TriggerType, SpanAttributes } from '@dev7a/lambda-otel-lite';
+import { LambdaContext } from '@dev7a/lambda-otel-lite';
+
+// Example: Custom extractor for SQS events
+function sqsEventExtractor(event: any, context: LambdaContext): SpanAttributes {
+  // Check if this is an SQS event
+  if (!event?.Records?.[0]?.eventSource?.includes('aws:sqs')) {
+    return {
+      trigger: TriggerType.Other,
+      kind: SpanKind.INTERNAL,
+      attributes: {}
+    };
+  }
+
+  const record = event.Records[0];
+  
+  return {
+    // Mark as messaging trigger
+    trigger: TriggerType.PubSub,
+    // Use CONSUMER kind for message processing
+    kind: SpanKind.CONSUMER,
+    // Set span name to include queue name
+    spanName: `process ${record.eventSourceARN.split(':').pop()}`,
+    // Extract tracing headers from message attributes if present
+    carrier: record.messageAttributes?.['traceparent']?.stringValue 
+      ? { traceparent: record.messageAttributes['traceparent'].stringValue }
+      : undefined,
+    // Add relevant attributes following semantic conventions
+    attributes: {
+      'messaging.system': 'aws.sqs',
+      'messaging.destination': record.eventSourceARN,
+      'messaging.destination_kind': 'queue',
+      'messaging.operation': 'process',
+      'messaging.message_id': record.messageId,
+      'aws.sqs.message_group_id': record.attributes.MessageGroupId,
+      'aws.sqs.message_deduplication_id': record.attributes.MessageDeduplicationId,
+    }
+  };
+}
+
+// Example: Custom HTTP Framework Extractor
+function customHttpExtractor(event: any, context: LambdaContext): SpanAttributes {
+  if (!event?.method) {
+    return {
+      trigger: TriggerType.Other,
+      kind: SpanKind.INTERNAL,
+      attributes: {}
+    };
+  }
+
+  const path = event.path || '/';
+  
+  return {
+    trigger: TriggerType.Http,
+    kind: SpanKind.SERVER,
+    // Set span name to HTTP method and path
+    spanName: `${event.method} ${path}`,
+    // Extract standard HTTP headers for context propagation
+    carrier: event.headers || {},
+    attributes: {
+      'http.method': event.method,
+      'http.route': event.route,
+      'http.target': path,
+      'http.user_agent': event.headers?.['user-agent'],
+      'http.request_content_length': event.headers?.['content-length'],
+      'http.scheme': 'https',
+      'http.flavor': event.protocol || '1.1',
+    }
+  };
+}
+
+// Usage with traced handler
+export const handler = async (event: any, context: any) => {
+  return tracedHandler({
+    completionHandler,
+    name: 'sqs-handler',
+    attributesExtractor: sqsEventExtractor
+  }, event, context, async (span) => {
+    // Process SQS message
+    return {
+      statusCode: 200
+    };
+  });
+};
+```
+
+#### Best Practices for Custom Extractors
+
+1. **Type Safety**: Use TypeScript interfaces to ensure type safety for your event structures.
+2. **Semantic Conventions**: Follow [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/) for attribute naming.
+3. **Defensive Programming**: Always check for the existence of properties before accessing them.
+4. **Context Propagation**: If the event source supports headers or attributes, extract tracing context when available.
+5. **Span Kind**: Choose the appropriate `SpanKind` based on the operation type:
+   - `SERVER` for HTTP requests
+   - `CONSUMER` for message processing
+   - `CLIENT` for outgoing calls
+   - `PRODUCER` for message publishing
+   - `INTERNAL` for internal operations
+
+## Configuration
+
+### Environment Variables
 
 - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Processing mode (`sync`, `async`, or `finalize`)
 - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Maximum number of spans to queue (default: 2048)
-- `NODE_OPTIONS`: Must be set to `--require @dev7a/lambda-otel-lite/extension` when using async mode
-- `OTEL_SERVICE_NAME`: Override the service name (defaults to function name)
-- `OTEL_RESOURCE_ATTRIBUTES`: Additional resource attributes in key=value,key2=value2 format (URL-decoded values supported)
-- `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: Gzip compression level for stdout exporter (0-9, default: 6)
-  - 0: No compression
-  - 1: Best speed
-  - 6: Good balance between size and speed (default)
-  - 9: Best compression
+- `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Maximum batch size for export (default: 512)
+- `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level for span export (default: 6)
+- `OTEL_SERVICE_NAME`: Service name (defaults to Lambda function name)
+- `OTEL_RESOURCE_ATTRIBUTES`: Additional resource attributes in key=value format
 
-
-## SAM Template Examples
-
-The following examples show how to configure your SAM template when using the `async` processing mode. For `sync` mode (default), no special configuration is needed.
-
-### With esbuild
-
-When using esbuild with async mode, you need to create a separate `init.js` file that will be bundled with your function:
-
-```javascript
-// init.js
-require('@dev7a/lambda-otel-lite/extension');
-```
-
-```yaml
-# template.yaml
-MyFunction:
-  Type: AWS::Serverless::Function
-  Metadata:
-    BuildMethod: esbuild
-    BuildProperties:
-      Minify: false
-      Target: "es2022"
-      Format: "cjs"
-      Platform: "node"
-      EntryPoints: 
-        - 'index.js'
-        - 'init.js'  # Required for async mode
-  Properties:
-    FunctionName: !Sub '${AWS::StackName}-my-function'
-    CodeUri: ./
-    Handler: index.handler
-    Runtime: nodejs20.x
-    Environment:
-      Variables:
-        OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-my-function'
-        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async  # Enable async mode
-        NODE_OPTIONS: --require /var/task/init.js    # Load the extension
-```
-
-### Without esbuild
-
-When not using esbuild but still wanting async mode, you can require the extension directly:
-
-```yaml
-# template.yaml
-MyFunction:
-  Type: AWS::Serverless::Function
-  Properties:
-    FunctionName: !Sub '${AWS::StackName}-my-function'
-    CodeUri: ./
-    Handler: index.handler
-    Runtime: nodejs20.x
-    Environment:
-      Variables:
-        OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-my-function'
-        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async  # Enable async mode
-        NODE_OPTIONS: --require @dev7a/lambda-otel-lite/extension  # Load the extension
-```
+For configuration of the OTLP forwarder, see the [serverless-otlp-forwarder documentation](https://github.com/dev7a/serverless-otlp-forwarder).
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+[MIT License](LICENSE)

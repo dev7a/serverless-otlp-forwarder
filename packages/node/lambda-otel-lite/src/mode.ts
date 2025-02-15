@@ -23,7 +23,7 @@ export enum ProcessorMode {
  * @param envVar - Name of the environment variable to read
  * @param defaultMode - Default mode if environment variable is not set
  */
-export function processorModeFromEnv(envVar: string = 'LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE', defaultMode: ProcessorMode = ProcessorMode.Async): ProcessorMode {
+export function processorModeFromEnv(envVar: string = 'LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE', defaultMode: ProcessorMode = ProcessorMode.Sync): ProcessorMode {
   const envValue = process.env[envVar];
   // Handle undefined, null, or non-string values
   if (!envValue || typeof envValue !== 'string') {

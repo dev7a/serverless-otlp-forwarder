@@ -1,110 +1,140 @@
 # lambda-otel-lite Examples
 
-This directory contains examples demonstrating how to use `lambda-otel-lite` in AWS Lambda functions.
+This directory contains examples demonstrating how to use `lambda-otel-lite` in AWS Lambda functions. The examples showcase different deployment methods and configurations using AWS SAM.
 
-## Examples Overview
+## Template Structure
 
-### 1. Hello World (`hello_world/app.js`)
+The `template.yaml` provides two example Lambda functions with different build configurations:
 
-A minimal example showing basic usage of `lambda-otel-lite`. Perfect for getting started.
+### 1. Standard Node.js Function (`HelloWorld`)
+```yaml
+HelloWorld:
+  Type: AWS::Serverless::Function
+  Properties:
+    Handler: app.handler
+    Environment:
+      Variables:
+        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
+        NODE_OPTIONS: --require @dev7a/lambda-otel-lite/extension
+```
+This configuration:
+- Uses standard Node.js module resolution
+- Loads the extension directly from `node_modules`
+- Suitable for simple deployments without bundling
 
-```javascript
-const { SpanKind } = require('@opentelemetry/api');
-const { initTelemetry, tracedHandler } = require('@dev7a/lambda-otel-lite');
+### 2. ESBuild-bundled Function (`HelloWorldESBuild`)
+```yaml
+HelloWorldESBuild:
+  Type: AWS::Serverless::Function
+  Metadata:
+    BuildMethod: esbuild
+    BuildProperties:
+      Minify: true
+      Target: "es2022"
+      Format: "cjs"
+      EntryPoints: 
+        - app.js
+        - init.js
+  Properties:
+    Handler: app.handler
+    Environment:
+      Variables:
+        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
+        NODE_OPTIONS: --require /var/task/init.js
+```
+This configuration:
+- Uses esbuild to bundle the function and dependencies
+- Includes the extension in the bundle
+- Optimized for production deployments
+- Reduces cold start time by bundling dependencies
 
-// Initialize telemetry once at module load
-const { tracer, provider } = initTelemetry('hello-world');
+## Global Configuration
 
-exports.handler = async (event, context) => {
-  return tracedHandler(
-    {
-      tracer,
-      provider,
-      name: 'hello_world',
-      event,
-      context,
-      kind: SpanKind.SERVER,
-    },
-    async (span) => {
-      span.setAttribute('greeting.name', 'World');
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ message: 'Hello World!' }),
-      };
-    }
-  );
-};
+The template includes global settings for all functions:
+
+```yaml
+Globals:
+  Function:
+    MemorySize: 128
+    Timeout: 30
+    Architectures:
+      - arm64
+    Runtime: nodejs22.x
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: DEBUG
+      SystemLogLevel: INFO
 ```
 
-This example demonstrates:
-- Basic telemetry initialization
-- Using the traced handler wrapper
-- Standard OTLP output format
+These settings:
+- Use ARM64 architecture for better cost/performance
+- Configure JSON logging for better integration with log processors
+- Set appropriate memory and timeout values
+- Enable detailed logging for debugging
 
-### 2. Custom Processors (`custom_processors/app.js`)
+## Deployment
 
-A more advanced example showing how to use custom span processors for telemetry enrichment.
+### Prerequisites
+1. AWS SAM CLI installed
+2. AWS credentials configured
+3. Node.js 18 or later
 
-```javascript
-const { SpanKind } = require('@opentelemetry/api');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { OTLPStdoutSpanExporter } = require('@dev7a/otlp-stdout-span-exporter');
-const { initTelemetry, tracedHandler } = require('@dev7a/lambda-otel-lite');
+### Deploy with SAM
 
-// Initialize with custom processors
-const { tracer, provider } = initTelemetry('custom-processors-demo', {
-  spanProcessors: [
-    new SystemMetricsProcessor(),  // First add system metrics
-    new DebugProcessor(),          // Then print all spans as json
-    new BatchSpanProcessor(        // Then export in OTLP format
-      new OTLPStdoutSpanExporter({
-        gzipLevel: parseInt(process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL || '6', 10)
-      })
-    )
-  ]
-});
-
-exports.handler = async (event, context) => {
-  return tracedHandler(
-    {
-      tracer,
-      provider,
-      name: 'process_request',
-      event,
-      context,
-      kind: SpanKind.SERVER,
-    },
-    async (span) => {
-      // Your handler code here
-      span.setAttribute('custom.attribute', 'value');
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ success: true }),
-      };
-    }
-  );
-};
-```
-
-This example demonstrates:
-- Creating custom processors for span enrichment
-- Using compression with the OTLP exporter
-- Adding system metrics to spans at start time
-
-## Setup
-
-1. Install the package:
+1. Build the functions:
 ```bash
-npm install @dev7a/lambda-otel-lite
+sam build --build-in-source
 ```
 
-2. Deploy either example:
-   - Create a new Lambda function
-   - Use Node.js 18.x or later
-   - Set the handler to `app.handler`
-   - Upload the corresponding `app.js` file
-
-3. Configure environment variables:
+2. Deploy to AWS:
+```bash
+sam deploy --guided
 ```
-OTEL_SERVICE_NAME=your-service-name
-``` 
+
+During the guided deployment, you'll be prompted for:
+- Stack name
+- AWS Region
+- Confirmation of IAM role creation
+- Function URL authorization settings
+
+### Testing the Deployment
+
+After deployment, you can test the functions using their URLs and curl
+
+```bash
+curl <HelloWorldFunctionUrl>
+```
+
+Both functions will:
+1. Generate OpenTelemetry traces
+2. Output OTLP-formatted spans to CloudWatch logs
+3. Be compatible with the serverless-otlp-forwarder
+
+## Function Structure
+
+The example functions demonstrate:
+1. Initialization of telemetry
+2. Usage of the traced handler wrapper
+3. Event attribute extraction
+4. Proper error handling
+
+Key files:
+- `handler/app.js` - Main handler implementation
+- `handler/init.js` - Extension initialization
+- `samconfig.toml` - SAM CLI configuration
+
+## Viewing Traces
+
+The traces will be available in your configured OpenTelemetry backend when using the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder)
+
+The serverless-otlp-forwarder is a companion project that:
+- Collects OTLP-formatted spans from CloudWatch Logs
+- Forwards them to your OpenTelemetry backend
+
+For setup instructions and configuration options, see the [serverless-otlp-forwarder documentation](https://github.com/dev7a/serverless-otlp-forwarder).
+
+## Additional Resources
+
+- [Main lambda-otel-lite Documentation](../README.md)
+- [AWS SAM Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
+- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)

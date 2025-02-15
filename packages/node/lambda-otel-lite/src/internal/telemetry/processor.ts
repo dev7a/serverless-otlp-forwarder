@@ -13,7 +13,7 @@ const logger = createLogger('processor');
  */
 class CircularBuffer<T> {
   // The underlying array storage
-  private buffer: T[];
+  private buffer: Array<T | undefined>;
   // Points to the next item to be removed (oldest item)
   private head = 0;
   // Points to the next free slot for insertion
@@ -69,8 +69,8 @@ class CircularBuffer<T> {
 
     const items: T[] = new Array(batchSize);
     for (let i = 0; i < batchSize; i++) {
-      items[i] = this.buffer[this.head];
-      this.buffer[this.head] = undefined as any; // Clear reference for GC
+      items[i] = this.buffer[this.head]!;
+      this.buffer[this.head] = undefined;
       this.head = (this.head + 1) % this.capacity;
       this._size--;
     }
@@ -122,7 +122,7 @@ export class LambdaSpanProcessor implements SpanProcessor {
         config?: { maxQueueSize?: number; maxExportBatchSize?: number }
   ) {
     const maxQueueSize = config?.maxQueueSize || 2048;
-    this.maxExportBatchSize = config?.maxExportBatchSize || 64;
+    this.maxExportBatchSize = config?.maxExportBatchSize || 512;
     this.buffer = new CircularBuffer<ReadableSpan>(maxQueueSize);
   }
 
@@ -202,6 +202,7 @@ export class LambdaSpanProcessor implements SpanProcessor {
     // 1. Processing one batch at a time
     // 2. Yielding to the event loop between batches via setImmediate
     // 3. Allowing other operations to interleave between batch processing
+    logger.debug(`flushing ${this.buffer.size} spans`);
     return new Promise<void>((resolve, reject) => {
       const processNextBatch = () => {
         // Get next batch using configured batch size

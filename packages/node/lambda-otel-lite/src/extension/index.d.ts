@@ -1,5 +1,5 @@
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { ProcessorMode } from '../types';
+import { ProcessorMode } from '../mode';
 
 export interface ExtensionState {
     provider: NodeTracerProvider | null;

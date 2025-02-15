@@ -1,36 +1,26 @@
-import { SpanKind, SpanStatusCode, Tracer, Span, Context, Link, ROOT_CONTEXT, propagation } from '@opentelemetry/api';
-import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { isColdStart, setColdStart } from './telemetry/init';
-import { ProcessorMode } from './types';
-import { state, handlerComplete } from './state';
-import logger from './logger';
+import { SpanKind, SpanStatusCode, Span, ROOT_CONTEXT, propagation } from '@opentelemetry/api';
+import { isColdStart, setColdStart } from './internal/telemetry/init';
+import { TelemetryCompletionHandler } from './internal/telemetry/completion';
+import { SpanAttributes, defaultExtractor } from './internal/telemetry/extractors';
+import logger from './internal/logger';
+
+/** Lambda Context interface */
+export interface LambdaContext {
+  awsRequestId: string;
+  invokedFunctionArn: string;
+  [key: string]: unknown;
+}
 
 /**
  * Options for the traced handler function
  */
-export interface TracedHandlerOptions<T> {
-    /** OpenTelemetry tracer instance */
-    tracer: Tracer;
-    /** OpenTelemetry tracer provider instance */
-    provider: NodeTracerProvider;
-    /** Name of the span */
+export interface TracedHandlerOptions {
+    /** Completion handler from initTelemetry */
+    completionHandler: TelemetryCompletionHandler;
+    /** Default name of the span (used if extractor does not provide a name) */
     name: string;
-    /** Optional Lambda event object. Used for extracting HTTP attributes and context */
-    event?: any;
-    /** Optional Lambda context object. Used for extracting FAAS attributes */
-    context?: any;
-    /** Optional span kind. Defaults to SERVER */
-    kind?: SpanKind;
-    /** Optional custom attributes to add to the span */
-    attributes?: Record<string, any>;
-    /** Optional span links */
-    links?: Link[];
-    /** Optional span start time */
-    startTime?: number;
-    /** Optional parent context for trace propagation */
-    parentContext?: Context;
-    /** Optional function to extract carrier from event for context propagation */
-    getCarrier?: (event: any) => Record<string, any>;
+    /** Optional attribute extractor function */
+    attributesExtractor?: (event: unknown, context: LambdaContext) => SpanAttributes;
 }
 
 /**
@@ -40,23 +30,26 @@ export interface TracedHandlerOptions<T> {
  * Features:
  * - Automatic cold start detection
  * - Lambda context attribute extraction (invocation ID, cloud resource ID, account ID)
- * - API Gateway event attribute extraction (HTTP method, route, etc.)
- * - Automatic context propagation from HTTP headers
- * - Custom context carrier extraction support
+ * - Event-specific attribute extraction via extractors
+ * - Automatic context propagation from headers
  * - HTTP response status code handling
  * - Error handling and recording
  * 
  * @example
  * Basic usage:
  * ```typescript
+ * import { initTelemetry, tracedHandler } from '@dev7a/lambda-otel-lite';
+ * import { apiGatewayV2Extractor } from  '@dev7a/lambda-otel-lite/telemetry/extractors';
+ * 
+ * // Initialize telemetry (do this once, outside the handler)
+ * const completionHandler = initTelemetry('my-service');
+ *
  * export const handler = async (event: any, context: any) => {
  *   return tracedHandler({
- *     tracer,
- *     provider,
+ *     completionHandler: completionHandler,
  *     name: 'my-handler',
- *     event,
- *     context,
- *   }, async (span) => {
+ *     attributesExtractor: apiGatewayV2Extractor
+ *   }, event, context, async (span) => {
  *     // Your handler code here
  *     return {
  *       statusCode: 200,
@@ -66,48 +59,20 @@ export interface TracedHandlerOptions<T> {
  * };
  * ```
  * 
- * @example
- * With custom context extraction:
- * ```typescript
- * export const handler = async (event: any, context: any) => {
- *   return tracedHandler({
- *     tracer,
- *     provider,
- *     name: 'my-handler',
- *     event,
- *     context,
- *     getCarrier: (evt) => evt.Records[0]?.messageAttributes || {},
- *   }, async (span) => {
- *     // Your handler code here
- *   });
- * };
- * ```
- * 
  * @template T The return type of the handler function
  * @param options Configuration options for the traced handler
+ * @param event Lambda event object
+ * @param context Lambda context object
  * @param fn Handler function that receives the span instance
  * @returns The result of the handler function
  */
 export async function tracedHandler<T>(
-  options: TracedHandlerOptions<T>,
+  options: TracedHandlerOptions,
+  event: unknown,
+  context: LambdaContext,
   fn: (span: Span) => Promise<T>
-): Promise<T>;
-
-/**
- * Legacy interface for backward compatibility
- * @deprecated Use the new interface with separate fn parameter instead
- */
-export async function tracedHandler<T>(options: TracedHandlerOptions<T> & { fn: (span: Span) => Promise<T> }): Promise<T>;
-
-export async function tracedHandler<T>(
-  options: TracedHandlerOptions<T> | (TracedHandlerOptions<T> & { fn: (span: Span) => Promise<T> }),
-  handlerFn?: (span: Span) => Promise<T>
 ): Promise<T> {
-  const fn = handlerFn || (options as any).fn;
-  if (!fn) {
-    throw new Error('Handler function is required');
-  }
-
+  const tracer = options.completionHandler.getTracer(options.name);
   let error: Error | undefined;
   let result: T;
 
@@ -115,61 +80,34 @@ export async function tracedHandler<T>(
     const wrapCallback = (fn: (span: Span) => Promise<T>) => {
       return async (span: Span) => {
         try {
+          // Extract attributes using provided extractor or default
+          const extracted = (options.attributesExtractor || defaultExtractor)(event, context);
+
+          // Set common attributes
           if (isColdStart()) {
-            span.setAttribute('faas.cold_start', true);
+            span.setAttribute('faas.coldstart', true);
           }
 
-          // Set default faas.trigger unconditionally
-          span.setAttribute('faas.trigger', 'other');
-
-          // Extract attributes from Lambda context if available
-          if (options.context) {
-            if (options.context.awsRequestId) {
-              span.setAttribute('faas.invocation_id', options.context.awsRequestId);
-            }
-            if (options.context.invokedFunctionArn) {
-              const arnParts = options.context.invokedFunctionArn.split(':');
-              if (arnParts.length >= 5) {
-                span.setAttribute('cloud.resource_id', options.context.invokedFunctionArn);
-                span.setAttribute('cloud.account.id', arnParts[4]);
-              }
+          // Set Lambda context attributes
+          if (context) {
+            span.setAttribute('faas.invocation_id', context.awsRequestId);
+            span.setAttribute('cloud.resource_id', context.invokedFunctionArn);
+                        
+            const arnParts = context.invokedFunctionArn.split(':');
+            if (arnParts.length >= 5) {
+              span.setAttribute('cloud.account.id', arnParts[4]);
             }
           }
 
-          // Extract attributes from Lambda event if available
-          if (options.event && typeof options.event === 'object') {
-            // HTTP triggers (API Gateway v1 and v2)
-            if ('requestContext' in options.event || 'httpMethod' in options.event) {
-              span.setAttribute('faas.trigger', 'http');
-                            
-              if ('version' in options.event && options.event.version === '2.0') {
-                // API Gateway v2
-                span.setAttribute('http.route', options.event.routeKey || '');
-                if (options.event.requestContext?.http) {
-                  const http = options.event.requestContext.http;
-                  span.setAttribute('http.method', http.method || '');
-                  span.setAttribute('http.target', http.path || '');
-                  span.setAttribute('http.scheme', (http.protocol || '').toLowerCase());
-                }
-              } else {
-                // API Gateway v1
-                span.setAttribute('http.route', options.event.resource || '');
-                span.setAttribute('http.method', options.event.httpMethod || '');
-                span.setAttribute('http.target', options.event.path || '');
-                if (options.event.requestContext?.protocol) {
-                  span.setAttribute('http.scheme', options.event.requestContext.protocol.toLowerCase());
-                }
-              }
-            }
-          }
+          // Set trigger type
+          span.setAttribute('faas.trigger', extracted.trigger || 'other');
 
-          // Add custom attributes
-          if (options.attributes) {
-            Object.entries(options.attributes).forEach(([key, value]) => {
-              span.setAttribute(key, value);
-            });
-          }
+          // Set extracted attributes
+          Object.entries(extracted.attributes).forEach(([key, value]) => {
+            span.setAttribute(key, value);
+          });
 
+          // Execute handler
           result = await fn(span);
 
           // Handle HTTP response attributes
@@ -187,6 +125,7 @@ export async function tracedHandler<T>(
           } else {
             span.setStatus({ code: SpanStatusCode.OK });
           }
+          
           return result;
         } catch (e) {
           error = e as Error;
@@ -205,47 +144,36 @@ export async function tracedHandler<T>(
       };
     };
 
-    // Extract context from event if available
-    let parentContext = options.parentContext;
-    if (!parentContext && options.event) {
+    // Extract attributes and context
+    const extracted = (options.attributesExtractor || defaultExtractor)(event, context);
+        
+    // Extract context from carrier if available
+    let parentContext = ROOT_CONTEXT;
+    if (extracted.carrier && Object.keys(extracted.carrier).length > 0) {
       try {
-        if (options.getCarrier) {
-          const carrier = options.getCarrier(options.event);
-          if (carrier && Object.keys(carrier).length > 0) {
-            parentContext = propagation.extract(ROOT_CONTEXT, carrier);
-          }
-        } else if (options.event.headers) {
-          parentContext = propagation.extract(ROOT_CONTEXT, options.event.headers);
-        }
+        parentContext = propagation.extract(ROOT_CONTEXT, extracted.carrier);
       } catch (error) {
         logger.warn('Failed to extract context:', error);
       }
     }
 
     // Start the span
-    result = await options.tracer.startActiveSpan(
-      options.name,
+    result = await tracer.startActiveSpan(
+      extracted.spanName || options.name,
       {
-        kind: options.kind ?? SpanKind.SERVER,
-        links: options.links,
-        startTime: options.startTime,
+        kind: extracted.kind || SpanKind.SERVER,
+        links: extracted.links,
       },
-      parentContext ?? ROOT_CONTEXT,
+      parentContext,
       wrapCallback(fn)
     );
-    logger.info('sending result');
+    logger.debug('returning result');
     return result;
   } catch (e) {
     error = e as Error;
     throw error;
   } finally {
-    // Handle completion based on processor mode
-    if (state.mode === ProcessorMode.Sync || !state.extensionInitialized) {
-      await options.provider.forceFlush();
-    } else if (state.mode === ProcessorMode.Async) {
-      logger.info('sending handler complete');
-      handlerComplete.signal();
-    }
+    options.completionHandler.complete();
   }
 }
 

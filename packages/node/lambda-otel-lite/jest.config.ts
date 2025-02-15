@@ -22,8 +22,7 @@ const config: Config.InitialOptions = {
   testTimeout: 10000, // 10 seconds
   clearMocks: true,
   restoreMocks: true,
-  resetMocks: true,
-  setupFilesAfterEnv: ['<rootDir>/__tests__/jest.setup.ts']
+  resetMocks: true
 }
 
 export default config; 
