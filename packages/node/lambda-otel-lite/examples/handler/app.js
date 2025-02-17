@@ -19,11 +19,17 @@ const { tracer, completionHandler } = initTelemetry();
 async function nestedFunction() {
   // Create a child span - it will automatically use the active span as parent
   return tracer.startActiveSpan('nested_function', (span) => {
-    span.addEvent('Nested function called');
-    // Your nested function logic here
-    const result = 'success';
-    span.end();
-    return result;
+    try {
+      span.addEvent('Nested function called');
+      // Your nested function logic here
+      const result = 'success';
+      if (Math.random() < 0.5) {
+        throw new Error('test error');
+      }
+      return result;
+    } finally {
+      span.end();
+    }
   });
 }
 

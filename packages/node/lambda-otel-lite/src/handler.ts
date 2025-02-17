@@ -125,7 +125,11 @@ export function createTracedHandler(
               return result;
             } catch (e) {
               error = e as Error;
+              // Record the error with full exception details
               span.recordException(error);
+              // Set explicit error attribute
+              span.setAttribute('error', true);
+              // Set status to ERROR
               span.setStatus({
                 code: SpanStatusCode.ERROR,
                 message: error.message
