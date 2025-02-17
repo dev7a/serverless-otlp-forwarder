@@ -5,20 +5,31 @@ import { VERSION } from '../../src/version';
 import { TelemetryCompletionHandler } from '../../src/internal/telemetry/completion';
 
 describe('TelemetryCompletionHandler', () => {
-  describe('getTracer', () => {
+  describe('constructor', () => {
     it('should create tracer with package instrumentation scope', () => {
       const provider = new NodeTracerProvider();
-      const handler = new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
-
-      // Mock provider.getTracer to capture arguments
       const getTracerSpy = jest.spyOn(provider, 'getTracer');
 
-      handler.getTracer();
+      new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
 
       expect(getTracerSpy).toHaveBeenCalledWith(
         VERSION.NAME,
         VERSION.VERSION
       );
+    });
+  });
+
+  describe('getTracer', () => {
+    it('should return cached tracer instance', () => {
+      const provider = new NodeTracerProvider();
+      const getTracerSpy = jest.spyOn(provider, 'getTracer');
+      
+      const handler = new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
+      const tracer1 = handler.getTracer();
+      const tracer2 = handler.getTracer();
+
+      expect(tracer1).toBe(tracer2);
+      expect(getTracerSpy).toHaveBeenCalledTimes(1);
     });
   });
 }); 

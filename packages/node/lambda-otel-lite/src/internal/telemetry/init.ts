@@ -7,6 +7,7 @@ import { LambdaSpanProcessor } from './processor';
 import { TelemetryCompletionHandler } from './completion';
 import { processorModeFromEnv, ProcessorMode } from '../../mode';
 import { createLogger } from '../logger';
+import { Tracer } from '@opentelemetry/api';
 
 const logger = createLogger('init');
 
@@ -89,7 +90,8 @@ export function getLambdaResource(): Resource {
  * 
  * This is the main entry point for setting up telemetry in your Lambda function.
  * It configures the OpenTelemetry SDK with Lambda-optimized defaults and returns
- * a completion handler that manages the telemetry lifecycle.
+ * both a tracer for manual instrumentation and a completion handler that manages 
+ * the telemetry lifecycle.
  * 
  * Features:
  * - Automatic Lambda resource detection (function name, version, memory, etc.)
@@ -104,22 +106,30 @@ export function getLambdaResource(): Resource {
  *                                If not provided, defaults to LambdaSpanProcessor
  *                                with OTLPStdoutSpanExporter.
  * 
- * @returns TelemetryCompletionHandler instance for managing telemetry lifecycle
+ * @returns Object containing:
+ *   - tracer: Tracer instance for manual instrumentation
+ *   - completionHandler: Handler for managing telemetry lifecycle
  * 
  * @example
  * Basic usage:
  * ```typescript
- * const completionHandler = initTelemetry();
+ * const { tracer, completionHandler } = initTelemetry();
  * 
- * export const handler = async (event, context) => {
- *   return tracedHandler({
- *     completionHandler,
- *     name: 'my-handler'
- *   }, event, context, async (span) => {
- *     // Your handler code
- *     return response;
+ * // Use completionHandler with traced handler
+ * export const handler = createTracedHandler(completionHandler, {
+ *   name: 'my-handler'
+ * }, async (event, context, span) => {
+ *   // Add attributes to the handler's span
+ *   span.setAttribute('request.id', context.awsRequestId);
+ *   
+ *   // Create a nested span for a sub-operation
+ *   return tracer.startActiveSpan('process_request', span => {
+ *     span.setAttribute('some.attribute', 'some value');
+ *     // ... do some work ...
+ *     span.end();
+ *     return { statusCode: 200, body: 'success' };
  *   });
- * };
+ * });
  * ```
  * 
  * Custom configuration:
@@ -135,9 +145,17 @@ export function getLambdaResource(): Resource {
  *   })
  * );
  * 
- * const completionHandler = initTelemetry({
+ * const { tracer, completionHandler } = initTelemetry({
  *   resource,
  *   spanProcessors: [processor]
+ * });
+ * 
+ * // Then create the traced handler
+ * export const handler = createTracedHandler(completionHandler, {
+ *   name: 'my-handler'
+ * }, async (event, context, span) => {
+ *   // Add attributes to the handler's span
+ *   span.setAttribute('request.id', context.awsRequestId);
  * });
  * ```
  * 
@@ -160,7 +178,7 @@ export function initTelemetry(
     resource?: Resource,
     spanProcessors?: SpanProcessor[]
   }
-): TelemetryCompletionHandler {
+): { tracer: Tracer; completionHandler: TelemetryCompletionHandler } {
   // Setup resource
   const baseResource = options?.resource || getLambdaResource();
 
@@ -198,6 +216,10 @@ export function initTelemetry(
     mode = ProcessorMode.Sync;
   }
 
-  // Return completion handler
-  return new TelemetryCompletionHandler(provider, mode);
+  // Create completion handler and return both handler and tracer
+  const completionHandler = new TelemetryCompletionHandler(provider, mode);
+  return {
+    tracer: completionHandler.getTracer(),
+    completionHandler
+  };
 } 

@@ -52,10 +52,18 @@ import logger from '../logger';
  * - The handler is designed to be reused across invocations
  */
 export class TelemetryCompletionHandler {
+  private readonly _tracer: Tracer;
+
   constructor(
     private readonly provider: NodeTracerProvider,
     private readonly mode: ProcessorMode
-  ) { }
+  ) {
+    // Initialize tracer once at construction
+    this._tracer = this.provider.getTracer(
+      VERSION.NAME,
+      VERSION.VERSION
+    );
+  }
 
   /**
    * Complete telemetry processing for the current invocation.
@@ -110,28 +118,13 @@ export class TelemetryCompletionHandler {
   }
 
   /**
-   * Get a tracer instance for creating spans.
+   * Get the tracer instance for creating spans.
    * 
-   * Returns a tracer instance configured with this package's instrumentation scope
-   * (name and version) and Lambda-specific attributes. The tracer is configured
-   * with the provider's settings and will automatically use the correct span processor
-   * based on the processing mode.
-   * 
-   * The tracer is configured with instrumentation scope attributes that identify:
-   * - library.language: The implementation language (nodejs)
-   * - library.type: The type of library (instrumentation)
-   * - library.runtime: The runtime environment (aws_lambda)
-   * 
-   * These attributes are different from resource attributes:
-   * - Resource attributes describe the entity producing telemetry (the Lambda function)
-   * - Instrumentation scope attributes describe the library doing the instrumentation
-   * 
-   * @returns A tracer instance for creating spans
+   * Returns the cached tracer instance configured with this package's instrumentation scope.
+   * The tracer is configured with the provider's settings and will automatically use 
+   * the correct span processor based on the processing mode.
    */
   getTracer(): Tracer {
-    return this.provider.getTracer(
-      VERSION.NAME,
-      VERSION.VERSION
-    );
+    return this._tracer;
   }
 } 

@@ -198,7 +198,7 @@ import { createTracedHandler, initTelemetry } from '@dev7a/lambda-otel-lite';
 import { apiGatewayV2Extractor } from '@dev7a/lambda-otel-lite/extractors';
 
 // Initialize telemetry with default configuration
-const completionHandler = initTelemetry();
+const { tracer, completionHandler } = initTelemetry();
 
 // Create a traced handler with a name and optional attribute extractor
 const handler = createTracedHandler(completionHandler, {
@@ -208,14 +208,19 @@ const handler = createTracedHandler(completionHandler, {
 
 // Use the traced handler to process Lambda events
 export const lambdaHandler = handler(async (event, context, span) => {
-  // Add custom attributes or create child spans
+  // Add custom attributes to the handler's span
   span.setAttribute('custom.attribute', 'value');
   
-  // Your handler logic here
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Hello World' })
-  };
+  // Create a child span for a sub-operation
+  return tracer.startActiveSpan('process_request', span => {
+    span.setAttribute('operation.type', 'process');
+    // ... do some work ...
+    span.end();
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Hello World' })
+    };
+  });
 });
 ```
 
@@ -235,7 +240,7 @@ import {
 } from '@dev7a/lambda-otel-lite/extractors';
 
 // Initialize telemetry with default configuration
-const completionHandler = initTelemetry();
+const { tracer, completionHandler } = initTelemetry();
 
 // Create a traced handler for API Gateway v2 events
 const handler = createTracedHandler(completionHandler, {
@@ -245,14 +250,17 @@ const handler = createTracedHandler(completionHandler, {
 
 // Use the traced handler to process Lambda events
 export const lambdaHandler = handler(async (event, context, span) => {
-  // Your handler logic here
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Hello World' })
-  };
+  // Create a child span for request processing
+  return tracer.startActiveSpan('process_request', span => {
+    // ... process the request ...
+    span.end();
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Hello World' })
+    };
+  });
 });
 ```
-
 
 ### Custom Resource Attributes
 
@@ -265,7 +273,7 @@ const resource = new Resource({
   'deployment.environment': 'production'
 });
 
-const completionHandler = initTelemetry({
+const { tracer, completionHandler } = initTelemetry({
   resource
 });
 
@@ -274,11 +282,15 @@ const handler = createTracedHandler(completionHandler, {
 });
 
 export const lambdaHandler = handler(async (event, context, span) => {
-  // Your handler logic here
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Hello World' })
-  };
+  // Create a child span for request processing
+  return tracer.startActiveSpan('process_request', span => {
+    // ... process the request ...
+    span.end();
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Hello World' })
+    };
+  });
 });
 ```
 
@@ -291,7 +303,7 @@ import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
 
 const processor = new BatchSpanProcessor(new ConsoleSpanExporter());
 
-const completionHandler = initTelemetry({
+const { tracer, completionHandler } = initTelemetry({
   spanProcessors: [processor]
 });
 
@@ -300,11 +312,15 @@ const handler = createTracedHandler(completionHandler, {
 });
 
 export const lambdaHandler = handler(async (event, context, span) => {
-  // Your handler logic here
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Hello World' })
-  };
+  // Create a child span for request processing
+  return tracer.startActiveSpan('process_request', span => {
+    // ... process the request ...
+    span.end();
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ message: 'Hello World' })
+    };
+  });
 });
 ```
 
@@ -349,16 +365,22 @@ function sqsEventExtractor(event: any, context: LambdaContext): SpanAttributes {
   };
 }
 
+const { tracer, completionHandler } = initTelemetry();
+
 const handler = createTracedHandler(completionHandler, {
   name: 'sqs-handler',
   attributesExtractor: sqsEventExtractor
 });
 
 export const lambdaHandler = handler(async (event, context, span) => {
-  // Process SQS message
-  return {
-    statusCode: 200
-  };
+  // Create a child span for message processing
+  return tracer.startActiveSpan('process_message', span => {
+    // ... process SQS message ...
+    span.end();
+    return {
+      statusCode: 200
+    };
+  });
 });
 ```
 

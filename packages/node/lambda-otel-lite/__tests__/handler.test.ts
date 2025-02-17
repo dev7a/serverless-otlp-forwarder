@@ -58,7 +58,6 @@ import { describe, it, beforeEach, expect } from '@jest/globals';
 describe('createTracedHandler', () => {
   let tracer: any;
   let mockSpan: any;
-  let mockSpanProcessor: any;
   let completionHandler: TelemetryCompletionHandler;
   let defaultEvent: any;
   let defaultContext: any;

@@ -6,20 +6,24 @@
  */
 
 const { initTelemetry, createTracedHandler, apiGatewayV2Extractor } = require('@dev7a/lambda-otel-lite');
-const { trace } = require('@opentelemetry/api');
 
 // Initialize telemetry once at module load
-const completionHandler = initTelemetry();
+const { tracer, completionHandler } = initTelemetry();
 
 /**
  * Simple nested function that creates its own span.
  * 
- * This function is used to demonstrate the nested span functionality of OpenTelemetry.
+ * This function demonstrates how to create a child span from the current context.
+ * The span will automatically become a child of the currently active span.
  */
 async function nestedFunction() {
-  return trace.getTracer('hello-world').startActiveSpan('nested_function', async (span) => {
+  // Create a child span - it will automatically use the active span as parent
+  return tracer.startActiveSpan('nested_function', (span) => {
     span.addEvent('Nested function called');
+    // Your nested function logic here
+    const result = 'success';
     span.end();
+    return result;
   });
 }
 

@@ -18,7 +18,9 @@
     "valid-values-type": ["error", [
       "git"
     ]],
-    "prefer-caret-version-dependencies": "error",
+    "prefer-caret-version-dependencies": ["error", {
+      "exceptions": ["@dev7a/lambda-otel-lite"]
+    }],
     "prefer-caret-version-devDependencies": "error",
     "prefer-alphabetical-dependencies": "error",
     "prefer-alphabetical-devDependencies": "error",

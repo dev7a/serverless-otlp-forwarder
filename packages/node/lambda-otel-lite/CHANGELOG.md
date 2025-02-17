@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.7.0] - 2025-02-16
 
 ### Breaking Changes
+- Changed `initTelemetry()` to return both `tracer` and `completionHandler` in a single object
 - Removed `name` parameter from `initTelemetry()` function
 - Changed `getTracer()` to no longer require a name parameter
 - Renamed `tracedHandler` to `createTracedHandler` for better clarity
@@ -29,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Improved documentation with more detailed examples and explanations
 - Simplified handler creation with a more intuitive API
+- Optimized tracer creation by caching instance in TelemetryCompletionHandler
 - Removed unused dependencies
 - Updated all OpenTelemetry dependencies to latest versions
 
