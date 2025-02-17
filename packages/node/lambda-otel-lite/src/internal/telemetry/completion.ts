@@ -1,6 +1,7 @@
 import { Tracer } from '@opentelemetry/api';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { ProcessorMode } from '../../mode';
+import { VERSION } from '../../version';
 import { state } from '../state';
 import logger from '../logger';
 
@@ -111,31 +112,26 @@ export class TelemetryCompletionHandler {
   /**
    * Get a tracer instance for creating spans.
    * 
-   * Returns a tracer instance that can be used to create spans. The tracer is configured
+   * Returns a tracer instance configured with this package's instrumentation scope
+   * (name and version) and Lambda-specific attributes. The tracer is configured
    * with the provider's settings and will automatically use the correct span processor
    * based on the processing mode.
    * 
-   * @param name - Name to identify the tracer. This should be descriptive and unique
-   *               within your service (e.g., 'payment-processor', 'user-api').
-   * @returns A tracer instance for creating spans
+   * The tracer is configured with instrumentation scope attributes that identify:
+   * - library.language: The implementation language (nodejs)
+   * - library.type: The type of library (instrumentation)
+   * - library.runtime: The runtime environment (aws_lambda)
    * 
-   * @example
-   * ```typescript
-   * const tracer = completionHandler.getTracer('payment-service');
-   * const span = tracer.startSpan('process-payment');
-   * try {
-   *   // Process payment
-   *   span.setStatus({ code: SpanStatusCode.OK });
-   * } catch (error) {
-   *   span.recordException(error);
-   *   span.setStatus({ code: SpanStatusCode.ERROR });
-   *   throw error;
-   * } finally {
-   *   span.end();
-   * }
-   * ```
+   * These attributes are different from resource attributes:
+   * - Resource attributes describe the entity producing telemetry (the Lambda function)
+   * - Instrumentation scope attributes describe the library doing the instrumentation
+   * 
+   * @returns A tracer instance for creating spans
    */
-  getTracer(name: string): Tracer {
-    return this.provider.getTracer(name);
+  getTracer(): Tracer {
+    return this.provider.getTracer(
+      VERSION.NAME,
+      VERSION.VERSION
+    );
   }
 } 

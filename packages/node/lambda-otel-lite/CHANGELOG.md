@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2025-02-16
+
+### Breaking Changes
+- Removed `name` parameter from `initTelemetry()` function
+- Changed `getTracer()` to no longer require a name parameter
+- Renamed `tracedHandler` to `createTracedHandler` for better clarity
+- Updated handler interface to use a more functional approach
+- Removed index signature from `LambdaContext` interface for better type safety
+
+### Added
+- New `version.ts` module to centralize package version information
+- Added library instrumentation scope attributes
+- Added telemetry configuration resource attributes:
+  - `lambda_otel_lite.extension.span_processor_mode`
+  - `lambda_otel_lite.lambda_span_processor.queue_size`
+  - `lambda_otel_lite.lambda_span_processor.batch_size`
+  - `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`
+- Exported `getLambdaResource` function for custom resource creation
+- Added comprehensive test coverage for resource attributes and completion handler
+- Enhanced TypeScript type definitions for better developer experience
+
+### Changed
+- Improved documentation with more detailed examples and explanations
+- Simplified handler creation with a more intuitive API
+- Removed unused dependencies
+- Updated all OpenTelemetry dependencies to latest versions
+
+### Fixed
+- Improved error handling in context extraction
+- Better type safety in Lambda context handling
+
 ## [0.6.1] - 2025-02-15
 
 ### Added

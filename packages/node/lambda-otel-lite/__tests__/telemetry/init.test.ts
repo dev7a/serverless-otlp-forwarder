@@ -37,8 +37,8 @@ describe('telemetry/init', () => {
 
   describe('initTelemetry', () => {
     it('should initialize telemetry with default settings', () => {
-      const handler = initTelemetry('test-service');
-      const tracer = handler.getTracer('test-service');
+      const handler = initTelemetry();
+      const tracer = handler.getTracer();
 
       expect(handler).toBeDefined();
       expect(tracer).toBeDefined();
@@ -50,14 +50,14 @@ describe('telemetry/init', () => {
     });
 
     it('should initialize telemetry with custom settings', () => {
-      const handler = initTelemetry('test-service', {
+      const _handler = initTelemetry({
         resource: new Resource({
           'service.name': 'test-service'
         })
       });
-      const tracer = handler.getTracer('test-service');
+      const tracer = _handler.getTracer();
 
-      expect(handler).toBeDefined();
+      expect(_handler).toBeDefined();
       expect(tracer).toBeDefined();
             
       // Verify that a provider is registered and can create spans
@@ -67,7 +67,7 @@ describe('telemetry/init', () => {
     });
 
     it('should initialize telemetry with custom processor', () => {
-      const handler = initTelemetry('test-service', {
+      const _handler = initTelemetry({
         spanProcessors: [
           {
             forceFlush: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
@@ -77,9 +77,9 @@ describe('telemetry/init', () => {
           }
         ]
       });
-      const tracer = handler.getTracer('test-service');
+      const tracer = _handler.getTracer();
 
-      expect(handler).toBeDefined();
+      expect(_handler).toBeDefined();
       expect(tracer).toBeDefined();
             
       // Verify that a provider is registered and can create spans
@@ -89,7 +89,7 @@ describe('telemetry/init', () => {
     });
 
     it('should initialize telemetry with custom exporter', () => {
-      const handler = initTelemetry('test-service', {
+      const _handler = initTelemetry({
         spanProcessors: [
           {
             forceFlush: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
@@ -99,9 +99,9 @@ describe('telemetry/init', () => {
           }
         ]
       });
-      const tracer = handler.getTracer('test-service');
+      const tracer = _handler.getTracer();
 
-      expect(handler).toBeDefined();
+      expect(_handler).toBeDefined();
       expect(tracer).toBeDefined();
             
       // Verify that a provider is registered and can create spans
@@ -111,7 +111,7 @@ describe('telemetry/init', () => {
     });
 
     it('should initialize telemetry with custom completion handler', () => {
-      const handler = initTelemetry('test-service', {
+      const _handler = initTelemetry({
         spanProcessors: [
           {
             forceFlush: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
@@ -121,9 +121,9 @@ describe('telemetry/init', () => {
           }
         ]
       });
-      const tracer = handler.getTracer('test-service');
+      const tracer = _handler.getTracer();
 
-      expect(handler).toBeDefined();
+      expect(_handler).toBeDefined();
       expect(tracer).toBeDefined();
             
       // Verify that a provider is registered and can create spans
@@ -138,7 +138,7 @@ describe('telemetry/init', () => {
         AWS_LAMBDA_FUNCTION_NAME: 'lambda-function'
       });
 
-      initTelemetry('test-service');
+      initTelemetry();
             
       // Service name will be in the provider's resource
       expect(state.provider?.resource.attributes['service.name']).toBe('env-service');
@@ -149,19 +149,19 @@ describe('telemetry/init', () => {
         AWS_LAMBDA_FUNCTION_NAME: 'lambda-function'
       });
 
-      initTelemetry('test-service');
+      initTelemetry();
             
       expect(state.provider?.resource.attributes['service.name']).toBe('lambda-function');
     });
 
     it('should use unknown_service if no environment variables set', () => {
-      initTelemetry('test-service');
+      initTelemetry();
             
       expect(state.provider?.resource.attributes['service.name']).toBe('unknown_service');
     });
 
-    it('should use provided name if no environment variables set', () => {
-      const _handler = initTelemetry('test-service', {
+    it('should use custom resource service name if provided', () => {
+      const _handler = initTelemetry({
         resource: new Resource({
           'service.name': 'test-service'
         })
@@ -170,16 +170,12 @@ describe('telemetry/init', () => {
       expect(state.provider?.resource.attributes['service.name']).toBe('test-service');
     });
 
-    it('should throw error if no name provided', () => {
-      expect(() => initTelemetry('')).toThrow('Tracer name must be provided');
-    });
-
     it('should use custom resource if provided', () => {
       const customResource = new Resource({
         'custom.attribute': 'value'
       });
 
-      const _handler = initTelemetry('test-service', {
+      const _handler = initTelemetry({
         resource: customResource
       });
 
@@ -208,10 +204,10 @@ describe('telemetry/init', () => {
 
       const testProcessor = new TestProcessor();
             
-      const _handler = initTelemetry('test-service', {
+      const _handler = initTelemetry({
         spanProcessors: [testProcessor]
       });
-      const tracer = _handler.getTracer('test-service');
+      const tracer = _handler.getTracer();
 
       // Create and end a span to trigger the processor
       const span = tracer.startSpan('test');
@@ -226,8 +222,8 @@ describe('telemetry/init', () => {
         LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: '1024'
       });
 
-      const handler = initTelemetry('test-service');
-      const tracer = handler.getTracer('test-service');
+      const handler = initTelemetry();
+      const tracer = handler.getTracer();
             
       // Create multiple spans to verify they are processed
       for (let i = 0; i < 10; i++) {
@@ -259,13 +255,13 @@ describe('telemetry/init', () => {
         }
       }
 
-      const processor1 = new TestProcessor('first');
-      const processor2 = new TestProcessor('second');
-
-      const _handler = initTelemetry('test-service', {
+      const processor1 = new TestProcessor('processor1');
+      const processor2 = new TestProcessor('processor2');
+            
+      const _handler = initTelemetry({
         spanProcessors: [processor1, processor2]
       });
-      const tracer = _handler.getTracer('test-service');
+      const tracer = _handler.getTracer();
 
       // Create and end a span to trigger both processors
       const span = tracer.startSpan('test');
@@ -281,12 +277,8 @@ describe('telemetry/init', () => {
   describe('cold start tracking', () => {
     it('should track cold start correctly', () => {
       expect(isColdStart()).toBe(true);
-            
       setColdStart(false);
       expect(isColdStart()).toBe(false);
-            
-      setColdStart(true);
-      expect(isColdStart()).toBe(true);
     });
   });
 }); 

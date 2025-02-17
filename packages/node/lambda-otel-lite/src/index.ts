@@ -1,6 +1,6 @@
 // Re-export public API
-export { tracedHandler } from './handler';
-export { initTelemetry } from './internal/telemetry/init';
+export { createTracedHandler } from './handler';
+export { initTelemetry, getLambdaResource } from './internal/telemetry/init';
 export { 
   apiGatewayV1Extractor, 
   apiGatewayV2Extractor, 
@@ -15,3 +15,4 @@ export * from './mode';
 
 // Export types needed by users
 export type { TelemetryCompletionHandler } from './internal/telemetry/completion';
+export type { TracerConfig, TracedFunction, LambdaContext } from './handler';

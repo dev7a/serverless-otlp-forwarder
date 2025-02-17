@@ -121,15 +121,10 @@ The example functions demonstrate:
 Key files:
 - `handler/app.js` - Main handler implementation
 - `handler/init.js` - Extension initialization
-- `samconfig.toml` - SAM CLI configuration
 
 ## Viewing Traces
 
 The traces will be available in your configured OpenTelemetry backend when using the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder)
-
-The serverless-otlp-forwarder is a companion project that:
-- Collects OTLP-formatted spans from CloudWatch Logs
-- Forwards them to your OpenTelemetry backend
 
 For setup instructions and configuration options, see the [serverless-otlp-forwarder documentation](https://github.com/dev7a/serverless-otlp-forwarder).
 

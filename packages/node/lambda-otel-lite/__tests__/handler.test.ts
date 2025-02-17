@@ -48,14 +48,14 @@ jest.doMock('../src/internal/telemetry/init', () => ({
 import { SpanStatusCode } from '@opentelemetry/api';
 import { jest } from '@jest/globals';
 import { ProcessorMode } from '../src/mode';
-import { tracedHandler } from '../src/handler';
+import { createTracedHandler } from '../src/handler';
 import { state } from '../src/internal/state';
 import * as init from '../src/internal/telemetry/init';
 import { TelemetryCompletionHandler } from '../src/internal/telemetry/completion';
 import { apiGatewayV1Extractor, apiGatewayV2Extractor } from '../src/internal/telemetry/extractors';
 import { describe, it, beforeEach, expect } from '@jest/globals';
 
-describe('tracedHandler', () => {
+describe('createTracedHandler', () => {
   let tracer: any;
   let mockSpan: any;
   let mockSpanProcessor: any;
@@ -84,7 +84,7 @@ describe('tracedHandler', () => {
     };
 
     // Create mock span processor
-    mockSpanProcessor = {
+    const _mockSpanProcessor = {
       onStart: jest.fn(),
       onEnd: jest.fn()
     };
@@ -100,7 +100,11 @@ describe('tracedHandler', () => {
     defaultEvent = {};
     defaultContext = {
       awsRequestId: 'test-id',
-      invokedFunctionArn: 'arn:aws:lambda:region:account:function:name'
+      invokedFunctionArn: 'arn:aws:lambda:region:account:function:name',
+      functionName: 'test-function',
+      functionVersion: '$LATEST',
+      memoryLimitInMB: '128',
+      getRemainingTimeInMillis: () => 1000
     };
 
     // Mock cold start as true initially
@@ -112,10 +116,12 @@ describe('tracedHandler', () => {
 
   describe('basic functionality', () => {
     it('should work with basic options', async () => {
-      const result = await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      const result = await handler(defaultEvent, defaultContext);
 
       expect(result).toBe('success');
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('faas.coldstart', true);
@@ -126,10 +132,12 @@ describe('tracedHandler', () => {
 
     it('should set default faas.trigger for non-HTTP events', async () => {
       const event = { type: 'custom' };
-      const result = await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, event, defaultContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      const result = await handler(event, defaultContext);
 
       expect(result).toBe('success');
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('faas.trigger', 'other');
@@ -140,13 +148,19 @@ describe('tracedHandler', () => {
     it('should extract attributes from Lambda context', async () => {
       const lambdaContext = {
         awsRequestId: '123',
-        invokedFunctionArn: 'arn:aws:lambda:region:account:function:name'
+        invokedFunctionArn: 'arn:aws:lambda:region:account:function:name',
+        functionName: 'test-function',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        getRemainingTimeInMillis: () => 1000
       };
 
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, lambdaContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      await handler(defaultEvent, lambdaContext);
 
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('faas.invocation_id', '123');
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('cloud.account.id', 'account');
@@ -172,11 +186,13 @@ describe('tracedHandler', () => {
         }
       };
 
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler',
         attributesExtractor: apiGatewayV2Extractor
-      }, event, defaultContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      await handler(event, defaultContext);
 
       // Get all calls to setAttribute
       const calls = mockSpan.setAttribute.mock.calls;
@@ -204,11 +220,13 @@ describe('tracedHandler', () => {
         }
       };
 
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler',
         attributesExtractor: apiGatewayV1Extractor
-      }, event, defaultContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      await handler(event, defaultContext);
 
       // Get all calls to setAttribute
       const calls = mockSpan.setAttribute.mock.calls;
@@ -229,26 +247,30 @@ describe('tracedHandler', () => {
 
   describe('HTTP response handling', () => {
     it('should handle successful HTTP responses', async () => {
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => ({
+      });
+      
+      const handler = traced(async (_event, _context, _span) => ({
         statusCode: 200,
         body: 'success'
       }));
+      await handler(defaultEvent, defaultContext);
 
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('http.status_code', 200);
       expect(mockSpan.setStatus).toHaveBeenCalledWith({ code: SpanStatusCode.OK });
     });
 
     it('should handle error HTTP responses', async () => {
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => ({
+      });
+      
+      const handler = traced(async (_event, _context, _span) => ({
         statusCode: 500,
         body: 'error'
       }));
+      await handler(defaultEvent, defaultContext);
 
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('http.status_code', 500);
       expect(mockSpan.setStatus).toHaveBeenCalledWith({
@@ -270,10 +292,12 @@ describe('tracedHandler', () => {
       const mockContext = {} as any;
       mockApi.propagation.extract.mockReturnValue(mockContext);
 
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, event, defaultContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      await handler(event, defaultContext);
 
       expect(mockApi.propagation.extract).toHaveBeenCalledWith(mockApi.ROOT_CONTEXT, event.headers);
       expect(tracer.startActiveSpan).toHaveBeenCalledWith(
@@ -288,13 +312,14 @@ describe('tracedHandler', () => {
   describe('error handling', () => {
     it('should handle and record exceptions', async () => {
       const error = new Error('test error');
-
-      await expect(tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => {
+      });
+      
+      const handler = traced(async (_event, _context, _span) => {
         throw error;
-      })).rejects.toThrow(error);
+      });
+      await expect(handler(defaultEvent, defaultContext)).rejects.toThrow(error);
 
       expect(mockSpan.recordException).toHaveBeenCalledWith(error);
       expect(mockSpan.setStatus).toHaveBeenCalledWith({
@@ -309,10 +334,12 @@ describe('tracedHandler', () => {
       state.mode = ProcessorMode.Sync;
       state.extensionInitialized = false;
 
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      await handler(defaultEvent, defaultContext);
 
       expect(completionHandler.complete).toHaveBeenCalled();
     });
@@ -321,10 +348,12 @@ describe('tracedHandler', () => {
       state.mode = ProcessorMode.Async;
       state.extensionInitialized = true;
 
-      await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => 'success');
+      });
+      
+      const handler = traced(async (_event, _context, _span) => 'success');
+      await handler(defaultEvent, defaultContext);
 
       expect(completionHandler.complete).toHaveBeenCalled();
     });
@@ -332,13 +361,15 @@ describe('tracedHandler', () => {
 
   describe('handler interface', () => {
     it('should handle custom span attributes', async () => {
-      const result = await tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => {
+      });
+      
+      const handler = traced(async (_event, _context, _span) => {
         _span.setAttribute('custom', 'value');
         return 'success';
       });
+      const result = await handler(defaultEvent, defaultContext);
 
       expect(result).toBe('success');
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('custom', 'value');
@@ -348,13 +379,14 @@ describe('tracedHandler', () => {
 
     it('should handle errors', async () => {
       const testError = new Error('test error');
-            
-      await expect(tracedHandler({
-        completionHandler,
+      const traced = createTracedHandler(completionHandler, {
         name: 'test-handler'
-      }, defaultEvent, defaultContext, async (_span) => {
+      });
+      
+      const handler = traced(async (_event, _context, _span) => {
         throw testError;
-      })).rejects.toThrow(testError);
+      });
+      await expect(handler(defaultEvent, defaultContext)).rejects.toThrow(testError);
 
       expect(mockSpan.recordException).toHaveBeenCalledWith(testError);
       expect(mockSpan.setStatus).toHaveBeenCalledWith({
@@ -362,43 +394,5 @@ describe('tracedHandler', () => {
         message: 'test error'
       });
     });
-  });
-
-  it('should handle errors in the handler', async () => {
-    const _mockHandler = jest.fn().mockImplementation(async (_event, _context, _callback) => {
-      throw new Error('test error');
-    });
-    
-    // ... existing code ...
-  });
-  
-  it('should handle errors in the completion handler', async () => {
-    const _mockHandler = jest.fn().mockImplementation(async (_event, _context, _callback) => {
-      return 'success';
-    });
-    
-    // ... existing code ...
-  });
-
-  it('should handle span processing', async () => {
-    mockSpanProcessor.onStart = jest.fn().mockImplementation((_span) => {
-      // Implementation
-    });
-    
-    mockSpanProcessor.onEnd = jest.fn().mockImplementation((_span) => {
-      // Implementation
-    });
-  });
-  
-  it('should handle span processing with error', async () => {
-    // ... existing code ...
-    mockSpanProcessor.onStart = jest.fn().mockImplementation((_span) => {
-      // Implementation
-    });
-    
-    mockSpanProcessor.onEnd = jest.fn().mockImplementation((_span) => {
-      // Implementation
-    });
-    // ... existing code ...
   });
 }); 

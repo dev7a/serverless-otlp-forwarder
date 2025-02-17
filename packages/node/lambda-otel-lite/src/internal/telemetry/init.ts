@@ -29,7 +29,7 @@ export function setColdStart(value: boolean): void {
  * 
  * @returns Resource instance with AWS Lambda and OTEL environment attributes
  */
-function getLambdaResource(): Resource {
+export function getLambdaResource(): Resource {
   // Start with Lambda attributes
   const attributes: Record<string, string> = {
     'cloud.provider': 'aws'
@@ -55,6 +55,12 @@ function getLambdaResource(): Resource {
   // Add service name (guaranteed to have a value)
   const serviceName = process.env.OTEL_SERVICE_NAME || process.env.AWS_LAMBDA_FUNCTION_NAME || 'unknown_service';
   attributes['service.name'] = serviceName;
+
+  // Add telemetry configuration attributes
+  attributes['lambda_otel_lite.extension.span_processor_mode'] = process.env.LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE || 'sync';
+  attributes['lambda_otel_lite.lambda_span_processor.queue_size'] = process.env.LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE || '2048';
+  attributes['lambda_otel_lite.lambda_span_processor.batch_size'] = process.env.LAMBDA_SPAN_PROCESSOR_BATCH_SIZE || '512';
+  attributes['lambda_otel_lite.otlp_stdout_span_exporter.compression_level'] = process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL || '6';
 
   // Add OTEL environment resource attributes if present
   const envResourcesItems = process.env.OTEL_RESOURCE_ATTRIBUTES;
@@ -91,9 +97,6 @@ function getLambdaResource(): Resource {
  * - Custom span processor support
  * - Extension integration for async processing
  * 
- * @param name - Name of the tracer to create. This should be your service name
- *               or a descriptive identifier (e.g., 'payment-service', 'user-api').
- * 
  * @param options - Optional configuration options
  * @param options.resource - Custom Resource to use instead of auto-detected resources.
  *                          Useful for adding custom attributes or overriding defaults.
@@ -103,12 +106,10 @@ function getLambdaResource(): Resource {
  * 
  * @returns TelemetryCompletionHandler instance for managing telemetry lifecycle
  * 
- * @throws Error if name is not provided
- * 
  * @example
  * Basic usage:
  * ```typescript
- * const completionHandler = initTelemetry('my-service');
+ * const completionHandler = initTelemetry();
  * 
  * export const handler = async (event, context) => {
  *   return tracedHandler({
@@ -134,7 +135,7 @@ function getLambdaResource(): Resource {
  *   })
  * );
  * 
- * const completionHandler = initTelemetry('my-service', {
+ * const completionHandler = initTelemetry({
  *   resource,
  *   spanProcessors: [processor]
  * });
@@ -155,16 +156,11 @@ function getLambdaResource(): Resource {
  * - Cold start is automatically tracked
  */
 export function initTelemetry(
-  name: string,
   options?: {
     resource?: Resource,
     spanProcessors?: SpanProcessor[]
   }
 ): TelemetryCompletionHandler {
-  if (!name) {
-    throw new Error('Tracer name must be provided to initTelemetry');
-  }
-
   // Setup resource
   const baseResource = options?.resource || getLambdaResource();
 

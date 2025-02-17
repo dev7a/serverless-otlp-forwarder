@@ -35,7 +35,7 @@
     "start": "sam local start-api"
   },
   "dependencies": {
-    "@dev7a/lambda-otel-lite": "^0.6.1"
+    "@dev7a/lambda-otel-lite": "file:../../"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.131",
