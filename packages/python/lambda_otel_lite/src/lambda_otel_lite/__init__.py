@@ -9,7 +9,10 @@ import os
 from enum import Enum
 from typing import Final
 
-__version__ = "0.8.0"
+try:
+    from ._version import version as __version__
+except ImportError:
+    __version__ = "0.0.0"  # only happens during build
 
 
 class ProcessorMode(str, Enum):
@@ -71,7 +74,7 @@ __all__ = [
 ]
 
 # Import public API
-from .extractors import (  # noqa: E402
+from .extractors import (  # noqa: E402 - Ignore flake8 error about imports not being at top of file
     SpanAttributes,
     TriggerType,
     alb_extractor,
