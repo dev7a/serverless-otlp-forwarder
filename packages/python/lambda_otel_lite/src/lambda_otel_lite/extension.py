@@ -104,7 +104,8 @@ def init_extension(
 
     # Register SIGTERM handler
     signal.signal(
-        signal.SIGTERM, lambda signum, frame: shutdown_telemetry(tracer_provider, signum, frame)
+        signal.SIGTERM,
+        lambda signum, frame: shutdown_telemetry(tracer_provider, signum, frame),
     )
 
     # Extension API paths
@@ -176,11 +177,15 @@ def init_extension(
         if not extension_id:
             raise ValueError("No extension ID received in registration response")
 
-        logger.debug("Internal extension '%s' registered for mode: %s", extension_id, mode.value)
+        logger.debug(
+            "Internal extension '%s' registered for mode: %s", extension_id, mode.value
+        )
 
         # Start extension thread based on mode
         threading.Thread(
-            target=lambda_internal_extension if mode == ProcessorMode.ASYNC else wait_for_shutdown,
+            target=lambda_internal_extension
+            if mode == ProcessorMode.ASYNC
+            else wait_for_shutdown,
             args=(extension_id,),
         ).start()
 

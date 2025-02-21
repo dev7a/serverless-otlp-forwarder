@@ -67,7 +67,9 @@ def test_extension_init_async_mode(mock_thread, mock_http_conn, mock_tracer_prov
         init_extension(ProcessorMode.ASYNC, mock_tracer_provider)
 
         # Verify extension registration
-        logger.debug("Checking request calls: %s", mock_http_client.request.call_args_list)
+        logger.debug(
+            "Checking request calls: %s", mock_http_client.request.call_args_list
+        )
         assert mock_http_client.request.call_args_list[0] == call(
             "POST",
             "/2020-01-01/extension/register",
@@ -82,7 +84,9 @@ def test_extension_init_async_mode(mock_thread, mock_http_conn, mock_tracer_prov
 
 @patch("lambda_otel_lite.extension.http.client.HTTPConnection")
 @patch("lambda_otel_lite.extension.threading.Thread")
-def test_extension_init_finalize_mode(mock_thread, mock_http_conn, mock_tracer_provider):
+def test_extension_init_finalize_mode(
+    mock_thread, mock_http_conn, mock_tracer_provider
+):
     """Test extension initialization in finalize mode."""
     # Reset extension initialization state
     import lambda_otel_lite.extension
@@ -104,7 +108,9 @@ def test_extension_init_finalize_mode(mock_thread, mock_http_conn, mock_tracer_p
         init_extension(ProcessorMode.FINALIZE, mock_tracer_provider)
 
         # Verify extension registration
-        logger.debug("Checking request calls: %s", mock_http_client.request.call_args_list)
+        logger.debug(
+            "Checking request calls: %s", mock_http_client.request.call_args_list
+        )
         mock_http_client.request.assert_called_with(
             "POST",
             "/2020-01-01/extension/register",
@@ -119,7 +125,9 @@ def test_extension_init_finalize_mode(mock_thread, mock_http_conn, mock_tracer_p
 
 @patch("lambda_otel_lite.extension.http.client.HTTPConnection")
 @patch("lambda_otel_lite.extension.threading.Thread")
-def test_extension_init_with_shutdown_callback(mock_thread, mock_http_conn, mock_tracer_provider):
+def test_extension_init_with_shutdown_callback(
+    mock_thread, mock_http_conn, mock_tracer_provider
+):
     """Test extension initialization with shutdown callback."""
     # Reset extension initialization state
     import lambda_otel_lite.extension
@@ -131,7 +139,9 @@ def test_extension_init_with_shutdown_callback(mock_thread, mock_http_conn, mock
     # Set up mock HTTP client
     mock_http_client = create_mock_http_client()
     mock_http_conn.return_value = mock_http_client
-    logger.debug("Set up mock HTTP connection for shutdown callback: %s", mock_http_conn)
+    logger.debug(
+        "Set up mock HTTP connection for shutdown callback: %s", mock_http_conn
+    )
 
     # Create a mock thread instance
     mock_thread_instance = Mock()
@@ -140,7 +150,9 @@ def test_extension_init_with_shutdown_callback(mock_thread, mock_http_conn, mock
     mock_callback = Mock()
 
     with patch.dict(os.environ, {"AWS_LAMBDA_RUNTIME_API": "test"}):
-        init_extension(ProcessorMode.FINALIZE, mock_tracer_provider, on_shutdown=mock_callback)
+        init_extension(
+            ProcessorMode.FINALIZE, mock_tracer_provider, on_shutdown=mock_callback
+        )
 
         # Verify thread creation
         mock_thread.assert_called_once()

@@ -28,7 +28,9 @@ class ProcessorMode(str, Enum):
     FINALIZE = "finalize"
 
     @classmethod
-    def from_env(cls, env_var: str, default: "ProcessorMode | None" = None) -> "ProcessorMode":
+    def from_env(
+        cls, env_var: str, default: "ProcessorMode | None" = None
+    ) -> "ProcessorMode":
         """Create ProcessorMode from environment variable.
 
         Args:

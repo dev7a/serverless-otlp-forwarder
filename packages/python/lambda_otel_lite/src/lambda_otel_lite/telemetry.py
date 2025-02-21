@@ -146,7 +146,8 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
 
     # Add service name (guaranteed to have a value)
     service_name = os.environ.get(
-        "OTEL_SERVICE_NAME", os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown_service")
+        "OTEL_SERVICE_NAME",
+        os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown_service"),
     )
     attributes["service.name"] = service_name
 
@@ -162,8 +163,8 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
         attributes["lambda_otel_lite.lambda_span_processor.batch_size"] = int(
             os.environ.get("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512")
         )
-        attributes["lambda_otel_lite.otlp_stdout_span_exporter.compression_level"] = int(
-            os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6")
+        attributes["lambda_otel_lite.otlp_stdout_span_exporter.compression_level"] = (
+            int(os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6"))
         )
     except ValueError as e:
         logger.warn("Invalid numeric configuration value:", e)
@@ -214,10 +215,14 @@ def init_telemetry(
             LambdaSpanProcessor(
                 OTLPStdoutSpanExporter(
                     gzip_level=int(
-                        os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6")
+                        os.environ.get(
+                            "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6"
+                        )
                     )
                 ),
-                max_queue_size=int(os.environ.get("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048")),
+                max_queue_size=int(
+                    os.environ.get("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048")
+                ),
                 max_export_batch_size=int(
                     os.environ.get("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512")
                 ),

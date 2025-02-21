@@ -30,7 +30,9 @@ class Logger:
         """
         self._prefix = prefix
         self._log_level = (
-            os.environ.get("AWS_LAMBDA_LOG_LEVEL") or os.environ.get("LOG_LEVEL") or "info"
+            os.environ.get("AWS_LAMBDA_LOG_LEVEL")
+            or os.environ.get("LOG_LEVEL")
+            or "info"
         ).lower()
 
         # Create logger
@@ -43,7 +45,9 @@ class Logger:
         if not _is_running_in_lambda() and not self._logger.handlers:
             handler = logging.StreamHandler()
             handler.setFormatter(
-                logging.Formatter("%(message)s")  # Simple format, we'll add prefix in methods
+                logging.Formatter(
+                    "%(message)s"
+                )  # Simple format, we'll add prefix in methods
             )
             self._logger.addHandler(handler)
 

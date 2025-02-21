@@ -52,7 +52,9 @@ class TracedHandler:
             global _is_cold_start
             try:
                 # Extract attributes using provided extractor
-                logger.debug("Using attributes extractor: %s", self.attributes_extractor.__name__)
+                logger.debug(
+                    "Using attributes extractor: %s", self.attributes_extractor.__name__
+                )
                 extracted = self.attributes_extractor(event, context)
 
                 # Get tracer from completion handler
@@ -92,7 +94,9 @@ class TracedHandler:
                             span.set_attribute("http.status_code", status_code)
                             if status_code >= 500:
                                 span.set_status(
-                                    Status(StatusCode.ERROR, f"HTTP {status_code} response")
+                                    Status(
+                                        StatusCode.ERROR, f"HTTP {status_code} response"
+                                    )
                                 )
                             else:
                                 span.set_status(Status(StatusCode.OK))

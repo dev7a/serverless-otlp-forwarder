@@ -39,7 +39,9 @@ def lambda_context():
 
     class MockContext:
         aws_request_id = "test-request-id"
-        invoked_function_arn = "arn:aws:lambda:us-west-2:123456789012:function:test-function"
+        invoked_function_arn = (
+            "arn:aws:lambda:us-west-2:123456789012:function:test-function"
+        )
         function_name = "test-function"
         function_version = "$LATEST"
         memory_limit_in_mb = 128
@@ -94,7 +96,9 @@ class TestExtractors:
         assert attrs["url.path"] == event["rawPath"]
         assert attrs["url.scheme"] == "https"
         assert attrs["http.route"] == route
-        assert result.span_name == f'{event["requestContext"]["http"]["method"]} {route}'
+        assert (
+            result.span_name == f'{event["requestContext"]["http"]["method"]} {route}'
+        )
 
         # Check headers are normalized
         if headers := event.get("headers"):
@@ -186,7 +190,11 @@ class TestExtractors:
         }
 
         # Test all extractors handle mixed case headers
-        for extractor in [api_gateway_v1_extractor, api_gateway_v2_extractor, alb_extractor]:
+        for extractor in [
+            api_gateway_v1_extractor,
+            api_gateway_v2_extractor,
+            alb_extractor,
+        ]:
             result = extractor(event, None)
             attrs = result.attributes
 

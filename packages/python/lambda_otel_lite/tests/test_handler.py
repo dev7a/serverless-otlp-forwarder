@@ -22,7 +22,9 @@ from lambda_otel_lite.telemetry import TelemetryCompletionHandler
 class MockLambdaContext:
     """Mock AWS Lambda context."""
 
-    invoked_function_arn: str = "arn:aws:lambda:us-west-2:123456789012:function:test-function"
+    invoked_function_arn: str = (
+        "arn:aws:lambda:us-west-2:123456789012:function:test-function"
+    )
     aws_request_id: str = "test-request-id"
 
 
@@ -183,7 +185,9 @@ def test_traced_handler_with_http_response(
     # Verify the status was set correctly
     for i, call_args in enumerate(span.set_status.call_args_list):
         status = call_args[0][0]
-        print(f"  Call {i}: status_code={status.status_code}, description={status.description}")
+        print(
+            f"  Call {i}: status_code={status.status_code}, description={status.description}"
+        )
 
     # Get the last status that was set
     assert span.set_status.call_count > 0, "set_status was never called"
