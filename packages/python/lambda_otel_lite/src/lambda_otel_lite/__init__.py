@@ -9,10 +9,7 @@ import os
 from enum import Enum
 from typing import Final
 
-try:
-    from ._version import version as __version__
-except ImportError:
-    __version__ = "0.0.0"  # only happens during build
+__version__ = "0.8.0"
 
 
 class ProcessorMode(str, Enum):

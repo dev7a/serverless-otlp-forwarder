@@ -25,6 +25,3 @@ wheels/
 .mypy_cache
 .ruff_cache
 .venv
-
-# Generated version file
-src/lambda_otel_lite/_version.py
