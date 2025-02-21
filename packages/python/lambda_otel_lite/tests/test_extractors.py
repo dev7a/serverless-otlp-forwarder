@@ -68,7 +68,7 @@ class TestExtractors:
         assert attrs["url.path"] == event["path"]
         assert attrs["url.scheme"] == "https"
         assert attrs["http.route"] == event["resource"]
-        assert result.span_name == f'{event["httpMethod"]} {event["resource"]}'
+        assert result.span_name == f"{event['httpMethod']} {event['resource']}"
 
         # Check headers are normalized
         if headers := event.get("headers"):
@@ -97,7 +97,7 @@ class TestExtractors:
         assert attrs["url.scheme"] == "https"
         assert attrs["http.route"] == route
         assert (
-            result.span_name == f'{event["requestContext"]["http"]["method"]} {route}'
+            result.span_name == f"{event['requestContext']['http']['method']} {route}"
         )
 
         # Check headers are normalized
@@ -123,7 +123,7 @@ class TestExtractors:
         assert attrs["url.scheme"] == "http"
         assert attrs["http.route"] == event["path"]
         assert attrs["network.protocol.version"] == "1.1"
-        assert result.span_name == f'{event["httpMethod"]} {event["path"]}'
+        assert result.span_name == f"{event['httpMethod']} {event['path']}"
         # Check headers are normalized
         if headers := event.get("headers"):
             if "User-Agent" in headers:

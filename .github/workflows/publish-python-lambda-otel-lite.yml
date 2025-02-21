@@ -38,8 +38,8 @@ jobs:
 
       - name: Run quality checks
         run: |
-          ruff check src/lambda_otel_lite tests
-          ruff format --check src/lambda_otel_lite tests
+          ruff check --isolated src/lambda_otel_lite tests
+          ruff format --check --isolated src/lambda_otel_lite tests
           mypy src/lambda_otel_lite
           pytest
 

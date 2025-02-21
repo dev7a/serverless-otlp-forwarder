@@ -193,9 +193,9 @@ def test_traced_handler_with_http_response(
     assert span.set_status.call_count > 0, "set_status was never called"
     last_status = span.set_status.call_args[0][0]
 
-    assert (
-        last_status.status_code == StatusCode.ERROR
-    ), f"Expected ERROR status but got {last_status.status_code}"
+    assert last_status.status_code == StatusCode.ERROR, (
+        f"Expected ERROR status but got {last_status.status_code}"
+    )
     assert last_status.description == "HTTP 500 response"
 
 
