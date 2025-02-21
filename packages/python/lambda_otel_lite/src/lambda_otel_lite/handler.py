@@ -5,7 +5,6 @@ This module provides the traced_handler decorator for instrumenting Lambda handl
 with OpenTelemetry tracing.
 """
 
-import json
 from collections.abc import Callable
 from functools import wraps
 from typing import Any, TypeVar, cast
@@ -47,10 +46,10 @@ class TracedHandler:
         handler_func: Callable[[TEvent, TContext], TResult],
     ) -> Callable[[TEvent, TContext], TResult]:
         """Decorate the handler function with tracing."""
+
         @wraps(handler_func)
         def wrapper(event: TEvent, context: TContext) -> TResult:
             global _is_cold_start
-            
             try:
                 # Extract attributes using provided extractor
                 logger.debug("Using attributes extractor: %s", self.attributes_extractor.__name__)
@@ -63,7 +62,10 @@ class TracedHandler:
                 parent_context = None
                 if extracted.carrier:
                     try:
-                        logger.debug("Attempting to extract context from carrier: %s", extracted.carrier)
+                        logger.debug(
+                            "Attempting to extract context from carrier: %s",
+                            extracted.carrier,
+                        )
                         parent_context = extract(extracted.carrier)
                         if parent_context:
                             logger.debug("Successfully extracted parent context")
@@ -89,9 +91,11 @@ class TracedHandler:
                             status_code = result["statusCode"]
                             span.set_attribute("http.status_code", status_code)
                             if status_code >= 500:
-                                span.set_status(Status(StatusCode.ERROR, f"HTTP {status_code} response"))
+                                span.set_status(
+                                    Status(StatusCode.ERROR, f"HTTP {status_code} response")
+                                )
                             else:
-                                span.set_status(Status(StatusCode.OK))   
+                                span.set_status(Status(StatusCode.OK))
                         return result
                     except Exception as error:
                         # Record error in the span before re-raising

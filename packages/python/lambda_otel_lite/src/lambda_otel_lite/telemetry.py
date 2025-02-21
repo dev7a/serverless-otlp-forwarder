@@ -119,7 +119,7 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
         Resource instance with AWS Lambda and OTEL environment attributes
     """
     # Start with Lambda attributes
-    attributes = {"cloud.provider": "aws"}
+    attributes: dict[str, str | int | float | bool] = {"cloud.provider": "aws"}
 
     # Map environment variables to attribute names
     env_mappings = {
@@ -137,8 +137,7 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
             if attr_name == "faas.max_memory":
                 try:
                     # Convert MB to bytes (1 MB = 1024 * 1024 bytes)
-                    memory_mb = int(value)
-                    memory_bytes = memory_mb * 1024 * 1024
+                    memory_bytes = int(value) * 1024 * 1024
                     attributes[attr_name] = memory_bytes
                 except ValueError:
                     logger.warn("Invalid memory value %s", value)
@@ -155,15 +154,19 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
     attributes["lambda_otel_lite.extension.span_processor_mode"] = os.environ.get(
         "LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "sync"
     )
-    attributes["lambda_otel_lite.lambda_span_processor.queue_size"] = os.environ.get(
-        "LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048"
-    )
-    attributes["lambda_otel_lite.lambda_span_processor.batch_size"] = os.environ.get(
-        "LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512"
-    )
-    attributes["lambda_otel_lite.otlp_stdout_span_exporter.compression_level"] = os.environ.get(
-        "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6"
-    )
+    # Parse numeric configuration values
+    try:
+        attributes["lambda_otel_lite.lambda_span_processor.queue_size"] = int(
+            os.environ.get("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048")
+        )
+        attributes["lambda_otel_lite.lambda_span_processor.batch_size"] = int(
+            os.environ.get("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512")
+        )
+        attributes["lambda_otel_lite.otlp_stdout_span_exporter.compression_level"] = int(
+            os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6")
+        )
+    except ValueError as e:
+        logger.warn("Invalid numeric configuration value:", e)
 
     # Create resource and merge with custom resource if provided
     resource = Resource(attributes)
