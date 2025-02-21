@@ -4,18 +4,17 @@ Core processor implementation for lambda-otel-lite.
 This module provides the LambdaSpanProcessor implementation.
 """
 
-import logging
-import os
-from queue import Queue
+from queue import Full, Queue
 
-from opentelemetry.context import Context, attach, detach, set_value
+from opentelemetry.context import Context
 from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
 from opentelemetry.trace import Span
 
+from .logger import create_logger
+
 # Setup logging
-logger = logging.getLogger(__name__)
-logger.setLevel(os.getenv("AWS_LAMBDA_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO")).upper())
+logger = create_logger("processor")
 
 
 class LambdaSpanProcessor(SpanProcessor):
@@ -26,19 +25,25 @@ class LambdaSpanProcessor(SpanProcessor):
     worker threads or complex batching logic.
     """
 
-    # Key for suppressing instrumentation during span export
-    _SUPPRESS_INSTRUMENTATION_KEY = "suppress_instrumentation"
-
-    def __init__(self, span_exporter: SpanExporter, max_queue_size: int = 2048):
+    def __init__(
+        self,
+        span_exporter: SpanExporter,
+        max_queue_size: int = 2048,
+        max_export_batch_size: int = 512,
+    ):
         """Initialize the LambdaSpanProcessor.
 
         Args:
             span_exporter: The SpanExporter to use for exporting spans
             max_queue_size: Maximum number of spans to queue (default: 2048)
+            max_export_batch_size: Maximum number of spans to export in each batch (default: 512)
         """
         self.span_exporter = span_exporter
-        self.span_queue: Queue[ReadableSpan] = Queue(maxsize=max_queue_size)
+        self.max_queue_size = max_queue_size
+        self.max_export_batch_size = max_export_batch_size
+        self.span_queue: Queue[ReadableSpan] = Queue(maxsize=self.max_queue_size)
         self._shutdown = False
+        self._dropped_spans_count = 0
 
     def on_start(self, span: Span, parent_context: Context | None = None) -> None:
         """Called when a span starts. No-op in this implementation."""
@@ -51,33 +56,45 @@ class LambdaSpanProcessor(SpanProcessor):
 
         try:
             self.span_queue.put_nowait(span)
+            if self._dropped_spans_count > 0:
+                logger.warn(
+                    "Recovered from dropping spans: %d spans were dropped",
+                    self._dropped_spans_count,
+                )
+                self._dropped_spans_count = 0
+        except Full:
+            self._dropped_spans_count += 1
+            if self._dropped_spans_count == 1 or self._dropped_spans_count % 100 == 0:
+                logger.warn(
+                    "Dropping spans: %d spans dropped because buffer is full",
+                    self._dropped_spans_count,
+                )
         except Exception as ex:
-            logger.exception("Failed to queue span: %s", ex)
+            logger.error("Unexpected error while queueing span:", ex)
 
     def process_spans(self) -> None:
-        """Process all queued spans.
+        """Process all queued spans in batches.
 
         Called by the extension thread to process and export spans.
         """
         if self._shutdown:
             return
 
-        spans_to_export: list[ReadableSpan] = []
         while not self.span_queue.empty():
-            try:
-                spans_to_export.append(self.span_queue.get_nowait())
-            except Exception:
-                break
+            spans_to_export: list[ReadableSpan] = []
+            # Get up to max_export_batch_size spans
+            for _ in range(min(self.max_export_batch_size, self.span_queue.qsize())):
+                try:
+                    spans_to_export.append(self.span_queue.get_nowait())
+                except Exception:
+                    break
 
-        if spans_to_export:
-            logger.debug("Processing %d spans", len(spans_to_export))
-            token = attach(set_value(self._SUPPRESS_INSTRUMENTATION_KEY, True))
-            try:
-                self.span_exporter.export(spans_to_export)
-            except Exception as ex:
-                logger.exception("Exception while exporting spans: %s", ex)
-            finally:
-                detach(token)
+            if spans_to_export:
+                logger.debug("Processing batch of %d spans", len(spans_to_export))
+                try:
+                    self.span_exporter.export(spans_to_export)
+                except Exception as ex:
+                    logger.error("Exception while exporting spans:", ex)
 
     def shutdown(self) -> None:
         """Shuts down the processor and exports any remaining spans."""

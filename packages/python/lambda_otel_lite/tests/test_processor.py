@@ -42,6 +42,7 @@ def test_processor_init():
     assert processor.span_exporter == exporter
     assert processor.span_queue.maxsize == 2048
     assert not processor._shutdown
+    assert processor._dropped_spans_count == 0
 
 
 def test_processor_queue_span(mock_exporter, mock_span):
@@ -51,6 +52,7 @@ def test_processor_queue_span(mock_exporter, mock_span):
 
     assert not processor.span_queue.empty()
     assert processor.span_queue.get_nowait() == mock_span
+    assert processor._dropped_spans_count == 0
 
 
 def test_processor_queue_full(mock_exporter, mock_span):
@@ -59,11 +61,36 @@ def test_processor_queue_full(mock_exporter, mock_span):
 
     # Fill the queue
     processor.on_end(mock_span)
+    assert processor._dropped_spans_count == 0
 
     # Try to add another span
     with patch("lambda_otel_lite.processor.logger") as mock_logger:
         processor.on_end(mock_span)
-        mock_logger.exception.assert_called_once()
+        mock_logger.warn.assert_called_with(
+            "Dropping spans: %d spans dropped because buffer is full", 1
+        )
+        assert processor._dropped_spans_count == 1
+
+
+def test_processor_queue_recovery(mock_exporter, mock_span):
+    """Test recovery from dropped spans."""
+    processor = LambdaSpanProcessor(mock_exporter, max_queue_size=1)
+
+    # Fill the queue and try to add another span
+    processor.on_end(mock_span)
+    processor.on_end(mock_span)  # This will be dropped
+    assert processor._dropped_spans_count == 1
+
+    # Process the queued span to make room
+    processor.process_spans()
+
+    # Add another span and verify recovery message
+    with patch("lambda_otel_lite.processor.logger") as mock_logger:
+        processor.on_end(mock_span)
+        mock_logger.warn.assert_called_with(
+            "Recovered from dropping spans: %d spans were dropped", 1
+        )
+        assert processor._dropped_spans_count == 0
 
 
 def test_processor_process_spans(mock_exporter, mock_span):

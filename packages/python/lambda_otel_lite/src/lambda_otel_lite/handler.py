@@ -1,208 +1,163 @@
 """
 Handler implementation for lambda-otel-lite.
 
-This module provides the traced_handler context manager for instrumenting Lambda handlers.
+This module provides the traced_handler decorator for instrumenting Lambda handlers
+with OpenTelemetry tracing.
 """
 
-import logging
-import os
-from collections.abc import Callable, Generator
-from contextlib import contextmanager
-from typing import Any
+import json
+from collections.abc import Callable
+from functools import wraps
+from typing import Any, TypeVar, cast
 
-from opentelemetry import trace
-from opentelemetry.context import Context
 from opentelemetry.propagate import extract
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.trace import Span, SpanKind, Status, StatusCode
+from opentelemetry.trace import Status, StatusCode
 
-from . import ProcessorMode, processor_mode
-from .extension import handler_complete_event
+from .extractors import SpanAttributes, default_extractor
+from .logger import create_logger
+from .telemetry import TelemetryCompletionHandler
 
 # Setup logging
-logger = logging.getLogger(__name__)
-logger.setLevel(os.getenv("AWS_LAMBDA_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO")).upper())
+logger = create_logger("handler")
 
 # Global state
 _is_cold_start: bool = True
 
-
-def _extract_span_attributes(
-    event: dict[str, Any] | None = None,
-    context: Any | None = None,
-) -> dict[str, Any]:
-    """Extract span attributes from Lambda event.
-    Only extracts attributes that are specific to the span and not already
-    set at the resource level by the init telemetry.
-
-    Args:
-        event: Optional Lambda event dictionary
-        context: Optional Lambda context object
-
-    Returns:
-        Dictionary of span attributes
-    """
-    attributes: dict[str, Any] = {"faas.trigger": "other"}
-
-    # Add invocation ID, cloud resource ID and account ID if context is available
-    if context:
-        if hasattr(context, "aws_request_id"):
-            attributes["faas.invocation_id"] = context.aws_request_id
-        if hasattr(context, "invoked_function_arn") and context.invoked_function_arn:
-            arn_parts = context.invoked_function_arn.split(":")
-            if len(arn_parts) >= 5:  # arn:aws:lambda:region:account-id:...
-                attributes["cloud.resource_id"] = context.invoked_function_arn
-                attributes["cloud.account.id"] = arn_parts[4]
-
-    # Extract trigger metadata
-    if event and isinstance(event, dict):
-        # HTTP triggers (API Gateway v1 and v2)
-        if "requestContext" in event or "httpMethod" in event:
-            attributes["faas.trigger"] = "http"
-            if event.get("version") == "2.0":
-                attributes["http.route"] = event.get("routeKey", "")
-                if "requestContext" in event:
-                    ctx = event["requestContext"]
-                    attributes.update(
-                        {
-                            "http.method": ctx.get("http", {}).get("method", ""),
-                            "http.target": ctx.get("http", {}).get("path", ""),
-                            "http.scheme": ctx.get("http", {}).get("protocol", "").lower(),
-                        }
-                    )
-            else:
-                attributes["http.route"] = event.get("resource", "")
-                attributes["http.method"] = event.get("httpMethod", "")
-                attributes["http.target"] = event.get("path", "")
-                if "requestContext" in event:
-                    ctx = event["requestContext"]
-                    attributes["http.scheme"] = ctx.get("protocol", "").lower()
-    return attributes
+# Type variables for handler return type
+TResult = TypeVar("TResult")
+TEvent = TypeVar("TEvent")
+TContext = TypeVar("TContext")
 
 
-def _extract_context(
-    event: dict[str, Any] | None = None,
-    get_carrier: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-) -> Context | None:
-    """Extract trace context from event.
+class TracedHandler:
+    """A decorator for instrumenting Lambda handlers with OpenTelemetry tracing."""
 
-    Args:
-        event: Lambda event dictionary
-        get_carrier: Optional function to extract carrier from event
+    def __init__(
+        self,
+        name: str,
+        completion_handler: TelemetryCompletionHandler,
+        attributes_extractor: Callable[[Any, Any], SpanAttributes] | None = None,
+    ):
+        self.name = name
+        self.completion_handler = completion_handler
+        self.attributes_extractor = attributes_extractor or default_extractor
 
-    Returns:
-        Context if found, None otherwise
-    """
-    if not event or not isinstance(event, dict):
-        return None
+    def __call__(
+        self,
+        handler_func: Callable[[TEvent, TContext], TResult],
+    ) -> Callable[[TEvent, TContext], TResult]:
+        """Decorate the handler function with tracing."""
+        @wraps(handler_func)
+        def wrapper(event: TEvent, context: TContext) -> TResult:
+            global _is_cold_start
+            
+            try:
+                # Extract attributes using provided extractor
+                logger.debug("Using attributes extractor: %s", self.attributes_extractor.__name__)
+                extracted = self.attributes_extractor(event, context)
 
-    # Use custom carrier extraction if provided
-    if get_carrier:
-        try:
-            carrier = get_carrier(event)
-            if carrier and len(carrier) > 0:
-                return extract(carrier)
-            return None
-        except Exception as ex:
-            logger.warning("Failed to extract carrier: %s", ex)
-            return None
+                # Get tracer from completion handler
+                tracer = self.completion_handler.get_tracer()
 
-    # Default extraction from headers
-    if "headers" in event and len(event["headers"]) > 0:
-        try:
-            return extract(event["headers"])
-        except Exception as ex:
-            logger.warning("Failed to extract context from headers: %s", ex)
-            return None
+                # Extract context from carrier if available
+                parent_context = None
+                if extracted.carrier:
+                    try:
+                        logger.debug("Attempting to extract context from carrier: %s", extracted.carrier)
+                        parent_context = extract(extracted.carrier)
+                        if parent_context:
+                            logger.debug("Successfully extracted parent context")
+                    except Exception as ex:
+                        logger.warn("Failed to extract context from carrier:", ex)
 
-    return None
+                # Start the span
+                with tracer.start_as_current_span(
+                    name=extracted.span_name or self.name,
+                    context=parent_context,
+                    kind=extracted.kind,
+                    attributes=extracted.attributes,
+                    links=extracted.links,
+                ) as span:
+                    if _is_cold_start:
+                        span.set_attribute("faas.cold_start", True)
+                        _is_cold_start = False
+
+                    try:
+                        result = handler_func(event, context)
+                        # If it looks like an HTTP response, set appropriate span attributes
+                        if isinstance(result, dict) and "statusCode" in result:
+                            status_code = result["statusCode"]
+                            span.set_attribute("http.status_code", status_code)
+                            if status_code >= 500:
+                                span.set_status(Status(StatusCode.ERROR, f"HTTP {status_code} response"))
+                            else:
+                                span.set_status(Status(StatusCode.OK))   
+                        return result
+                    except Exception as error:
+                        # Record error in the span before re-raising
+                        span.record_exception(error)
+                        span.set_status(Status(StatusCode.ERROR, str(error)))
+                        raise
+
+            except Exception as error:
+                # This block handles infrastructure errors
+                logger.error("Unhandled error in traced handler:", error)
+                raise
+            finally:
+                # Always complete telemetry, even if there were errors
+                self.completion_handler.complete()
+
+        return cast(Callable[[TEvent, TContext], TResult], wrapper)
 
 
-@contextmanager
-def traced_handler(
-    tracer: trace.Tracer,
-    tracer_provider: TracerProvider,
+def create_traced_handler(
     name: str,
-    event: dict[str, Any] | None = None,
-    context: Any | None = None,
-    kind: SpanKind = SpanKind.SERVER,
-    attributes: dict[str, Any] | None = None,
-    links: list[Any] | None = None,
-    start_time: int | None = None,
-    record_exception: bool = True,
-    set_status_on_exception: bool = True,
-    end_on_exit: bool = True,
-    parent_context: Context | None = None,
-    get_carrier: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-) -> Generator[Span, None, None]:
-    """Context manager for tracing Lambda handlers.
+    completion_handler: TelemetryCompletionHandler,
+    *,
+    attributes_extractor: Callable[[Any, Any], SpanAttributes] | None = None,
+) -> TracedHandler:
+    """Create a decorator for tracing Lambda handlers.
+
+    This function creates a decorator that wraps a Lambda handler with OpenTelemetry
+    instrumentation, automatically extracting attributes and propagating context based on
+    the event type.
+
+    Features:
+    - Automatic cold start detection
+    - Event-specific attribute extraction
+    - Context propagation from headers
+    - HTTP response status code handling
+    - Error recording in spans
+
+    Args:
+        name: Name for the handler span
+        completion_handler: Handler for coordinating span lifecycle
+        attributes_extractor: Optional function to extract span attributes from events.
+                            If not provided, the default_extractor will be used.
+
+    Returns:
+        A decorator that can be used to trace Lambda handlers
 
     Example:
         ```python
+        # Initialize telemetry once, outside the handler
+        tracer, completion_handler = init_telemetry()
+
+        # Create traced handler with configuration
+        traced = create_traced_handler(
+            name="my-handler",
+            completion_handler=completion_handler,
+            attributes_extractor=api_gateway_v2_extractor,
+        )
+
+        @traced
         def handler(event, context):
-            with traced_handler(tracer, provider, "my-handler", event, context,
-                              attributes={"custom.attr": "value"}):
-                # The span is available as the current span in the context
-                # No need to access it directly
-                result = process_event(event)
-                return result  # Status code will be extracted if present
+            try:
+                # Your code here
+                raise ValueError("something went wrong")
+            except ValueError as e:
+                # Handle the error and return an appropriate response
+                return {"statusCode": 400, "body": str(e)}
         ```
-
-    Args:
-        tracer: OpenTelemetry tracer instance
-        tracer_provider: OpenTelemetry tracer provider instance
-        name: Name of the span
-        event: Optional Lambda event dictionary
-        context: Optional Lambda context object
-        kind: Kind of span (default: SERVER). Use CONSUMER for message processing (e.g., SQS)
-        attributes: Optional additional span attributes
-        links: Optional span links
-        start_time: Optional span start time
-        record_exception: Whether to record exceptions (default: True)
-        set_status_on_exception: Whether to set status on exceptions (default: True)
-        end_on_exit: Whether to end span on exit (default: True)
-        parent_context: Optional parent context for trace propagation
-        get_carrier: Optional function to extract carrier from event for context propagation
     """
-    global _is_cold_start
-    result = None
-    try:
-        # Extract span attributes and merge with custom attributes
-        span_attributes = _extract_span_attributes(event, context)
-        if attributes:
-            span_attributes.update(attributes)
-
-        # Extract context from event if no parent_context provided
-        if parent_context is None:
-            parent_context = _extract_context(event, get_carrier)
-
-        with tracer.start_as_current_span(
-            name,
-            context=parent_context,
-            kind=kind,
-            attributes=span_attributes,
-            links=links,
-            start_time=start_time,
-            record_exception=record_exception,
-            set_status_on_exception=set_status_on_exception,
-            end_on_exit=end_on_exit,
-        ) as span:
-            if _is_cold_start:
-                span.set_attribute("faas.cold_start", True)
-                _is_cold_start = False
-            yield span  # Yield the actual span to the caller
-            # Set HTTP status code if available
-            if isinstance(result, dict) and "statusCode" in result:
-                status_code = result["statusCode"]
-                span.set_attribute("http.status_code", status_code)
-                # Only set error status for 5xx responses
-                if status_code >= 500:
-                    span.set_status(Status(StatusCode.ERROR))
-    finally:
-        if processor_mode == ProcessorMode.SYNC:
-            # In sync mode, force flush before returning
-            tracer_provider.force_flush()
-        elif processor_mode == ProcessorMode.ASYNC:
-            # In async mode, signal completion to extension
-            handler_complete_event.set()
-        # In finalize mode, do nothing - let the processor handle flushing
+    return TracedHandler(name, completion_handler, attributes_extractor)

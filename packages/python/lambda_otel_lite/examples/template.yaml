@@ -1,0 +1,38 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: AWS SAM template for the lambda-otel-lite example.
+
+
+Globals:
+  Function:
+    MemorySize: 128
+    Timeout: 30
+    Architectures:
+      - arm64
+    Runtime: python3.13
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: INFO
+  
+Resources:
+  HelloWorld:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-lambda-handler-example'
+      CodeUri: ./handler
+      Handler: app.handler
+      Description: 'Demo Python Lambda function to showcase OpenTelemetry integration'
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
+          PYTHONPROFILEIMPORTTIME: 1
+Outputs:
+  HelloWorldLambdaFunctionArn:
+    Description: 'ARN of the Demo Hello World Lambda function'
+    Value: !GetAtt HelloWorld.Arn
+  HelloWorldFunctionUrl:
+    Description: 'URL of the Demo Hello World Lambda function'
+    Value: !GetAtt HelloWorldUrl.FunctionUrl

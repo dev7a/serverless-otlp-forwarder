@@ -5,22 +5,111 @@ This module provides the initialization function for OpenTelemetry in AWS Lambda
 """
 
 import os
-from urllib import parse
+from collections.abc import Sequence
 
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
 
-from . import ProcessorMode, processor_mode
-from .extension import init_extension
+from . import ProcessorMode, __version__, processor_mode
+from .extension import handler_complete_event, init_extension
+from .logger import create_logger
 from .processor import LambdaSpanProcessor
 
-# Global state
-_tracer_provider: TracerProvider | None = None
+# Setup logging
+logger = create_logger("telemetry")
 
 
-def get_lambda_resource() -> Resource:
+class TelemetryCompletionHandler:
+    """Handles coordination between the handler and extension for span flushing.
+
+    This handler is responsible for ensuring that spans are properly exported before
+    the Lambda function completes. It MUST be used to signal when spans should be exported.
+
+    The behavior varies by processing mode:
+    - Sync: Forces immediate export in the handler thread
+    - Async: Signals the extension to export after the response is sent
+    - Finalize: Defers to span processor (used with BatchSpanProcessor)
+    """
+
+    def __init__(self, tracer_provider: TracerProvider, mode: ProcessorMode):
+        """Initialize the completion handler.
+
+        Args:
+            tracer_provider: The TracerProvider to use for tracing
+            mode: The processor mode that determines export behavior
+        """
+        self._tracer_provider = tracer_provider
+        self._mode = mode
+        # Cache the tracer instance at construction time
+        self._tracer = self._tracer_provider.get_tracer(
+            __package__,
+            __version__,
+            schema_url=None,
+            attributes={
+                "library.language": "python",
+                "library.type": "instrumentation",
+                "library.runtime": "aws_lambda",
+            },
+        )
+
+    @property
+    def tracer_provider(self) -> TracerProvider:
+        """Get the tracer provider."""
+        return self._tracer_provider
+
+    def get_tracer(self) -> trace.Tracer:
+        """Get a tracer instance for creating spans.
+
+        Returns a cached tracer instance configured with this package's instrumentation scope
+        (name and version) and Lambda-specific attributes. The tracer is configured
+        with the provider's settings and will automatically use the correct span processor
+        based on the processing mode.
+
+        The tracer is configured with instrumentation scope attributes that identify:
+        - library.language: The implementation language (python)
+        - library.type: The type of library (instrumentation)
+        - library.runtime: The runtime environment (aws_lambda)
+
+        These attributes are different from resource attributes:
+        - Resource attributes describe the entity producing telemetry (the Lambda function)
+        - Instrumentation scope attributes describe the library doing the instrumentation
+
+        Returns:
+            A tracer instance for creating spans
+        """
+        return self._tracer
+
+    def complete(self) -> None:
+        """Complete telemetry processing for the current invocation.
+
+        This method must be called to ensure spans are exported. The behavior depends
+        on the processing mode:
+
+        - Sync mode: Blocks until spans are flushed. Any errors during flush are logged
+          but do not affect the handler response.
+
+        - Async mode: Schedules span export via the extension after the response is sent.
+          This is non-blocking and optimizes perceived latency.
+
+        - Finalize mode: No-op as export is handled by the span processor configuration
+          (e.g., BatchSpanProcessor with custom export triggers).
+
+        Multiple calls to this method are safe but have no additional effect.
+        """
+        if self._mode == ProcessorMode.SYNC:
+            try:
+                self._tracer_provider.force_flush()
+            except Exception as e:
+                logger.warn("Error flushing telemetry:", e)
+        elif self._mode == ProcessorMode.ASYNC:
+            # Signal the extension to export spans
+            handler_complete_event.set()
+        # In finalize mode, do nothing - handled by processor
+
+
+def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
     """Create a Resource instance with AWS Lambda attributes and OTEL environment variables.
 
     This function combines AWS Lambda environment attributes with any OTEL resource attributes
@@ -30,7 +119,6 @@ def get_lambda_resource() -> Resource:
         Resource instance with AWS Lambda and OTEL environment attributes
     """
     # Start with Lambda attributes
-    # Create base attributes with cloud provider (this is always AWS in Lambda)
     attributes = {"cloud.provider": "aws"}
 
     # Map environment variables to attribute names
@@ -45,7 +133,17 @@ def get_lambda_resource() -> Resource:
     # Add attributes only if they exist in environment
     for env_var, attr_name in env_mappings.items():
         if value := os.environ.get(env_var):
-            attributes[attr_name] = value
+            # Convert memory from MB to bytes
+            if attr_name == "faas.max_memory":
+                try:
+                    # Convert MB to bytes (1 MB = 1024 * 1024 bytes)
+                    memory_mb = int(value)
+                    memory_bytes = memory_mb * 1024 * 1024
+                    attributes[attr_name] = memory_bytes
+                except ValueError:
+                    logger.warn("Invalid memory value %s", value)
+            else:
+                attributes[attr_name] = value
 
     # Add service name (guaranteed to have a value)
     service_name = os.environ.get(
@@ -53,28 +151,36 @@ def get_lambda_resource() -> Resource:
     )
     attributes["service.name"] = service_name
 
-    # Add OTEL environment resource attributes if present
-    env_resources_items = os.environ.get("OTEL_RESOURCE_ATTRIBUTES")
-    if env_resources_items:
-        for item in env_resources_items.split(","):
-            try:
-                key, value = item.split("=", maxsplit=1)
-            except ValueError:
-                continue
-            if value := value.strip():
-                value_url_decoded = parse.unquote(value)
-                attributes[key.strip()] = value_url_decoded
+    # Add telemetry configuration attributes
+    attributes["lambda_otel_lite.extension.span_processor_mode"] = os.environ.get(
+        "LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "sync"
+    )
+    attributes["lambda_otel_lite.lambda_span_processor.queue_size"] = os.environ.get(
+        "LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048"
+    )
+    attributes["lambda_otel_lite.lambda_span_processor.batch_size"] = os.environ.get(
+        "LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512"
+    )
+    attributes["lambda_otel_lite.otlp_stdout_span_exporter.compression_level"] = os.environ.get(
+        "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6"
+    )
 
-    # Create resource and merge with default resource
+    # Create resource and merge with custom resource if provided
     resource = Resource(attributes)
-    return Resource.create().merge(resource)
+
+    if custom_resource:
+        # Merge in reverse order so custom resource takes precedence
+        resource = resource.merge(custom_resource)
+
+    final_resource = Resource.create().merge(resource)
+    return final_resource
 
 
 def init_telemetry(
-    name: str,  # Name to identify the tracer instance
+    *,
     resource: Resource | None = None,
-    span_processors: list[SpanProcessor] | None = None,
-) -> tuple[trace.Tracer, TracerProvider]:
+    span_processors: Sequence[SpanProcessor] | None = None,
+) -> tuple[trace.Tracer, TelemetryCompletionHandler]:
     """Initialize OpenTelemetry with manual OTLP stdout configuration.
 
     This function provides a flexible way to initialize OpenTelemetry for AWS Lambda,
@@ -82,39 +188,54 @@ def init_telemetry(
     where needed.
 
     Args:
-        name: Name to identify the tracer instance. This is not the service name, which
-            should be set via OTEL_SERVICE_NAME environment variable or custom resource.
-        resource: Optional custom Resource. Defaults to Lambda resource detection
-        span_processors: Optional list of SpanProcessors. If None, a default LambdaSpanProcessor
+        resource: Optional custom Resource. Defaults to Lambda resource detection.
+        span_processors: Optional sequence of SpanProcessors. If None, a default LambdaSpanProcessor
             with OTLPStdoutSpanExporter will be used. If provided, these processors will be
             the only ones used, in the order provided.
 
     Returns:
-        tuple: (tracer, provider) instances
+        Tuple containing:
+            - tracer: Tracer instance for manual instrumentation
+            - completion_handler: Handler for managing telemetry lifecycle
     """
-    global _tracer_provider
-
     # Setup resource
     resource = resource or get_lambda_resource()
-    _tracer_provider = TracerProvider(resource=resource)
 
+    # Create tracer provider
+    tracer_provider = TracerProvider(resource=resource)
+
+    # Setup processors
     if span_processors is None:
         # Default case: Add LambdaSpanProcessor with OTLPStdoutSpanExporter
-        compression_level = int(os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6"))
-        exporter = OTLPStdoutSpanExporter(gzip_level=compression_level)
-        processor = LambdaSpanProcessor(
-            exporter, max_queue_size=int(os.getenv("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048"))
+        tracer_provider.add_span_processor(
+            LambdaSpanProcessor(
+                OTLPStdoutSpanExporter(
+                    gzip_level=int(
+                        os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6")
+                    )
+                ),
+                max_queue_size=int(os.environ.get("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048")),
+                max_export_batch_size=int(
+                    os.environ.get("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512")
+                ),
+            )
         )
-        _tracer_provider.add_span_processor(processor)
     else:
         # Custom case: Add user-provided processors in order
         for processor in span_processors:
-            _tracer_provider.add_span_processor(processor)
+            tracer_provider.add_span_processor(processor)
 
-    trace.set_tracer_provider(_tracer_provider)
+    # Set as global tracer provider
+    trace.set_tracer_provider(tracer_provider)
 
+    # Get current mode and check extension status
+    mode = processor_mode
     # Initialize extension for async and finalize modes
-    if processor_mode in [ProcessorMode.ASYNC, ProcessorMode.FINALIZE]:
-        init_extension(processor_mode, _tracer_provider)
+    if mode in [ProcessorMode.ASYNC, ProcessorMode.FINALIZE]:
+        init_extension(mode, tracer_provider)
 
-    return trace.get_tracer(name), _tracer_provider
+    # Create completion handler
+    completion_handler = TelemetryCompletionHandler(tracer_provider, mode)
+
+    # Return tracer and completion handler
+    return completion_handler.get_tracer(), completion_handler

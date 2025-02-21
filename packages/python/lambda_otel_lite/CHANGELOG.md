@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-02-20
+
+### Breaking Changes
+- Changed `init_telemetry` return type to `tuple[Tracer, TelemetryCompletionHandler]`
+- Removed `traced_handler` interface and replaced with `create_traced_handler`
+- Removed direct span processor configuration in favor of the `span_processors` parameter
+- Removed `urllib3` dependency in favor of standard library `http.client` to reduce package size
+- Removed `opentelemetry-exporter-otlp-proto-http` from core dependencies (now optional for advanced usage)
+
+### Added
+- New `TelemetryCompletionHandler` class for coordinating span flushing
+- Event-specific extractors for span attributes and context propagation:
+  - `api_gateway_v1_extractor` for REST API
+  - `api_gateway_v2_extractor` for HTTP API
+  - `alb_extractor` for Application Load Balancer
+  - `default_extractor` for basic Lambda attributes
+- Standardized trigger types via `TriggerType` constants
+- Improved connection handling and error management in extension
+- Comprehensive docstrings and type hints
+
+### Changed
+- Simplified handler interface with context manager pattern
+- Improved extension implementation with better connection reuse
+- Enhanced error handling and logging throughout
+- Updated documentation with new interfaces and examples
+- Renamed environment variable to `OTEL_LAMBDA_PROCESSOR_MODE` for consistency
+- Updated documentation to clarify that OTLP HTTP exporter is an optional dependency for advanced usage
+
+### Fixed
+- Connection reuse in extension with proper response body reading
+- Error propagation and status code validation
+- Detailed error logging in extension and processor
+
 ## [0.5.1] - 2025-01-18
 
 ### Changed

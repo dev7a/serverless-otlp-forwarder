@@ -9,7 +9,7 @@ import os
 from enum import Enum
 from typing import Final
 
-__version__ = "0.5.1"
+__version__ = "0.8.0"
 
 
 class ProcessorMode(str, Enum):
@@ -60,9 +60,24 @@ __all__ = [
     "ProcessorMode",
     "processor_mode",  # Export the global processor mode
     "init_telemetry",  # Will be imported from telemetry.py
-    "traced_handler",  # Will be imported from handler.py
+    "create_traced_handler",  # Will be imported from handler.py
+    # Extractors and related classes
+    "TriggerType",
+    "SpanAttributes",
+    "default_extractor",
+    "api_gateway_v1_extractor",
+    "api_gateway_v2_extractor",
+    "alb_extractor",
 ]
 
 # Import public API
-from .handler import traced_handler  # noqa: E402
+from .extractors import (  # noqa: E402
+    SpanAttributes,
+    TriggerType,
+    alb_extractor,
+    api_gateway_v1_extractor,
+    api_gateway_v2_extractor,
+    default_extractor,
+)
+from .handler import create_traced_handler  # noqa: E402
 from .telemetry import init_telemetry  # noqa: E402

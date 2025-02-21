@@ -1,5 +1,7 @@
 """Tests for the Lambda extension implementation."""
 
+import json
+import logging
 import os
 from unittest.mock import Mock, call, patch
 
@@ -7,6 +9,10 @@ import pytest
 from opentelemetry.sdk.trace import TracerProvider
 
 from lambda_otel_lite.extension import ProcessorMode, init_extension
+
+# Setup logging for tests
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @pytest.fixture
@@ -18,15 +24,18 @@ def mock_tracer_provider():
     return provider
 
 
-@pytest.fixture
-def mock_http_client():
+def create_mock_http_client():
     """Create a mock HTTP client."""
     mock_response = Mock()
     mock_response.status = 200
-    mock_response.headers = {"Lambda-Extension-Identifier": "test-id"}
+    mock_response.getheaders.return_value = [
+        ("Lambda-Extension-Identifier", "test-id"),
+    ]
+    mock_response.read.return_value = b""
 
     mock_client = Mock()
-    mock_client.request.return_value = mock_response
+    mock_client.getresponse.return_value = mock_response
+    logger.debug("Created mock HTTP client: %s", mock_client)
     return mock_client
 
 
@@ -46,21 +55,24 @@ def test_extension_init_no_runtime(mock_tracer_provider):
         mock_tracer_provider.force_flush.assert_not_called()
 
 
-@patch("lambda_otel_lite.extension.urllib3.PoolManager")
+@patch("lambda_otel_lite.extension.http.client.HTTPConnection")
 @patch("lambda_otel_lite.extension.threading.Thread")
-def test_extension_init_async_mode(mock_thread, mock_pool, mock_tracer_provider, mock_http_client):
+def test_extension_init_async_mode(mock_thread, mock_http_conn, mock_tracer_provider):
     """Test extension initialization in async mode."""
-    mock_pool.return_value = mock_http_client
+    mock_http_client = create_mock_http_client()
+    mock_http_conn.return_value = mock_http_client
+    logger.debug("Set up mock HTTP connection for async mode: %s", mock_http_conn)
 
     with patch.dict(os.environ, {"AWS_LAMBDA_RUNTIME_API": "test"}):
         init_extension(ProcessorMode.ASYNC, mock_tracer_provider)
 
         # Verify extension registration
+        logger.debug("Checking request calls: %s", mock_http_client.request.call_args_list)
         assert mock_http_client.request.call_args_list[0] == call(
             "POST",
-            "http://test/2020-01-01/extension/register",
-            headers={"Lambda-Extension-Name": "internal"},
-            json={"events": ["INVOKE"]},
+            "/2020-01-01/extension/register",
+            json.dumps({"events": ["INVOKE"]}),
+            {"Lambda-Extension-Name": "internal", "Content-Type": "application/json"},
         )
 
         # Verify thread started
@@ -68,22 +80,21 @@ def test_extension_init_async_mode(mock_thread, mock_pool, mock_tracer_provider,
         assert mock_thread.return_value.start.called
 
 
-@patch("lambda_otel_lite.extension.urllib3.PoolManager")
+@patch("lambda_otel_lite.extension.http.client.HTTPConnection")
 @patch("lambda_otel_lite.extension.threading.Thread")
-def test_extension_init_finalize_mode(
-    mock_thread, mock_pool, mock_tracer_provider, mock_http_client
-):
+def test_extension_init_finalize_mode(mock_thread, mock_http_conn, mock_tracer_provider):
     """Test extension initialization in finalize mode."""
     # Reset extension initialization state
     import lambda_otel_lite.extension
 
+    logger.debug("Resetting extension initialization state")
     lambda_otel_lite.extension._extension_initialized = False
+    lambda_otel_lite.extension._http_conn = None
 
     # Set up mock HTTP client
-    mock_pool.return_value = mock_http_client
-    mock_response = Mock()
-    mock_response.headers = {"Lambda-Extension-Identifier": "test-id"}
-    mock_http_client.request.return_value = mock_response
+    mock_http_client = create_mock_http_client()
+    mock_http_conn.return_value = mock_http_client
+    logger.debug("Set up mock HTTP connection for finalize mode: %s", mock_http_conn)
 
     # Create a mock thread instance
     mock_thread_instance = Mock()
@@ -93,11 +104,12 @@ def test_extension_init_finalize_mode(
         init_extension(ProcessorMode.FINALIZE, mock_tracer_provider)
 
         # Verify extension registration
+        logger.debug("Checking request calls: %s", mock_http_client.request.call_args_list)
         mock_http_client.request.assert_called_with(
             "POST",
-            "http://test/2020-01-01/extension/register",
-            headers={"Lambda-Extension-Name": "internal"},
-            json={"events": []},
+            "/2020-01-01/extension/register",
+            json.dumps({"events": []}),
+            {"Lambda-Extension-Name": "internal", "Content-Type": "application/json"},
         )
 
         # Verify thread started with correct function
@@ -105,22 +117,21 @@ def test_extension_init_finalize_mode(
         mock_thread_instance.start.assert_called_once()
 
 
-@patch("lambda_otel_lite.extension.urllib3.PoolManager")
+@patch("lambda_otel_lite.extension.http.client.HTTPConnection")
 @patch("lambda_otel_lite.extension.threading.Thread")
-def test_extension_init_with_shutdown_callback(
-    mock_thread, mock_pool, mock_tracer_provider, mock_http_client
-):
+def test_extension_init_with_shutdown_callback(mock_thread, mock_http_conn, mock_tracer_provider):
     """Test extension initialization with shutdown callback."""
     # Reset extension initialization state
     import lambda_otel_lite.extension
 
+    logger.debug("Resetting extension initialization state")
     lambda_otel_lite.extension._extension_initialized = False
+    lambda_otel_lite.extension._http_conn = None
 
     # Set up mock HTTP client
-    mock_pool.return_value = mock_http_client
-    mock_response = Mock()
-    mock_response.headers = {"Lambda-Extension-Identifier": "test-id"}
-    mock_http_client.request.return_value = mock_response
+    mock_http_client = create_mock_http_client()
+    mock_http_conn.return_value = mock_http_client
+    logger.debug("Set up mock HTTP connection for shutdown callback: %s", mock_http_conn)
 
     # Create a mock thread instance
     mock_thread_instance = Mock()
@@ -148,11 +159,13 @@ def test_extension_init_with_shutdown_callback(
         mock_callback.assert_called_once()
 
 
-@patch("lambda_otel_lite.extension.urllib3.PoolManager")
+@patch("lambda_otel_lite.extension.http.client.HTTPConnection")
 @patch("lambda_otel_lite.extension.threading.Thread")
-def test_extension_no_double_init(mock_thread, mock_pool, mock_tracer_provider, mock_http_client):
+def test_extension_no_double_init(mock_thread, mock_http_conn, mock_tracer_provider):
     """Test that extension is not initialized twice."""
-    mock_pool.return_value = mock_http_client
+    mock_http_client = create_mock_http_client()
+    mock_http_conn.return_value = mock_http_client
+    logger.debug("Set up mock HTTP connection for double init test: %s", mock_http_conn)
 
     with patch.dict(os.environ, {"AWS_LAMBDA_RUNTIME_API": "test"}):
         init_extension(ProcessorMode.ASYNC, mock_tracer_provider)
