@@ -1,52 +1,29 @@
 name: Publish Python Lambda OTel Lite
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to publish (e.g. 0.8.0)'
-        required: true
-        type: string
-      environment:
-        description: 'Override default environment selection (main->pypi, other->testpypi)'
-        required: false
-        default: 'auto'
-        type: choice
-        options:
-          - auto  # Auto-select based on branch
-          - testpypi
-          - pypi
+  # Trigger on PRs that touch the Python package
+  pull_request:
+    paths:
+      - 'packages/python/lambda_otel_lite/**'
+    types: [opened, synchronize]
+  # Trigger on merges to main that touch the Python package
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/python/lambda_otel_lite/**'
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Determine environment: if environment input is provided, use it, otherwise use pypi for main branch and testpypi for others
-    environment: ${{ inputs.environment != 'auto' && inputs.environment || (github.ref == 'refs/heads/main' && 'pypi' || 'testpypi') }}
+    # Use PyPI for main branch, TestPyPI for all others
+    environment: ${{ github.ref == 'refs/heads/main' && 'pypi' || 'testpypi' }}
     defaults:
       run:
         working-directory: packages/python/lambda_otel_lite
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Validate version matches
-        run: |
-          # Check version in pyproject.toml
-          PYPROJECT_VERSION=$(grep -E '^version = "[^"]+"' pyproject.toml | cut -d'"' -f2)
-          # Check version in __init__.py
-          INIT_VERSION=$(grep -E '^__version__ = "[^"]+"' src/lambda_otel_lite/__init__.py | cut -d'"' -f2)
-          # Check version in CHANGELOG.md (looking for [x.y.z] pattern)
-          CHANGELOG_VERSION=$(grep -E '^\#\# \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -n1 | cut -d'[' -f2 | cut -d']' -f1)
-          
-          if [ "$PYPROJECT_VERSION" != "${{ inputs.version }}" ] || [ "$INIT_VERSION" != "${{ inputs.version }}" ] || [ "$CHANGELOG_VERSION" != "${{ inputs.version }}" ]; then
-            echo "Version mismatch found:"
-            echo "Input version: ${{ inputs.version }}"
-            echo "pyproject.toml version: $PYPROJECT_VERSION"
-            echo "__init__.py version: $INIT_VERSION"
-            echo "CHANGELOG.md version: $CHANGELOG_VERSION"
-            exit 1
-          fi
-          echo "Version ${{ inputs.version }} validated across all files"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build twine ruff mypy pytest pytest-cov
+          pip install build twine ruff mypy pytest pytest-cov toml
 
       - name: Run quality checks
         run: |
@@ -66,10 +43,47 @@ jobs:
           mypy src/lambda_otel_lite
           pytest
 
+      - name: Verify version
+        id: version
+        run: |
+          # Extract version from __init__.py
+          INIT_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite import __version__; print(__version__)")
+          
+          # Extract version from pyproject.toml
+          TOML_VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
+          
+          # Check versions match
+          if [ "$INIT_VERSION" != "$TOML_VERSION" ]; then
+            echo "Error: Version mismatch between __init__.py ($INIT_VERSION) and pyproject.toml ($TOML_VERSION)"
+            exit 1
+          fi
+          
+          # Set version for later steps
+          VERSION="$INIT_VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          
+          # Check if version already exists in Git tags when on main
+          TAG_NAME="python/lambda-otel-lite/v$VERSION"
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Error: Version $VERSION already exists in Git tags"
+            exit 1
+          fi
+          
+          echo "Building version: $VERSION"
+
       - name: Build package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           rm -rf dist/ build/ *.egg-info/
           python -m build
+          
+          # Verify built package version matches
+          WHEEL_VERSION=$(ls dist/*.whl | head -n1 | sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+[^-]*).*/\1/')
+          if [ "$WHEEL_VERSION" != "$VERSION" ]; then
+            echo "Error: Built version ($WHEEL_VERSION) does not match __init__.py version ($VERSION)"
+            exit 1
+          fi
 
       - name: Test package installation
         run: |
@@ -81,32 +95,33 @@ jobs:
           rm -rf test_venv
 
       - name: Publish to TestPyPI
-        if: ${{ inputs.environment == 'testpypi' || (inputs.environment == 'auto' && github.ref != 'refs/heads/main') }}
+        if: github.ref != 'refs/heads/main'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
           TWINE_REPOSITORY: testpypi
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
+          echo "Publishing version $VERSION to TestPyPI"
           twine upload --repository testpypi dist/*
 
       - name: Publish to PyPI
-        if: ${{ inputs.environment == 'pypi' || (inputs.environment == 'auto' && github.ref == 'refs/heads/main') }}
+        if: github.ref == 'refs/heads/main'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
+          echo "Publishing version $VERSION to PyPI"
           twine upload dist/*
 
       - name: Tag version
-        # Only tag when publishing to PyPI (either explicitly or on main branch)
-        if: ${{ inputs.environment == 'pypi' || (inputs.environment == 'auto' && github.ref == 'refs/heads/main') }}
+        if: github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
-          TAG_NAME="python/lambda-otel-lite/v${{ inputs.version }}"
-          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Tag $TAG_NAME already exists"
-            exit 1
-          fi
-          git tag -a "$TAG_NAME" -m "Release Python lambda-otel-lite v${{ inputs.version }}"
+          TAG_NAME="python/lambda-otel-lite/v$VERSION"
+          git tag -a "$TAG_NAME" -m "Release Python lambda-otel-lite v$VERSION"
           git push origin "$TAG_NAME" 

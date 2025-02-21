@@ -382,7 +382,7 @@ Uncaught exceptions will still be recorded as a fallback, but this should be con
 
 ### Building the Package
 
-The package uses `setuptools_scm` for automatic versioning based on Git tags. Version tags follow the format `python/lambda-otel-lite/vX.Y.Z` (e.g., `python/lambda-otel-lite/v0.8.0`).
+The package uses static versioning with version numbers defined in both `pyproject.toml` and `__init__.py`. Version tags follow the format `python/lambda-otel-lite/vX.Y.Z` (e.g., `python/lambda-otel-lite/v0.8.0`).
 
 When building locally:
 
@@ -393,19 +393,6 @@ pip install build
 # Build the package
 python -m build
 ```
-
-Version numbers are automatically generated based on your Git state:
-- On a tagged commit (e.g., `python/lambda-otel-lite/v0.8.0`): Uses the tag version (`0.8.0`)
-- On main branch after a tag: Generates a dev version (e.g., `0.8.1.dev1+g1234abc`)
-- On feature branches: Generates a unique dev version (e.g., `0.8.1.dev2+g5678def`)
-
-The version scheme follows these rules:
-- Release versions (from tags) are plain semantic versions: `0.8.0`
-- Development versions include:
-  - Next patch version: `0.8.1`
-  - `.dev` suffix with distance from last tag: `.dev1`
-  - Git hash: `+g1234abc`
-  - Local changes are indicated with `.d` suffix
 
 ### Installing for Development
 
@@ -449,8 +436,11 @@ mypy src/lambda_otel_lite
 ### Creating a Release
 
 1. Ensure all tests pass and code quality checks succeed
-2. Update `CHANGELOG.md` with your changes
-3. Create and push a new tag:
+2. Update version number in both:
+   - `src/lambda_otel_lite/__init__.py`: Update `__version__`
+   - `pyproject.toml`: Update `project.version`
+3. Update `CHANGELOG.md` with your changes
+4. Create and push a new tag:
    ```bash
    # Tag the current commit
    git tag python/lambda-otel-lite/v0.8.0
@@ -458,7 +448,8 @@ mypy src/lambda_otel_lite
    # Push the tag
    git push origin python/lambda-otel-lite/v0.8.0
    ```
-4. The GitHub Actions workflow will automatically:
+5. The GitHub Actions workflow will automatically:
+   - Verify version consistency
    - Build the package
    - Run all checks
    - Publish to PyPI if on the main branch
