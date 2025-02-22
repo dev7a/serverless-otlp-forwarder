@@ -133,37 +133,33 @@ def api_gateway_v1_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
         if query_parts:
             attributes["url.query"] = "&".join(query_parts)
 
-    # Always HTTPS for API Gateway
+    # API Gateway is always HTTPS
     attributes["url.scheme"] = "https"
 
-    # Add protocol version
+    # Add protocol version from requestContext
     if "requestContext" in event:
         if protocol := event["requestContext"].get("protocol", "").lower():
             if protocol.startswith("http/"):
                 attributes["network.protocol.version"] = protocol.replace("http/", "")
 
-    # Add route
-    if route := event.get("resource"):
-        attributes["http.route"] = route
+    # Add route with fallback to '/'
+    attributes["http.route"] = event.get("resource", "/")
 
-    # Add client IP
+    # Add client IP from identity
     if "requestContext" in event and "identity" in event["requestContext"]:
         if source_ip := event["requestContext"]["identity"].get("sourceIp"):
             attributes["client.address"] = source_ip
-
-    # Add user agent and server address from normalized headers
-    if headers := _normalize_headers(event.get("headers")):
-        if user_agent := headers.get("user-agent"):
+        if user_agent := event["requestContext"]["identity"].get("userAgent"):
             attributes["user_agent.original"] = user_agent
 
-    # Use domain name for server address (like Node.js)
-    if "requestContext" in event and "domainName" in event["requestContext"]:
-        if domain_name := event["requestContext"]["domainName"]:
-            attributes["server.address"] = domain_name
+    # Add server address from Host header
+    if headers := _normalize_headers(event.get("headers")):
+        if host := headers.get("host"):
+            attributes["server.address"] = host
 
     # Get method and route for span name
     method = attributes.get("http.request.method", "HTTP")
-    route = attributes.get("http.route", "/")
+    route = attributes["http.route"]
 
     return SpanAttributes(
         trigger=TriggerType.HTTP,
@@ -199,9 +195,10 @@ def api_gateway_v2_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
     if raw_path := event.get("rawPath"):
         attributes["url.path"] = raw_path
 
-    # Add query string
+    # Add query string if present and not empty
     if raw_query_string := event.get("rawQueryString"):
-        attributes["url.query"] = raw_query_string
+        if raw_query_string != "":
+            attributes["url.query"] = raw_query_string
 
     # Always HTTPS for API Gateway
     attributes["url.scheme"] = "https"
@@ -212,30 +209,30 @@ def api_gateway_v2_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
             if protocol.startswith("http/"):
                 attributes["network.protocol.version"] = protocol.replace("http/", "")
 
-    # Add route if available
-    if route := event.get("routeKey"):
-        if route == "$default":
-            route = event.get("rawPath", "/")
-        attributes["http.route"] = route
+    # Add route with special handling for $default and fallback
+    if route_key := event.get("routeKey"):
+        if route_key == "$default":
+            attributes["http.route"] = event.get("rawPath", "/")
+        else:
+            attributes["http.route"] = route_key
+    else:
+        attributes["http.route"] = "/"
 
     # Add client IP
     if "requestContext" in event and "http" in event["requestContext"]:
-        if source_ip := event["requestContext"]["http"].get("sourceIp"):
+        http = event["requestContext"]["http"]
+        if source_ip := http.get("sourceIp"):
             attributes["client.address"] = source_ip
-
-    # Add user agent and server address from normalized headers
-    if headers := _normalize_headers(event.get("headers")):
-        if user_agent := headers.get("user-agent"):
+        if user_agent := http.get("userAgent"):
             attributes["user_agent.original"] = user_agent
 
-    # Use domain name for server address (like Node.js)
     if "requestContext" in event and "domainName" in event["requestContext"]:
         if domain_name := event["requestContext"]["domainName"]:
             attributes["server.address"] = domain_name
 
     # Get method and route for span name
     method = attributes.get("http.request.method", "HTTP")
-    route = attributes.get("http.route", "/")
+    route = attributes["http.route"]
 
     return SpanAttributes(
         trigger=TriggerType.HTTP,
@@ -266,54 +263,57 @@ def alb_extractor(event: dict[str, Any], context: Any) -> SpanAttributes:
     if method := event.get("httpMethod"):
         attributes["http.request.method"] = method
 
-    # Add path and route
-    if path := event.get("path"):
-        attributes["url.path"] = path
-        attributes["http.route"] = path  # For ALB, route is the same as path
+    # Add path and route with fallback to '/'
+    path = event.get("path", "/")
+    attributes["url.path"] = path
+    attributes["http.route"] = path
 
-    # Handle query string parameters
-    if query_params := event.get("multiValueQueryStringParameters"):
-        query_parts = []
-        for key, values in query_params.items():
-            if isinstance(values, list):
-                for value in values:
-                    query_parts.append(f"{parse.quote(key)}={parse.quote(value)}")
-        if query_parts:
-            attributes["url.query"] = "&".join(query_parts)
-
-    # ALB can be HTTP or HTTPS, default to HTTP
-    attributes["url.scheme"] = "http"
-    # ALB uses HTTP/1.1
-    attributes["network.protocol.version"] = "1.1"
+    # Handle query string parameters if present and not empty
+    if query_params := event.get("queryStringParameters"):
+        if query_params:  # Check if dict is not empty
+            query_parts = []
+            for key, value in query_params.items():
+                query_parts.append(f"{parse.quote(key)}={parse.quote(str(value))}")
+            if query_parts:
+                attributes["url.query"] = "&".join(query_parts)
 
     # Add ALB specific attributes
     if "requestContext" in event and "elb" in event["requestContext"]:
         if target_group_arn := event["requestContext"]["elb"].get("targetGroupArn"):
             attributes["alb.target_group_arn"] = target_group_arn
 
-    # Add headers from normalized headers
-    if headers := _normalize_headers(event.get("headers")):
-        # Add client IP from X-Forwarded-For
-        if forwarded_for := headers.get("x-forwarded-for"):
-            if client_ip := forwarded_for.split(",")[0].strip():
-                attributes["client.address"] = client_ip
+    # Extract attributes from headers
+    headers = _normalize_headers(event.get("headers", {}))
+    # Set URL scheme based on x-forwarded-proto
+    if proto := headers.get("x-forwarded-proto"):
+        attributes["url.scheme"] = proto.lower()
+    else:
+        attributes["url.scheme"] = "http"
 
-        # Add user agent
-        if user_agent := headers.get("user-agent"):
-            attributes["user_agent.original"] = user_agent
+    # Extract user agent
+    if user_agent := headers.get("user-agent"):
+        attributes["user_agent.original"] = user_agent
 
-        # Add host as server address
-        if host := headers.get("host"):
-            attributes["server.address"] = host
+    # Extract server address from host
+    if host := headers.get("host"):
+        attributes["server.address"] = host
 
-    # Get method and path for span name
+    # Extract client IP from x-forwarded-for
+    if x_forwarded_for := headers.get("x-forwarded-for"):
+        if client_ip := x_forwarded_for.split(",")[0].strip():
+            attributes["client.address"] = client_ip
+
+    # ALB uses HTTP/1.1
+    attributes["network.protocol.version"] = "1.1"
+
+    # Get method and route for span name
     method = attributes.get("http.request.method", "HTTP")
-    path = attributes.get("url.path", "/")
+    route = attributes["http.route"]
 
     return SpanAttributes(
         trigger=TriggerType.HTTP,
         attributes=attributes,
-        span_name=f"{method} {path}",
+        span_name=f"{method} {route}",
         carrier=event.get("headers", {}),
         kind=SpanKind.SERVER,
     )

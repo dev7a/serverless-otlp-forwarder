@@ -31,7 +31,7 @@ Before publishing a new version of `lambda_otel_lite`, ensure all these items ar
 - [ ] All tests pass (`pytest`)
 - [ ] Test coverage is satisfactory (`pytest --cov`)
 - [ ] Type checking passes (`mypy`)
-- [ ] Linting passes (`ruff check` and `ruff format`)
+- [ ] Linting passes (`ruff check --isolated src/lambda_otel_lite tests` and `ruff format --check --isolated src/lambda_otel_lite tests`)
 - [ ] No debug code or print statements (except in logger)
 - [ ] All public APIs are properly typed
 - [ ] All docstrings are complete and up-to-date

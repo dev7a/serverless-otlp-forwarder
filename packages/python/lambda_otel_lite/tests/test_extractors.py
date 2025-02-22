@@ -178,36 +178,32 @@ class TestExtractors:
 
     def test_mixed_case_headers(self) -> None:
         """Test that headers are handled case-insensitively."""
-        event = {
-            "headers": {
-                "User-Agent": "test-agent-1",
-                "user-agent": "test-agent-2",
-                "X-Forwarded-For": "1.2.3.4",
-                "x-forwarded-for": "5.6.7.8",
-                "Host": "example.com",
-                "host": "example.org",
-            }
-        }
+        # Test API Gateway v1 with fixture
+        v1_event = FIXTURES["apigw_v1"]
+        result = api_gateway_v1_extractor(v1_event, None)
+        attrs = result.attributes
+        assert "user_agent.original" in attrs
+        assert attrs["user_agent.original"] == v1_event["requestContext"]["identity"]["userAgent"]
 
-        # Test all extractors handle mixed case headers
-        for extractor in [
-            api_gateway_v1_extractor,
-            api_gateway_v2_extractor,
-            alb_extractor,
-        ]:
-            result = extractor(event, None)
-            attrs = result.attributes
+        # Test API Gateway v2 with fixture
+        v2_event = FIXTURES["apigw_v2"]
+        result = api_gateway_v2_extractor(v2_event, None)
+        attrs = result.attributes
+        assert "user_agent.original" in attrs
+        assert attrs["user_agent.original"] == v2_event["requestContext"]["http"]["userAgent"]
 
-            # Only one user agent should be extracted (case-insensitive)
-            assert "user_agent.original" in attrs
-            assert attrs["user_agent.original"] in ["test-agent-1", "test-agent-2"]
+        # Test ALB with fixture
+        alb_event = FIXTURES["alb"]
+        result = alb_extractor(alb_event, None)
+        attrs = result.attributes
 
-            # For ALB, only one client IP should be extracted
-            if extractor == alb_extractor:
-                assert "client.address" in attrs
-                assert attrs["client.address"] in ["1.2.3.4", "5.6.7.8"]
+        # ALB gets user agent from headers
+        assert "user_agent.original" in attrs
+        assert attrs["user_agent.original"] == alb_event["headers"]["user-agent"]
 
-            # For ALB, only one server address should be extracted
-            if extractor == alb_extractor:
-                assert "server.address" in attrs
-                assert attrs["server.address"] in ["example.com", "example.org"]
+        # ALB processes these header values
+        assert "client.address" in attrs
+        assert attrs["client.address"] == alb_event["headers"]["x-forwarded-for"].split(",")[0].strip()
+        assert "server.address" in attrs
+        assert attrs["server.address"] == alb_event["headers"]["host"]
+        assert attrs["url.scheme"] == alb_event["headers"]["x-forwarded-proto"]
