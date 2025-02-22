@@ -22,9 +22,15 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        arch: [x64, arm64]
-        node-version: ['18']
+        include:
+          # x64 runner
+          - os: ubuntu-latest
+            arch: x64
+            node-version: '18'
+          # arm64 runner
+          - os: ubuntu-22.04-arm
+            arch: arm64
+            node-version: '18'
     runs-on: ${{ matrix.os }}
     defaults:
       run:
