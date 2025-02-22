@@ -60,6 +60,23 @@ class SpanAttributes:
         self.links = links
 
 
+def _normalize_headers(headers: dict[str, str] | None) -> dict[str, str]:
+    """Normalize header names to lowercase.
+
+    HTTP header names are case-insensitive, so we normalize them to lowercase
+    for consistent processing.
+
+    Args:
+        headers: Dictionary of headers or None
+
+    Returns:
+        Dictionary with lowercase header names. Empty dict if input is None.
+    """
+    if not headers:
+        return {}
+    return {k.lower(): v for k, v in headers.items()}
+
+
 def default_extractor(event: Any, context: Any) -> SpanAttributes:
     """Default extractor for unknown event types.
 
@@ -70,7 +87,7 @@ def default_extractor(event: Any, context: Any) -> SpanAttributes:
     Returns:
         SpanAttributes with basic Lambda invocation information
     """
-    attributes = {}
+    attributes: dict[str, Any] = {}
 
     # Add invocation ID if available
     if hasattr(context, "aws_request_id"):
@@ -88,17 +105,6 @@ def default_extractor(event: Any, context: Any) -> SpanAttributes:
     return SpanAttributes(trigger=TriggerType.OTHER, attributes=attributes)
 
 
-def _normalize_headers(headers: dict[str, str] | None) -> dict[str, str] | None:
-    """Normalize header names to lowercase.
-
-    HTTP header names are case-insensitive, so we normalize them to lowercase
-    for consistent processing.
-    """
-    if not headers:
-        return headers
-    return {k.lower(): v for k, v in headers.items()}
-
-
 def api_gateway_v1_extractor(event: dict[str, Any], context: Any) -> SpanAttributes:
     """Extract span attributes from API Gateway v1 (REST API) events.
 
@@ -109,11 +115,9 @@ def api_gateway_v1_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
     Returns:
         SpanAttributes with HTTP and API Gateway specific attributes
     """
-    attributes = {}
-
     # Start with default attributes
     base = default_extractor(event, context)
-    attributes.update(base.attributes)
+    attributes = base.attributes.copy()
 
     # Add HTTP method
     if method := event.get("httpMethod"):
@@ -180,11 +184,9 @@ def api_gateway_v2_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
     Returns:
         SpanAttributes with HTTP and API Gateway specific attributes
     """
-    attributes = {}
-
     # Start with default attributes
     base = default_extractor(event, context)
-    attributes.update(base.attributes)
+    attributes = base.attributes.copy()
 
     # Add HTTP method
     if "requestContext" in event and "http" in event["requestContext"]:
@@ -253,11 +255,9 @@ def alb_extractor(event: dict[str, Any], context: Any) -> SpanAttributes:
     Returns:
         SpanAttributes with HTTP and ALB specific attributes
     """
-    attributes = {}
-
     # Start with default attributes
     base = default_extractor(event, context)
-    attributes.update(base.attributes)
+    attributes = base.attributes.copy()
 
     # Add HTTP method
     if method := event.get("httpMethod"):

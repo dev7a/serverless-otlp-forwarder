@@ -78,7 +78,7 @@ def shutdown_telemetry(tracer_provider: TracerProvider, signum: int, _: Any) -> 
     """Handle SIGTERM by flushing spans and shutting down."""
     logger.debug("SIGTERM received (%d), flushing traces and shutting down", signum)
     tracer_provider.force_flush()
-    tracer_provider.shutdown()
+    tracer_provider.shutdown()  # type: ignore[no-untyped-call]
 
     # Clean up HTTP connection
     _close_http_connection()

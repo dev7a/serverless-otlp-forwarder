@@ -183,14 +183,20 @@ class TestExtractors:
         result = api_gateway_v1_extractor(v1_event, None)
         attrs = result.attributes
         assert "user_agent.original" in attrs
-        assert attrs["user_agent.original"] == v1_event["requestContext"]["identity"]["userAgent"]
+        assert (
+            attrs["user_agent.original"]
+            == v1_event["requestContext"]["identity"]["userAgent"]
+        )
 
         # Test API Gateway v2 with fixture
         v2_event = FIXTURES["apigw_v2"]
         result = api_gateway_v2_extractor(v2_event, None)
         attrs = result.attributes
         assert "user_agent.original" in attrs
-        assert attrs["user_agent.original"] == v2_event["requestContext"]["http"]["userAgent"]
+        assert (
+            attrs["user_agent.original"]
+            == v2_event["requestContext"]["http"]["userAgent"]
+        )
 
         # Test ALB with fixture
         alb_event = FIXTURES["alb"]
@@ -203,7 +209,10 @@ class TestExtractors:
 
         # ALB processes these header values
         assert "client.address" in attrs
-        assert attrs["client.address"] == alb_event["headers"]["x-forwarded-for"].split(",")[0].strip()
+        assert (
+            attrs["client.address"]
+            == alb_event["headers"]["x-forwarded-for"].split(",")[0].strip()
+        )
         assert "server.address" in attrs
         assert attrs["server.address"] == alb_event["headers"]["host"]
         assert attrs["url.scheme"] == alb_event["headers"]["x-forwarded-proto"]
