@@ -127,63 +127,47 @@ The library supports three processing modes for span export:
    - Best for specialized export requirements where you need full control
    - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=finalize`
 
-### Processing Modes Architecture
+### Async Processing Mode Architecture
 
-The async mode leverages Lambda's extension API to optimize perceived latency by deferring span export until after the response is sent to the user:
 
 ```mermaid
 sequenceDiagram
     participant Lambda Runtime
     participant Extension Thread
     participant Handler
-    participant Event
     participant LambdaSpanProcessor
     participant OTLPStdoutSpanExporter
 
-    Note over Extension Thread: Started by init_telemetry()
+    Note over Extension Thread: Initialization
     Extension Thread->>Lambda Runtime: Register extension (POST /register)
-    alt Registration Success
-        Lambda Runtime-->>Extension Thread: Extension ID
-        Extension Thread->>Extension Thread: Setup SIGTERM handler
-        Extension Thread->>Event: Create handler_complete event
-    else Registration Failure
-        Lambda Runtime-->>Extension Thread: Error
-        Note over Extension Thread: Log error and exit
-    end
+    Lambda Runtime-->>Extension Thread: Extension ID
+    Extension Thread->>Lambda Runtime: Get next event (GET /next)
 
-    loop For each invocation
-        Extension Thread->>Lambda Runtime: Get next event (GET /next)
-        alt Success
-            Lambda Runtime-->>Extension Thread: INVOKE event
-            Note over Handler: Function execution starts
-            Handler->>LambdaSpanProcessor: Queue span (if sampled)
-            Note over LambdaSpanProcessor: Add to fixed-size queue
-            Handler->>Event: Set handler_complete event
-            Event-->>Extension Thread: Wait() completed
-            alt Export Success
-                Extension Thread->>LambdaSpanProcessor: process_spans()
-                Note over LambdaSpanProcessor: Collect all queued spans
-                LambdaSpanProcessor->>OTLPStdoutSpanExporter: export()
-                Note over OTLPStdoutSpanExporter: Log success
-            else Export Failure
-                Note over Extension Thread: Log error but continue
-            end
-            Extension Thread->>Event: Clear event for next invocation
-        else Error
-            Note over Extension Thread: Log error but continue
-        end
-    end
+    Note over Handler: Function Invocation
+    Handler->>LambdaSpanProcessor: Create & queue spans
+    Note over LambdaSpanProcessor: Spans stored in fixed-size queue
+
+    Handler->>Extension Thread: Set handler_complete_event
+    Note over Handler: Handler returns response
+
+    Extension Thread->>LambdaSpanProcessor: process_spans()
+    LambdaSpanProcessor->>OTLPStdoutSpanExporter: export() batched spans
+    Extension Thread->>Lambda Runtime: Get next event (GET /next)
 
     Note over Extension Thread: On SIGTERM
     Lambda Runtime->>Extension Thread: SHUTDOWN event
     Extension Thread->>LambdaSpanProcessor: force_flush()
-    alt Final Export Success
-        LambdaSpanProcessor->>OTLPStdoutSpanExporter: export()
-    else Final Export Failure
-        Note over Extension Thread: Log error before exit
-    end
-    Extension Thread->>Lambda Runtime: Clean shutdown
+    LambdaSpanProcessor->>OTLPStdoutSpanExporter: export() remaining spans
 ```
+
+The async mode leverages Lambda's extension API to optimize perceived latency by deferring span export until after the response is sent to the user. The diagram above shows the core coordination between components:
+
+1. Extension thread registers and waits for events from Runtime
+2. Handler queues spans during execution via LambdaSpanProcessor
+3. Handler signals completion via event before returning
+4. Extension processes and exports queued spans after handler completes
+5. Extension returns to waiting for next event
+6. On shutdown, remaining spans are flushed and exported
 
 ## Event Extractors
 

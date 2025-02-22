@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/python/lambda_otel_lite"
+Homepage = "https://github.com/dev7a/serverless-otlp-forwarder"
 Repository = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/python/lambda_otel_lite"
 
 [project.optional-dependencies]
