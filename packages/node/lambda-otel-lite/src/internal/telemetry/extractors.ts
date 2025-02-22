@@ -109,8 +109,8 @@ function normalizeHeaders(headers?: Record<string, string>): Record<string, stri
 }
 
 /**
- * Default attribute extractor that returns empty attributes.
- * It will attempt to extract headers for context propagation if present.
+ * Default attribute extractor that returns Lambda context attributes.
+ * Extracts standard OpenTelemetry FaaS attributes from the Lambda context.
  */
 export function defaultExtractor(event: unknown, context: unknown): SpanAttributes {
   const attributes: Record<string, string | number | boolean> = {};
@@ -133,14 +133,9 @@ export function defaultExtractor(event: unknown, context: unknown): SpanAttribut
     }
   }
 
-  const carrier = typeof event === 'object' && event !== null && 'headers' in event
-    ? (event as { headers?: Record<string, string> }).headers
-    : undefined;
-
   return {
     kind: SpanKind.SERVER,
     attributes,
-    carrier,
     trigger: TriggerType.Other
   };
 }
@@ -159,11 +154,13 @@ export function defaultExtractor(event: unknown, context: unknown): SpanAttribut
  * - user_agent.original: The user agent header
  * - server.address: The domain name
  */
-export function apiGatewayV2Extractor(event: unknown, _context: unknown): SpanAttributes {
+export function apiGatewayV2Extractor(event: unknown, context: unknown): SpanAttributes {
+  // Start with default attributes
+  const base = defaultExtractor(event, context);
+  const attributes = { ...base.attributes };
+  
   const apiEvent = event as APIGatewayV2Event;
-  const attributes: Record<string, string | number | boolean> = {};
   const method = apiEvent?.requestContext?.http?.method;
-  const path = apiEvent?.rawPath || '/';
 
   // Add HTTP attributes
   if (method) {
@@ -178,7 +175,6 @@ export function apiGatewayV2Extractor(event: unknown, _context: unknown): SpanAt
     attributes['url.query'] = apiEvent.rawQueryString;
   }
 
-  // API Gateway is always HTTPS
   attributes['url.scheme'] = 'https';
 
   if (apiEvent?.requestContext?.http?.protocol) {
@@ -188,41 +184,51 @@ export function apiGatewayV2Extractor(event: unknown, _context: unknown): SpanAt
     }
   }
 
-  // Add route key
+  // Add route with special handling for $default
   if (apiEvent?.routeKey) {
-    attributes['http.route'] = apiEvent.routeKey;
+    if (apiEvent.routeKey === '$default') {
+      attributes['http.route'] = apiEvent?.rawPath || '/';
+    } else {
+      attributes['http.route'] = apiEvent.routeKey;
+    }
+  } else {
+    attributes['http.route'] = '/';
   }
 
-  // Add source IP from requestContext
   if (apiEvent?.requestContext?.http?.sourceIp) {
     attributes['client.address'] = apiEvent.requestContext.http.sourceIp;
   }
 
-  // Add user agent from requestContext
   if (apiEvent?.requestContext?.http?.userAgent) {
     attributes['user_agent.original'] = apiEvent.requestContext.http.userAgent;
   }
 
-  // Add domain name from requestContext
   if (apiEvent?.requestContext?.domainName) {
     attributes['server.address'] = apiEvent.requestContext.domainName;
   }
+
+  // Get method and route for span name
+  const spanMethod = attributes['http.request.method'] || 'HTTP';
+  const spanRoute = attributes['http.route'];
 
   return {
     kind: SpanKind.SERVER,
     attributes,
     carrier: apiEvent?.headers,
     trigger: TriggerType.Http,
-    spanName: `${method} ${path}`
+    spanName: `${spanMethod} ${spanRoute}`
   };
 }
 
 /**
  * Extract attributes from API Gateway V1 REST API events.
  */
-export function apiGatewayV1Extractor(event: unknown, _context: unknown): SpanAttributes {
+export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAttributes {
+  // Start with default attributes
+  const base = defaultExtractor(event, context);
+  const attributes = { ...base.attributes };
+  
   const apiEvent = event as APIGatewayV1Event;
-  const attributes: Record<string, string | number | boolean> = {};
   const method = apiEvent?.httpMethod;
   const route = apiEvent?.resource || '/';
 
@@ -293,9 +299,12 @@ export function apiGatewayV1Extractor(event: unknown, _context: unknown): SpanAt
 /**
  * Extract attributes from Application Load Balancer target group events.
  */
-export function albExtractor(event: unknown, _context: unknown): SpanAttributes {
+export function albExtractor(event: unknown, context: unknown): SpanAttributes {
+  // Start with default attributes
+  const base = defaultExtractor(event, context);
+  const attributes = { ...base.attributes };
+  
   const albEvent = event as ALBEvent;
-  const attributes: Record<string, string | number | boolean> = {};
   const method = albEvent?.httpMethod;
   const path = albEvent?.path || '/';
 

@@ -196,7 +196,7 @@ describe('createTracedHandler', () => {
 
       // Verify the expected attributes
       expect(attributesSet.get('faas.trigger')).toBe('http');
-      expect(attributesSet.get('http.route')).toBe('$default');
+      expect(attributesSet.get('http.route')).toBe('/path/to/resource');
       expect(attributesSet.get('http.request.method')).toBe('POST');
       expect(attributesSet.get('url.path')).toBe('/path/to/resource');
       expect(attributesSet.get('url.scheme')).toBe('https');
