@@ -22,9 +22,15 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        arch: [x64, arm64]
-        python-version: ['3.12']
+        include:
+          # x64 runner
+          - os: ubuntu-latest
+            arch: x64
+            python-version: '3.12'
+          # arm64 runner
+          - os: ubuntu-22.04-arm
+            arch: arm64
+            python-version: '3.12'
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -55,8 +61,8 @@ jobs:
 
   publish:
     needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # Use PyPI for main branch, TestPyPI for all others
     environment: ${{ github.ref == 'refs/heads/main' && 'pypi' || 'testpypi' }}
     defaults:
       run:
@@ -69,6 +75,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          architecture: x64
           cache: 'pip'
 
       - name: Install dependencies
@@ -77,117 +84,26 @@ jobs:
           pip install build twine ruff mypy pytest pytest-cov toml
           pip install -e ".[dev]"
 
-      - name: Run quality checks
-        run: |
-          ruff check --isolated src/lambda_otel_lite tests
-          ruff format --check --isolated src/lambda_otel_lite tests
-          mypy src/lambda_otel_lite
-          pytest
-
-      - name: Update PR version
-        if: github.ref != 'refs/heads/main'
-        run: |
-          # Get PR number from GITHUB_REF (refs/pull/123/merge -> 123)
-          PR_NUMBER=$(echo $GITHUB_REF | cut -d/ -f3)
-          # Get timestamp for uniqueness (unix timestamp)
-          TIMESTAMP=$(date +%s)
-          # Get current version
-          CURRENT_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite import __version__; print(__version__)")
-          # Create PR version using dev format with timestamp for uniqueness
-          PR_VERSION="${CURRENT_VERSION}.dev${TIMESTAMP}"
-          
-          echo "Updating version from $CURRENT_VERSION to $PR_VERSION"
-          
-          # Update version in __init__.py
-          sed -i.bak "s/__version__ = \"${CURRENT_VERSION}\"/__version__ = \"${PR_VERSION}\"/" src/lambda_otel_lite/__init__.py
-          
-          # Update version in pyproject.toml
-          sed -i.bak "s/version = \"${CURRENT_VERSION}\"/version = \"${PR_VERSION}\"/" pyproject.toml
-          
-          # Clean up backup files
-          rm -f src/lambda_otel_lite/__init__.py.bak pyproject.toml.bak
-
-      - name: Verify version
-        id: version
-        run: |
-          # Extract version from __init__.py
-          INIT_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite import __version__; print(__version__)")
-          
-          # Extract version from pyproject.toml
-          TOML_VERSION=$(python -c "import toml; print(toml.load('pyproject.toml')['project']['version'])")
-          
-          # Check versions match
-          if [ "$INIT_VERSION" != "$TOML_VERSION" ]; then
-            echo "Error: Version mismatch between __init__.py ($INIT_VERSION) and pyproject.toml ($TOML_VERSION)"
-            exit 1
-          fi
-          
-          # Set version for later steps
-          VERSION="$INIT_VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          
-          # Only check for existing tags on main branch
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            TAG_NAME="python/lambda-otel-lite/v$VERSION"
-            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-              echo "Error: Version $VERSION already exists in Git tags"
-              exit 1
-            fi
-          fi
-          
-          echo "Building version: $VERSION"
-
       - name: Build package
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+        run: python -m build
+
+      - name: Verify package version
         run: |
-          rm -rf dist/ build/ *.egg-info/
-          python -m build
-          
-          # Verify built package version matches
-          WHEEL_VERSION=$(ls dist/*.whl | head -n1 | sed -E 's/.*-([0-9]+\.[0-9]+\.[0-9]+[^-]*).*/\1/')
-          if [ "$WHEEL_VERSION" != "$VERSION" ]; then
-            echo "Error: Built version ($WHEEL_VERSION) does not match __init__.py version ($VERSION)"
+          PACKAGE_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite import __version__; print(__version__)")
+          if git tag -l | grep -q "python-v$PACKAGE_VERSION"; then
+            echo "Version $PACKAGE_VERSION already published"
             exit 1
           fi
-
-      - name: Test package installation
-        run: |
-          python -m venv test_venv
-          source test_venv/bin/activate
-          pip install dist/*.whl
-          pytest
-          deactivate
-          rm -rf test_venv
-
-      - name: Publish to TestPyPI
-        if: github.ref != 'refs/heads/main'
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          TWINE_REPOSITORY: testpypi
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          echo "Publishing version $VERSION to TestPyPI"
-          twine upload --verbose --repository testpypi dist/*
+          echo "Publishing version $PACKAGE_VERSION"
 
       - name: Publish to PyPI
-        if: github.ref == 'refs/heads/main'
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          echo "Publishing version $VERSION to PyPI"
-          twine upload dist/*
+        run: twine upload dist/*
 
-      - name: Tag version
-        if: github.ref == 'refs/heads/main'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+      - name: Create and push tag
         run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'actions@github.com'
-          TAG_NAME="python/lambda-otel-lite/v$VERSION"
-          git tag -a "$TAG_NAME" -m "Release Python lambda-otel-lite v$VERSION"
-          git push origin "$TAG_NAME" 
+          PACKAGE_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite import __version__; print(__version__)")
+          git tag "python-v$PACKAGE_VERSION"
+          git push origin "python-v$PACKAGE_VERSION" 
