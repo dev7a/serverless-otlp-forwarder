@@ -19,7 +19,39 @@ permissions:
   id-token: write # Needed for publishing to npm
 
 jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        arch: [x64, arm64]
+        node-version: ['18']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/node/lambda-otel-lite
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          architecture: ${{ matrix.arch }}
+          cache: 'npm'
+          cache-dependency-path: packages/node/lambda-otel-lite/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality checks
+        run: |
+          npm run lint
+          npm test
+          npm run build
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     defaults:
       run:

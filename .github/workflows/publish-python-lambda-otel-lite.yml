@@ -19,7 +19,42 @@ permissions:
   id-token: write # Needed for publishing to PyPI
 
 jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        arch: [x64, arm64]
+        python-version: ['3.12']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/python/lambda_otel_lite
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: ${{ matrix.arch }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine ruff mypy pytest pytest-cov toml
+          pip install -e ".[dev]"
+
+      - name: Run quality checks
+        run: |
+          ruff check --isolated src/lambda_otel_lite tests
+          ruff format --check --isolated src/lambda_otel_lite tests
+          mypy src/lambda_otel_lite
+          pytest
+
   publish:
+    needs: test
     runs-on: ubuntu-latest
     # Use PyPI for main branch, TestPyPI for all others
     environment: ${{ github.ref == 'refs/heads/main' && 'pypi' || 'testpypi' }}
@@ -33,7 +68,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.12'
           cache: 'pip'
 
       - name: Install dependencies
