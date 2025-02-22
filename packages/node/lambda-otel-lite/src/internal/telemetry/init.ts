@@ -216,6 +216,9 @@ export function initTelemetry(
     mode = ProcessorMode.Sync;
   }
 
+  // Store mode in shared state
+  state.mode = mode;
+
   // Create completion handler and return both handler and tracer
   const completionHandler = new TelemetryCompletionHandler(provider, mode);
   return {

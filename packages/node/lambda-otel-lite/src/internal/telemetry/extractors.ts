@@ -48,6 +48,7 @@ export interface APIGatewayV2Event {
       method?: string;
       protocol?: string;
       sourceIp?: string;
+      userAgent?: string;
     };
     domainName?: string;
   };
@@ -67,6 +68,7 @@ export interface APIGatewayV1Event {
     protocol?: string;
     identity?: {
       sourceIp?: string;
+      userAgent?: string;
     };
     domainName?: string;
   };
@@ -77,7 +79,7 @@ export interface APIGatewayV1Event {
 export interface ALBEvent {
   httpMethod?: string;
   path?: string;
-  multiValueQueryStringParameters?: Record<string, string[]>;
+  queryStringParameters?: Record<string, string>;
   requestContext?: {
     elb?: {
       targetGroupArn?: string;
@@ -86,18 +88,58 @@ export interface ALBEvent {
   headers?: Record<string, string>;
 }
 
+/** Lambda context interface for type safety */
+interface LambdaContext {
+  awsRequestId: string;
+  invokedFunctionArn: string;
+}
+
+/**
+ * Normalize headers by converting all keys to lowercase.
+ * This makes header lookup case-insensitive.
+ */
+function normalizeHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
+  if (!headers) {
+    return undefined;
+  }
+  return Object.entries(headers).reduce((acc, [key, value]) => {
+    acc[key.toLowerCase()] = value;
+    return acc;
+  }, {} as Record<string, string>);
+}
+
 /**
  * Default attribute extractor that returns empty attributes.
  * It will attempt to extract headers for context propagation if present.
  */
-export function defaultExtractor(event: unknown, _context: unknown): SpanAttributes {
+export function defaultExtractor(event: unknown, context: unknown): SpanAttributes {
+  const attributes: Record<string, string | number | boolean> = {};
+  
+  // Add invocation ID if available
+  if (context && typeof context === 'object' && 'awsRequestId' in context) {
+    const typedContext = context as LambdaContext;
+    attributes['faas.invocation_id'] = typedContext.awsRequestId;
+  }
+
+  // Add function ARN and account ID if available
+  if (context && typeof context === 'object' && 'invokedFunctionArn' in context) {
+    const typedContext = context as LambdaContext;
+    const arn = typedContext.invokedFunctionArn;
+    attributes['cloud.resource_id'] = arn;
+    // Extract account ID from ARN (arn:aws:lambda:region:account-id:...)
+    const arnParts = arn.split(':');
+    if (arnParts.length >= 5) {
+      attributes['cloud.account.id'] = arnParts[4];
+    }
+  }
+
   const carrier = typeof event === 'object' && event !== null && 'headers' in event
     ? (event as { headers?: Record<string, string> }).headers
     : undefined;
 
   return {
     kind: SpanKind.SERVER,
-    attributes: {},
+    attributes,
     carrier,
     trigger: TriggerType.Other
   };
@@ -151,16 +193,17 @@ export function apiGatewayV2Extractor(event: unknown, _context: unknown): SpanAt
     attributes['http.route'] = apiEvent.routeKey;
   }
 
-  // Add source IP and user agent
+  // Add source IP from requestContext
   if (apiEvent?.requestContext?.http?.sourceIp) {
     attributes['client.address'] = apiEvent.requestContext.http.sourceIp;
   }
 
-  if (apiEvent?.headers?.['user-agent']) {
-    attributes['user_agent.original'] = apiEvent.headers['user-agent'];
+  // Add user agent from requestContext
+  if (apiEvent?.requestContext?.http?.userAgent) {
+    attributes['user_agent.original'] = apiEvent.requestContext.http.userAgent;
   }
 
-  // Add domain name
+  // Add domain name from requestContext
   if (apiEvent?.requestContext?.domainName) {
     attributes['server.address'] = apiEvent.requestContext.domainName;
   }
@@ -176,17 +219,6 @@ export function apiGatewayV2Extractor(event: unknown, _context: unknown): SpanAt
 
 /**
  * Extract attributes from API Gateway V1 REST API events.
- * 
- * Extracts standard HTTP attributes following OpenTelemetry semantic conventions:
- * - http.request.method: The HTTP method
- * - url.path: The request path
- * - url.query: The query string
- * - url.scheme: The protocol scheme (always "https" for API Gateway)
- * - network.protocol.version: The HTTP protocol version
- * - http.route: The API Gateway resource path
- * - client.address: The client's IP address
- * - user_agent.original: The user agent header
- * - server.address: The domain name
  */
 export function apiGatewayV1Extractor(event: unknown, _context: unknown): SpanAttributes {
   const apiEvent = event as APIGatewayV1Event;
@@ -231,18 +263,22 @@ export function apiGatewayV1Extractor(event: unknown, _context: unknown): SpanAt
   // Add route
   attributes['http.route'] = route;
 
-  // Add source IP and user agent
+  // Add source IP from identity
   if (apiEvent?.requestContext?.identity?.sourceIp) {
     attributes['client.address'] = apiEvent.requestContext.identity.sourceIp;
   }
 
-  if (apiEvent?.headers?.['User-Agent']) {
-    attributes['user_agent.original'] = apiEvent.headers['User-Agent'];
+  // Add user agent from identity
+  if (apiEvent?.requestContext?.identity?.userAgent) {
+    attributes['user_agent.original'] = apiEvent.requestContext.identity.userAgent;
   }
 
-  // Add domain name
-  if (apiEvent?.requestContext?.domainName) {
-    attributes['server.address'] = apiEvent.requestContext.domainName;
+  // Add server address from Host header
+  if (apiEvent?.headers) {
+    const normalizedHeaders = normalizeHeaders(apiEvent.headers);
+    if (normalizedHeaders?.['host']) {
+      attributes['server.address'] = normalizedHeaders['host'];
+    }
   }
 
   return {
@@ -256,18 +292,6 @@ export function apiGatewayV1Extractor(event: unknown, _context: unknown): SpanAt
 
 /**
  * Extract attributes from Application Load Balancer target group events.
- * 
- * Extracts standard HTTP attributes following OpenTelemetry semantic conventions:
- * - http.request.method: The HTTP method
- * - url.path: The request path
- * - url.query: The query string
- * - url.scheme: The protocol scheme (defaults to "http")
- * - network.protocol.version: The HTTP protocol version (always "1.1" for ALB)
- * - http.route: The request path
- * - client.address: The client's IP address (from x-forwarded-for)
- * - user_agent.original: The user agent header
- * - server.address: The host header
- * - alb.target_group_arn: The ARN of the target group
  */
 export function albExtractor(event: unknown, _context: unknown): SpanAttributes {
   const albEvent = event as ALBEvent;
@@ -286,48 +310,54 @@ export function albExtractor(event: unknown, _context: unknown): SpanAttributes 
   }
 
   // Handle query string parameters
-  if (albEvent?.multiValueQueryStringParameters && Object.keys(albEvent.multiValueQueryStringParameters).length > 0) {
+  if (albEvent?.queryStringParameters && Object.keys(albEvent.queryStringParameters).length > 0) {
     const queryParts: string[] = [];
-    for (const [key, values] of Object.entries(albEvent.multiValueQueryStringParameters)) {
-      if (Array.isArray(values)) {
-        for (const value of values) {
-          queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
-        }
-      }
+    for (const [key, value] of Object.entries(albEvent.queryStringParameters)) {
+      queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
     }
     if (queryParts.length > 0) {
       attributes['url.query'] = queryParts.join('&');
     }
   }
 
-  // ALB can be HTTP or HTTPS, default to HTTP
-  attributes['url.scheme'] = 'http';
-  // ALB uses HTTP/1.1
-  attributes['network.protocol.version'] = '1.1';
-
   // Add ALB specific attributes
   if (albEvent?.requestContext?.elb?.targetGroupArn) {
     attributes['alb.target_group_arn'] = albEvent.requestContext.elb.targetGroupArn;
   }
 
-  // Add source IP from X-Forwarded-For
-  const forwardedFor = albEvent?.headers?.['x-forwarded-for'];
-  if (forwardedFor) {
-    const clientIp = forwardedFor.split(',')[0]?.trim();
-    if (clientIp) {
-      attributes['client.address'] = clientIp;
+  // Extract attributes from headers
+  if (albEvent?.headers) {
+    const normalizedHeaders = normalizeHeaders(albEvent.headers);
+    if (normalizedHeaders) {
+      // Set URL scheme based on x-forwarded-proto
+      if (normalizedHeaders['x-forwarded-proto']) {
+        attributes['url.scheme'] = normalizedHeaders['x-forwarded-proto'];
+      } else {
+        attributes['url.scheme'] = 'http';
+      }
+
+      // Extract user agent
+      if (normalizedHeaders['user-agent']) {
+        attributes['user_agent.original'] = normalizedHeaders['user-agent'];
+      }
+
+      // Extract server address from host
+      if (normalizedHeaders['host']) {
+        attributes['server.address'] = normalizedHeaders['host'];
+      }
+
+      // Extract client IP from x-forwarded-for
+      if (normalizedHeaders['x-forwarded-for']) {
+        const clientIp = normalizedHeaders['x-forwarded-for'].split(',')[0]?.trim();
+        if (clientIp) {
+          attributes['client.address'] = clientIp;
+        }
+      }
     }
   }
 
-  // Add user agent
-  if (albEvent?.headers?.['user-agent']) {
-    attributes['user_agent.original'] = albEvent.headers['user-agent'];
-  }
-
-  // Add host as server address
-  if (albEvent?.headers?.host) {
-    attributes['server.address'] = albEvent.headers.host;
-  }
+  // ALB uses HTTP/1.1
+  attributes['network.protocol.version'] = '1.1';
 
   return {
     kind: SpanKind.SERVER,

@@ -1,0 +1,129 @@
+name: Publish Node Lambda OTel Lite
+
+on:
+  # Trigger on PRs that touch the Node.js package
+  pull_request:
+    paths:
+      - 'packages/node/lambda-otel-lite/**'
+    types: [opened, synchronize]
+  # Trigger on merges to main that touch the Node.js package
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/node/lambda-otel-lite/**'
+
+# Add permissions needed for the workflow
+permissions:
+  contents: write  # Needed for pushing tags
+  id-token: write # Needed for publishing to npm
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/node/lambda-otel-lite
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          # Only use npm registry - GitHub packages not needed
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality checks
+        run: |
+          npm run lint
+          npm test
+          npm run build
+
+      # For PRs: Verify package can be published
+      - name: Verify package (PR)
+        if: github.ref != 'refs/heads/main'
+        run: |
+          npm pack
+          npm publish --dry-run
+
+      # For main: Full publish process
+      - name: Verify version
+        if: github.ref == 'refs/heads/main'
+        id: version
+        run: |
+          # Extract version from package.json
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          
+          # Check for existing tags
+          TAG_NAME="node/lambda-otel-lite/v$VERSION"
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Error: Version $VERSION already exists in Git tags"
+            exit 1
+          fi
+          
+          echo "Building version: $VERSION"
+
+      - name: Build package
+        if: github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          rm -rf dist/
+          npm run build
+          
+          # Pack the package to verify it
+          npm pack
+          
+          # Verify the packed package contains the correct files
+          tar -tzf "dev7a-lambda-otel-lite-${VERSION/v/}.tgz" | grep -q "package.json" || exit 1
+
+      - name: Test package installation
+        if: github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # Create a test directory
+          mkdir test-install
+          cd test-install
+          
+          # Initialize a test package
+          npm init -y
+          
+          # Install the packed package
+          npm install "../dev7a-lambda-otel-lite-${VERSION/v/}.tgz"
+          
+          # Verify all expected files are present
+          test -d "node_modules/@dev7a/lambda-otel-lite/dist" || exit 1
+          test -f "node_modules/@dev7a/lambda-otel-lite/package.json" || exit 1
+          test -f "node_modules/@dev7a/lambda-otel-lite/README.md" || exit 1
+          
+          # Clean up
+          cd ..
+          rm -rf test-install
+
+      - name: Publish to npm
+        if: github.ref == 'refs/heads/main'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          echo "Publishing version $VERSION to npm"
+          npm publish --access public
+
+      - name: Tag version
+        if: github.ref == 'refs/heads/main'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          TAG_NAME="node/lambda-otel-lite/v$VERSION"
+          git tag -a "$TAG_NAME" -m "Release Node.js lambda-otel-lite v$VERSION"
+          git push origin "$TAG_NAME" 

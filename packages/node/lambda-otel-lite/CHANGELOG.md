@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-02-21
+
+### Breaking Changes
+- Removed direct span access from handler function signature
+  - Old: `handler(async (event, context, span) => { ... })`
+  - New: `handler(async (event, context) => { ... })`
+- Changed handler creation API to match Python implementation
+  - Old: `createTracedHandler(completionHandler, { name, attributesExtractor })`
+  - New: `createTracedHandler(name, completionHandler, { attributesExtractor })`
+
+### Changed
+- Simplified handler interface to use OpenTelemetry API for span access
+- Updated examples to use `trace.getActiveSpan()` for span access
+- Improved alignment with Python implementation
+- Enhanced documentation with updated examples
+- Simplified configuration interface
+
+### Fixed
+- Improved attribute extraction logic in event extractors:
+  - Fixed API Gateway v1 extractor to use `Host` header for `server.address` instead of `requestContext.domainName`
+  - Updated API Gateway v2 extractor to use `requestContext.http.userAgent` for user agent
+  - Ensured consistent header normalization across all extractors
+  - Aligned Python implementation with Node.js for consistent behavior
+  - Guaranteed span completion by moving span.end() to finally block in handler
+
 ## [0.7.0] - 2025-02-16
 
 ### Breaking Changes

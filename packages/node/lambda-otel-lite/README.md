@@ -194,6 +194,7 @@ These attributes are automatically added to the resource and can be used to unde
 The package provides a simple API for instrumenting AWS Lambda functions with OpenTelemetry:
 
 ```typescript
+import { trace } from '@opentelemetry/api';
 import { createTracedHandler, initTelemetry } from '@dev7a/lambda-otel-lite';
 import { apiGatewayV2Extractor } from '@dev7a/lambda-otel-lite/extractors';
 
@@ -201,25 +202,30 @@ import { apiGatewayV2Extractor } from '@dev7a/lambda-otel-lite/extractors';
 const { tracer, completionHandler } = initTelemetry();
 
 // Create a traced handler with a name and optional attribute extractor
-const handler = createTracedHandler(completionHandler, {
-  name: 'my-handler',
-  attributesExtractor: apiGatewayV2Extractor
-});
+const traced = createTracedHandler(
+  'my-handler',
+  completionHandler,
+  { attributesExtractor: apiGatewayV2Extractor }
+);
 
 // Use the traced handler to process Lambda events
-export const lambdaHandler = handler(async (event, context, span) => {
-  // Add custom attributes to the handler's span
-  span.setAttribute('custom.attribute', 'value');
+export const lambdaHandler = traced(async (event, context) => {
+  // Get current span if needed
+  const currentSpan = trace.getActiveSpan();
+  currentSpan?.setAttribute('custom.attribute', 'value');
   
   // Create a child span for a sub-operation
-  return tracer.startActiveSpan('process_request', span => {
-    span.setAttribute('operation.type', 'process');
-    // ... do some work ...
-    span.end();
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Hello World' })
-    };
+  return tracer.startActiveSpan('process_request', async (span) => {
+    try {
+      span.setAttribute('operation.type', 'process');
+      // ... do some work ...
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: 'Hello World' })
+      };
+    } finally {
+      span.end();
+    }
   });
 });
 ```
@@ -233,34 +239,35 @@ import { createTracedHandler, initTelemetry } from '@dev7a/lambda-otel-lite';
 import {
   apiGatewayV1Extractor,
   apiGatewayV2Extractor,
-  snsExtractor,
-  sqsExtractor,
-  s3Extractor,
-  eventBridgeExtractor
+  albExtractor
 } from '@dev7a/lambda-otel-lite/extractors';
 
 // Initialize telemetry with default configuration
 const { tracer, completionHandler } = initTelemetry();
 
 // Create a traced handler for API Gateway v2 events
-const handler = createTracedHandler(completionHandler, {
-  name: 'api-handler',
-  attributesExtractor: apiGatewayV2Extractor
-});
+const traced = createTracedHandler(
+  'api-handler',
+  completionHandler,
+  { attributesExtractor: apiGatewayV1Extractor }
+);
 
-// Use the traced handler to process Lambda events
-export const lambdaHandler = handler(async (event, context, span) => {
-  // Create a child span for request processing
-  return tracer.startActiveSpan('process_request', span => {
-    // ... process the request ...
-    span.end();
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Hello World' })
-    };
-  });
+// Use the traced handler
+export const lambdaHandler = traced(async (event, context) => {
+  const currentSpan = trace.getActiveSpan();
+  currentSpan?.setAttribute('request.id', context.awsRequestId);
+  
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: 'Success' })
+  };
 });
 ```
+
+The extractors handle header normalization consistently across implementations:
+- Headers are normalized to lowercase for case-insensitive lookup
+- The `Host` header is used for `server.address` in API Gateway v1
+- User agent is extracted from `requestContext` when available, falling back to headers
 
 ### Custom Resource Attributes
 

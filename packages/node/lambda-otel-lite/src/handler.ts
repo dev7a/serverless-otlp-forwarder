@@ -1,4 +1,4 @@
-import { SpanKind, SpanStatusCode, Span, ROOT_CONTEXT, propagation } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode, ROOT_CONTEXT, propagation } from '@opentelemetry/api';
 import { isColdStart, setColdStart } from './internal/telemetry/init';
 import { TelemetryCompletionHandler } from './internal/telemetry/completion';
 import { SpanAttributes, defaultExtractor } from './internal/telemetry/extractors';
@@ -17,22 +17,19 @@ export interface LambdaContext {
 }
 
 /**
- * Configuration for creating a traced Lambda handler
+ * Optional configuration for traced handler
  */
 export interface TracerConfig {
-  /** Name of the span (used if extractor does not provide a name) */
-  name: string;
   /** Optional attribute extractor function */
   attributesExtractor?: (event: unknown, context: LambdaContext) => SpanAttributes;
 }
 
 /**
- * A Lambda handler function that receives a span for manual instrumentation
+ * A Lambda handler function type
  */
 export type TracedFunction<TEvent, TResult> = (
   event: TEvent,
-  context: LambdaContext,
-  span: Span
+  context: LambdaContext
 ) => Promise<TResult>;
 
 /**
@@ -44,15 +41,17 @@ export type TracedFunction<TEvent, TResult> = (
  * const completionHandler = initTelemetry();
  * 
  * // Create a traced handler with a name and optional attribute extractor
- * const handler = createTracedHandler(completionHandler, {
- *   name: 'my-handler',
- *   attributesExtractor: apiGatewayV2Extractor
- * });
+ * const traced = createTracedHandler(
+ *   'my-handler',
+ *   completionHandler,
+ *   { attributesExtractor: apiGatewayV2Extractor }
+ * );
  * 
  * // Use the traced handler to process Lambda events
- * export const lambdaHandler = handler(async (event, context, span) => {
- *   // Add custom attributes or create child spans
- *   span.setAttribute('custom.attribute', 'value');
+ * export const lambdaHandler = traced(async (event, context) => {
+ *   // Get current span if needed
+ *   const currentSpan = trace.getActiveSpan();
+ *   currentSpan?.setAttribute('custom.attribute', 'value');
  *   
  *   // Your handler logic here
  *   return {
@@ -63,22 +62,38 @@ export type TracedFunction<TEvent, TResult> = (
  * ```
  */
 export function createTracedHandler(
+  name: string,
   completionHandler: TelemetryCompletionHandler,
-  config: TracerConfig
+  config?: TracerConfig
 ) {
   return function <TEvent, TResult>(fn: TracedFunction<TEvent, TResult>) {
     return async function (event: TEvent, context: LambdaContext): Promise<TResult> {
       const tracer = completionHandler.getTracer();
-      let error: Error | undefined;
-      let result: TResult;
 
       try {
-        const wrapCallback = (fn: (span: Span) => Promise<TResult>) => {
-          return async (span: Span) => {
-            try {
-              // Extract attributes using provided extractor or default
-              const extracted = (config.attributesExtractor || defaultExtractor)(event, context);
+        // Extract attributes using provided extractor or default
+        const extracted = (config?.attributesExtractor || defaultExtractor)(event, context);
 
+        // Extract context from carrier if available
+        let parentContext = ROOT_CONTEXT;
+        if (extracted.carrier && Object.keys(extracted.carrier).length > 0) {
+          try {
+            parentContext = propagation.extract(ROOT_CONTEXT, extracted.carrier);
+          } catch (error) {
+            logger.warn('Failed to extract context:', error);
+          }
+        }
+
+        // Start the span
+        return await tracer.startActiveSpan(
+          extracted.spanName || name,
+          {
+            kind: extracted.kind || SpanKind.SERVER,
+            links: extracted.links,
+          },
+          parentContext,
+          async (span) => {
+            try {
               // Set common attributes
               if (isColdStart()) {
                 span.setAttribute('faas.coldstart', true);
@@ -104,10 +119,10 @@ export function createTracedHandler(
               });
 
               // Execute handler
-              result = await fn(span);
+              const result = await fn(event, context);
 
               // Handle HTTP response attributes
-              if (result && typeof result === 'object' && 'statusCode' in result) {
+              if (result && typeof result === 'object' && !Array.isArray(result) && result !== null && 'statusCode' in result) {
                 const statusCode = result.statusCode as number;
                 span.setAttribute('http.status_code', statusCode);
                 if (statusCode >= 500) {
@@ -118,60 +133,29 @@ export function createTracedHandler(
                 } else {
                   span.setStatus({ code: SpanStatusCode.OK });
                 }
-              } else {
-                span.setStatus({ code: SpanStatusCode.OK });
               }
               
               return result;
             } catch (e) {
-              error = e as Error;
               // Record the error with full exception details
-              span.recordException(error);
+              span.recordException(e as Error);
               // Set explicit error attribute
               span.setAttribute('error', true);
               // Set status to ERROR
               span.setStatus({
                 code: SpanStatusCode.ERROR,
-                message: error.message
+                message: e instanceof Error ? e.message : String(e)
               });
-              throw error;
+              throw e;
             } finally {
-              span.end();
               if (isColdStart()) {
                 setColdStart(false);
               }
+              // always end the span
+              span.end();
             }
-          };
-        };
-
-        // Extract attributes and context
-        const extracted = (config.attributesExtractor || defaultExtractor)(event, context);
-            
-        // Extract context from carrier if available
-        let parentContext = ROOT_CONTEXT;
-        if (extracted.carrier && Object.keys(extracted.carrier).length > 0) {
-          try {
-            parentContext = propagation.extract(ROOT_CONTEXT, extracted.carrier);
-          } catch (error) {
-            logger.warn('Failed to extract context:', error);
           }
-        }
-
-        // Start the span
-        result = await tracer.startActiveSpan(
-          extracted.spanName || config.name,
-          {
-            kind: extracted.kind || SpanKind.SERVER,
-            links: extracted.links,
-          },
-          parentContext,
-          wrapCallback((span) => fn(event, context, span))
         );
-        logger.debug('returning result');
-        return result;
-      } catch (e) {
-        error = e as Error;
-        throw error;
       } finally {
         completionHandler.complete();
       }

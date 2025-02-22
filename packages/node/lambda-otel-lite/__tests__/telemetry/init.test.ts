@@ -133,7 +133,7 @@ describe('telemetry/init', () => {
         AWS_LAMBDA_FUNCTION_NAME: 'lambda-function'
       });
 
-      const { completionHandler } = initTelemetry();
+      const { completionHandler: _ } = initTelemetry();
             
       // Service name will be in the provider's resource
       expect(state.provider?.resource.attributes['service.name']).toBe('env-service');
@@ -144,19 +144,19 @@ describe('telemetry/init', () => {
         AWS_LAMBDA_FUNCTION_NAME: 'lambda-function'
       });
 
-      const { completionHandler } = initTelemetry();
+      const { completionHandler: _ } = initTelemetry();
             
       expect(state.provider?.resource.attributes['service.name']).toBe('lambda-function');
     });
 
     it('should use unknown_service if no environment variables set', () => {
-      const { completionHandler } = initTelemetry();
+      const { completionHandler: _ } = initTelemetry();
             
       expect(state.provider?.resource.attributes['service.name']).toBe('unknown_service');
     });
 
     it('should use custom resource service name if provided', () => {
-      const { completionHandler } = initTelemetry({
+      const { completionHandler: _ } = initTelemetry({
         resource: new Resource({
           'service.name': 'test-service'
         })
@@ -170,7 +170,7 @@ describe('telemetry/init', () => {
         'custom.attribute': 'value'
       });
 
-      const { completionHandler } = initTelemetry({
+      const { completionHandler: _ } = initTelemetry({
         resource: customResource
       });
 
@@ -263,6 +263,79 @@ describe('telemetry/init', () => {
       expect(processor1.onEndCalled).toBe(true);
       expect(processor2.onStartCalled).toBe(true);
       expect(processor2.onEndCalled).toBe(true);
+    });
+
+    it('should initialize with default options', () => {
+      const { completionHandler: _ } = initTelemetry();
+      expect(state.mode).toBe('sync');
+    });
+
+    it('should initialize with sync mode', () => {
+      const { completionHandler: _ } = initTelemetry({
+        spanProcessors: [
+          {
+            forceFlush: () => Promise.resolve(),
+            shutdown: () => Promise.resolve(),
+            onStart: jest.fn(),
+            onEnd: jest.fn()
+          }
+        ]
+      });
+      expect(state.mode).toBe('sync');
+    });
+
+    it('should initialize with async mode', () => {
+      // Set up environment and extension state
+      envManager.setup({
+        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: 'async'
+      });
+      state.extensionInitialized = true;
+
+      const { completionHandler: _ } = initTelemetry({
+        spanProcessors: [
+          {
+            forceFlush: () => Promise.resolve(),
+            shutdown: () => Promise.resolve(),
+            onStart: jest.fn(),
+            onEnd: jest.fn()
+          }
+        ]
+      });
+      expect(state.mode).toBe('async');
+    });
+
+    it('should initialize with finalize mode', () => {
+      // Set up environment and extension state
+      envManager.setup({
+        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: 'finalize'
+      });
+      state.extensionInitialized = true;
+
+      const { completionHandler: _ } = initTelemetry({
+        spanProcessors: [
+          {
+            forceFlush: () => Promise.resolve(),
+            shutdown: () => Promise.resolve(),
+            onStart: jest.fn(),
+            onEnd: jest.fn()
+          }
+        ]
+      });
+      expect(state.mode).toBe('finalize');
+    });
+
+    it('should initialize with custom span processor', () => {
+      const mockSpanProcessor: SpanProcessor = {
+        forceFlush: () => Promise.resolve(),
+        shutdown: () => Promise.resolve(),
+        onStart: jest.fn(),
+        onEnd: jest.fn()
+      };
+
+      const { completionHandler: _ } = initTelemetry({
+        spanProcessors: [mockSpanProcessor]
+      });
+      expect(state.mode).toBe('sync');
     });
   });
 
