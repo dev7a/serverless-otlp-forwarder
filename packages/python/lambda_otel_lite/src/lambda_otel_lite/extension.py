@@ -78,7 +78,7 @@ def shutdown_telemetry(tracer_provider: TracerProvider, signum: int, _: Any) -> 
     """Handle SIGTERM by flushing spans and shutting down."""
     logger.debug("SIGTERM received (%d), flushing traces and shutting down", signum)
     tracer_provider.force_flush()
-    tracer_provider.shutdown()  # type: ignore[no-untyped-call]
+    tracer_provider.shutdown()
 
     # Clean up HTTP connection
     _close_http_connection()
@@ -104,8 +104,7 @@ def init_extension(
 
     # Register SIGTERM handler
     signal.signal(
-        signal.SIGTERM,
-        lambda signum, frame: shutdown_telemetry(tracer_provider, signum, frame),
+        signal.SIGTERM, lambda signum, frame: shutdown_telemetry(tracer_provider, signum, frame)
     )
 
     # Extension API paths
@@ -157,7 +156,7 @@ def init_extension(
         except (http.client.HTTPException, OSError) as e:
             logger.warn("HTTP error in shutdown wait:", e)
 
-    # Register the extension
+    # Start by registering the extension
     events = ["INVOKE"] if mode == ProcessorMode.ASYNC else []
 
     try:
@@ -177,15 +176,11 @@ def init_extension(
         if not extension_id:
             raise ValueError("No extension ID received in registration response")
 
-        logger.debug(
-            "Internal extension '%s' registered for mode: %s", extension_id, mode.value
-        )
+        logger.debug("Internal extension '%s' registered for mode: %s", extension_id, mode.value)
 
         # Start extension thread based on mode
         threading.Thread(
-            target=lambda_internal_extension
-            if mode == ProcessorMode.ASYNC
-            else wait_for_shutdown,
+            target=lambda_internal_extension if mode == ProcessorMode.ASYNC else wait_for_shutdown,
             args=(extension_id,),
         ).start()
 
