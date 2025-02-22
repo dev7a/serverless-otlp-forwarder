@@ -1,35 +1,70 @@
 {
     "version": "2.0",
-    "routeKey": "GET /hello",
-    "rawPath": "/hello",
-    "rawQueryString": "",
+    "routeKey": "$default",
+    "rawPath": "/path/to/resource",
+    "rawQueryString": "parameter1=value1&parameter1=value2&parameter2=value",
+    "cookies": [
+      "cookie1",
+      "cookie2"
+    ],
     "headers": {
-        "accept": "*/*",
-        "content-length": "0",
-        "host": "example.com",
-        "user-agent": "curl/7.64.1",
-        "x-amzn-trace-id": "Root=1-5e6722a7-cc56xmpl46db7ae02d4da47e",
-        "x-forwarded-for": "127.0.0.1",
-        "x-forwarded-port": "443",
-        "x-forwarded-proto": "https"
+      "Header1": "value1",
+      "Header2": "value1,value2"
+    },
+    "queryStringParameters": {
+      "parameter1": "value1,value2",
+      "parameter2": "value"
     },
     "requestContext": {
-        "accountId": "123456789012",
-        "apiId": "api-id",
-        "domainName": "example.com",
-        "domainPrefix": "example",
-        "http": {
-            "method": "GET",
-            "path": "/hello",
-            "protocol": "HTTP/1.1",
-            "sourceIp": "127.0.0.1",
-            "userAgent": "curl/7.64.1"
-        },
-        "requestId": "id",
-        "routeKey": "GET /hello",
-        "stage": "$default",
-        "time": "12/Mar/2020:19:03:58 +0000",
-        "timeEpoch": 1583348638390
+      "accountId": "123456789012",
+      "apiId": "api-id",
+      "authentication": {
+        "clientCert": {
+          "clientCertPem": "CERT_CONTENT",
+          "subjectDN": "www.example.com",
+          "issuerDN": "Example issuer",
+          "serialNumber": "a1:a1:a1:a1:a1:a1:a1:a1:a1:a1:a1:a1:a1:a1:a1:a1",
+          "validity": {
+            "notBefore": "May 28 12:30:02 2019 GMT",
+            "notAfter": "Aug  5 09:36:04 2021 GMT"
+          }
+        }
+      },
+      "authorizer": {
+        "jwt": {
+          "claims": {
+            "claim1": "value1",
+            "claim2": "value2"
+          },
+          "scopes": [
+            "scope1",
+            "scope2"
+          ]
+        }
+      },
+      "domainName": "id.execute-api.us-east-1.amazonaws.com",
+      "domainPrefix": "id",
+      "http": {
+        "method": "POST",
+        "path": "/path/to/resource",
+        "protocol": "HTTP/1.1",
+        "sourceIp": "192.168.0.1/32",
+        "userAgent": "agent"
+      },
+      "requestId": "id",
+      "routeKey": "$default",
+      "stage": "$default",
+      "time": "12/Mar/2020:19:03:58 +0000",
+      "timeEpoch": 1583348638390
     },
-    "isBase64Encoded": false
-} 
+    "body": "eyJ0ZXN0IjoiYm9keSJ9",
+    "pathParameters": {
+      "parameter1": "value1"
+    },
+    "isBase64Encoded": true,
+    "stageVariables": {
+      "stageVariable1": "value1",
+      "stageVariable2": "value2"
+    }
+  }
+  

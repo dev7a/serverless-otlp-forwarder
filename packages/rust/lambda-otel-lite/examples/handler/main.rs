@@ -3,7 +3,7 @@ use lambda_otel_lite::{init_telemetry, traced_handler, TelemetryConfig};
 use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
 use serde_json::Value;
 
-use tracing::{info, instrument};
+use tracing::{info, info_span, instrument}; 
 
 /// Simple Lambda function that logs the event and returns it.
 ///
@@ -28,7 +28,7 @@ async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<Value, E
 /// This function is used to demonstrate the nested span functionality of OpenTelemetry.
 #[instrument(skip_all)]
 async fn nested_function() {
-    tracing::debug!("Nested function called");
+    info_span!("Nested function called");
 }
 
 #[tokio::main]

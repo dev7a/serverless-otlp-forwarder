@@ -290,6 +290,7 @@ pub fn set_common_attributes(span: &Span, context: &Context, is_cold_start: bool
     }
 
     // Set function name and version
+    // TODO: these are already set in the resource, we can remove them
     span.set_attribute(
         "faas.name",
         std::env::var("AWS_LAMBDA_FUNCTION_NAME").unwrap_or_default(),
