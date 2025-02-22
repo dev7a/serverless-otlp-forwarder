@@ -13,6 +13,11 @@ on:
     paths:
       - 'packages/python/lambda_otel_lite/**'
 
+# Add permissions needed for the workflow
+permissions:
+  contents: write  # Needed for pushing tags
+  id-token: write # Needed for publishing to PyPI
+
 jobs:
   publish:
     runs-on: ubuntu-latest
