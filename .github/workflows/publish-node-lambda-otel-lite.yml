@@ -33,7 +33,7 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          # Only use npm registry - GitHub packages not needed
+          cache-dependency-path: packages/node/lambda-otel-lite/package-lock.json
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
