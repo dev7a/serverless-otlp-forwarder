@@ -63,7 +63,7 @@ jobs:
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: ${{ github.ref == 'refs/heads/main' && 'pypi' || 'testpypi' }}
+    environment: pypi
     defaults:
       run:
         working-directory: packages/python/lambda_otel_lite
