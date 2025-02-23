@@ -3,7 +3,8 @@
 Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these items are checked:
 
 ## Package.json Verification
-- [ ] `version` is correctly incremented (following semver)
+- [ ] `version` is correctly incremented (following semver) in package.json and in src/version.ts
+- [ ] `name` is correct
 - [ ] `description` is clear and up-to-date
 - [ ] `license` is specified
 - [ ] `keywords` are defined and relevant
@@ -24,6 +25,7 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 - [ ] API documentation is complete
 - [ ] Breaking changes are clearly documented
 - [ ] `CHANGELOG.md` is updated
+- 
 
 ## Code Quality
 - [ ] All tests pass (`npm test`)
