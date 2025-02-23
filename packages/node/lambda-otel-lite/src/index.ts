@@ -15,4 +15,4 @@ export * from './mode';
 
 // Export types needed by users
 export type { TelemetryCompletionHandler } from './internal/telemetry/completion';
-export type { TracerConfig, TracedFunction, LambdaContext } from './handler';
+export type { TracedFunction, LambdaContext } from './handler';

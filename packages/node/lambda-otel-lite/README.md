@@ -205,7 +205,7 @@ const { tracer, completionHandler } = initTelemetry();
 const traced = createTracedHandler(
   'my-handler',
   completionHandler,
-  { attributesExtractor: apiGatewayV2Extractor }
+  apiGatewayV2Extractor  // Optional: pass extractor directly for automatic attribute extraction
 );
 
 // Use the traced handler to process Lambda events
@@ -232,7 +232,7 @@ export const lambdaHandler = traced(async (event, context) => {
 
 ### Event Extractors
 
-The package also provides a set of extractors for common AWS Lambda triggers:
+The package provides built-in extractors for common AWS Lambda triggers. You can pass these directly to `createTracedHandler`:
 
 ```typescript
 import { createTracedHandler, initTelemetry } from '@dev7a/lambda-otel-lite';
@@ -245,21 +245,60 @@ import {
 // Initialize telemetry with default configuration
 const { tracer, completionHandler } = initTelemetry();
 
-// Create a traced handler for API Gateway v2 events
-const traced = createTracedHandler(
-  'api-handler',
+// Create handlers for different event types
+export const apiV2Handler = createTracedHandler(
+  'api-v2-handler',
   completionHandler,
-  { attributesExtractor: apiGatewayV1Extractor }
+  apiGatewayV2Extractor
 );
 
-// Use the traced handler
-export const lambdaHandler = traced(async (event, context) => {
-  const currentSpan = trace.getActiveSpan();
-  currentSpan?.setAttribute('request.id', context.awsRequestId);
-  
+export const apiV1Handler = createTracedHandler(
+  'api-v1-handler',
+  completionHandler,
+  apiGatewayV1Extractor
+);
+
+export const albHandler = createTracedHandler(
+  'alb-handler',
+  completionHandler,
+  albExtractor
+);
+
+// For custom event types, you can create your own extractor function
+const customExtractor = (event: unknown, context: LambdaContext) => ({
+  spanName: 'custom-operation',
+  attributes: {
+    'custom.attribute': 'value',
+    'event.type': 'custom'
+  },
+  trigger: 'custom'
+});
+
+export const customHandler = createTracedHandler(
+  'custom-handler',
+  completionHandler,
+  customExtractor
+);
+```
+
+### Simple Usage Without Event Extraction
+
+If you don't need automatic attribute extraction, you can omit the extractor:
+
+```typescript
+import { createTracedHandler, initTelemetry } from '@dev7a/lambda-otel-lite';
+
+const { completionHandler } = initTelemetry();
+
+// Create a basic traced handler without event extraction
+export const handler = createTracedHandler(
+  'simple-handler',
+  completionHandler
+)(async (event, context) => {
+  // Your handler code here
   return {
     statusCode: 200,
-    body: JSON.stringify({ message: 'Success' })
+    body: JSON.stringify({ message: 'Hello World' })
   };
 });
 ```
@@ -271,77 +310,75 @@ The extractors handle header normalization consistently across implementations:
 
 ### Custom Resource Attributes
 
+You can provide custom resource attributes during initialization:
+
 ```typescript
 import { createTracedHandler, initTelemetry } from '@dev7a/lambda-otel-lite';
 import { Resource } from '@opentelemetry/resources';
 
+// Create a custom resource
 const resource = new Resource({
   'service.version': '1.0.0',
   'deployment.environment': 'production'
 });
 
+// Initialize with custom resource
 const { tracer, completionHandler } = initTelemetry({
   resource
 });
 
-const handler = createTracedHandler(completionHandler, {
-  name: 'my-handler'
-});
-
-export const lambdaHandler = handler(async (event, context, span) => {
-  // Create a child span for request processing
-  return tracer.startActiveSpan('process_request', span => {
-    // ... process the request ...
-    span.end();
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Hello World' })
-    };
-  });
+// Create a traced handler as usual
+export const handler = createTracedHandler(
+  'custom-resource-handler',
+  completionHandler
+)(async (event, context) => {
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: 'Hello World' })
+  };
 });
 ```
 
 ### Custom Span Processor
+
+You can use custom span processors for special export needs:
 
 ```typescript
 import { createTracedHandler, initTelemetry } from '@dev7a/lambda-otel-lite';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
 
+// Create a custom processor
 const processor = new BatchSpanProcessor(new ConsoleSpanExporter());
 
+// Initialize with custom processor
 const { tracer, completionHandler } = initTelemetry({
   spanProcessors: [processor]
 });
 
-const handler = createTracedHandler(completionHandler, {
-  name: 'my-handler'
-});
-
-export const lambdaHandler = handler(async (event, context, span) => {
-  // Create a child span for request processing
-  return tracer.startActiveSpan('process_request', span => {
-    // ... process the request ...
-    span.end();
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ message: 'Hello World' })
-    };
-  });
+// Create a traced handler as usual
+export const handler = createTracedHandler(
+  'custom-processor-handler',
+  completionHandler
+)(async (event, context) => {
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ message: 'Hello World' })
+  };
 });
 ```
 
-### Creating Custom Event Extractors
+### Advanced Event Extractor Example
 
-You can create custom extractors for different event types by implementing the attribute extraction interface. This is useful when working with custom event sources or AWS services not covered by the built-in extractors.
+Here's a more complex example showing how to create an extractor for SQS events:
 
 ```typescript
 import { SpanKind } from '@opentelemetry/api';
-import { TriggerType, SpanAttributes } from '@dev7a/lambda-otel-lite';
-import { LambdaContext } from '@dev7a/lambda-otel-lite';
+import { createTracedHandler, initTelemetry, TriggerType } from '@dev7a/lambda-otel-lite';
+import type { LambdaContext } from '@dev7a/lambda-otel-lite';
 
-// Example: Custom extractor for SQS events
-function sqsEventExtractor(event: any, context: LambdaContext): SpanAttributes {
+// Custom extractor for SQS events
+function sqsEventExtractor(event: any, context: LambdaContext) {
   // Check if this is an SQS event
   if (!event?.Records?.[0]?.eventSource?.includes('aws:sqs')) {
     return {
@@ -357,6 +394,7 @@ function sqsEventExtractor(event: any, context: LambdaContext): SpanAttributes {
     trigger: TriggerType.PubSub,
     kind: SpanKind.CONSUMER,
     spanName: `process ${record.eventSourceARN.split(':').pop()}`,
+    // Extract trace context from message attributes if present
     carrier: record.messageAttributes?.['traceparent']?.stringValue 
       ? { traceparent: record.messageAttributes['traceparent'].stringValue }
       : undefined,
@@ -372,21 +410,26 @@ function sqsEventExtractor(event: any, context: LambdaContext): SpanAttributes {
   };
 }
 
+// Initialize telemetry
 const { tracer, completionHandler } = initTelemetry();
 
-const handler = createTracedHandler(completionHandler, {
-  name: 'sqs-handler',
-  attributesExtractor: sqsEventExtractor
-});
-
-export const lambdaHandler = handler(async (event, context, span) => {
+// Create handler with SQS extractor
+export const handler = createTracedHandler(
+  'sqs-handler',
+  completionHandler,
+  sqsEventExtractor
+)(async (event, context) => {
   // Create a child span for message processing
-  return tracer.startActiveSpan('process_message', span => {
-    // ... process SQS message ...
-    span.end();
-    return {
-      statusCode: 200
-    };
+  return tracer.startActiveSpan('process_message', async (span) => {
+    try {
+      // Process SQS message
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: 'Message processed' })
+      };
+    } finally {
+      span.end();
+    }
   });
 });
 ```

@@ -17,14 +17,6 @@ export interface LambdaContext {
 }
 
 /**
- * Optional configuration for traced handler
- */
-export interface TracerConfig {
-  /** Optional attribute extractor function */
-  attributesExtractor?: (event: unknown, context: LambdaContext) => SpanAttributes;
-}
-
-/**
  * A Lambda handler function type
  */
 export type TracedFunction<TEvent, TResult> = (
@@ -44,7 +36,7 @@ export type TracedFunction<TEvent, TResult> = (
  * const traced = createTracedHandler(
  *   'my-handler',
  *   completionHandler,
- *   { attributesExtractor: apiGatewayV2Extractor }
+ *   apiGatewayV2Extractor
  * );
  * 
  * // Use the traced handler to process Lambda events
@@ -64,7 +56,7 @@ export type TracedFunction<TEvent, TResult> = (
 export function createTracedHandler(
   name: string,
   completionHandler: TelemetryCompletionHandler,
-  config?: TracerConfig
+  attributesExtractor?: (event: unknown, context: LambdaContext) => SpanAttributes
 ) {
   return function <TEvent, TResult>(fn: TracedFunction<TEvent, TResult>) {
     return async function (event: TEvent, context: LambdaContext): Promise<TResult> {
@@ -72,7 +64,7 @@ export function createTracedHandler(
 
       try {
         // Extract attributes using provided extractor or default
-        const extracted = (config?.attributesExtractor || defaultExtractor)(event, context);
+        const extracted = (attributesExtractor || defaultExtractor)(event, context);
 
         // Extract context from carrier if available
         let parentContext = ROOT_CONTEXT;

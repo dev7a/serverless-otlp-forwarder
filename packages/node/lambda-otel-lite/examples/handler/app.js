@@ -43,7 +43,7 @@ async function nestedFunction(event) {
 const traced = createTracedHandler(
   'simple-handler',
   completionHandler,
-  { attributesExtractor: apiGatewayV2Extractor }
+  apiGatewayV2Extractor 
 );
 
 /**

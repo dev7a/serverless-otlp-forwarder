@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2025-02-22
+
+### Breaking Changes
+- Simplified handler creation API by removing configuration object wrapper:
+  - Old: `createTracedHandler(name, completionHandler, { attributesExtractor })`
+  - New: `createTracedHandler(name, completionHandler, attributesExtractor)`
+- Removed `TracerConfig` interface as it's no longer needed
+
+### Changed
+- Updated examples to use the new direct extractor passing style
+- Improved alignment with Python and Rust implementations
+
 ## [0.8.2] - 2025-02-22
 
 ### Changed

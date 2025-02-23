@@ -180,7 +180,7 @@ describe('createTracedHandler', () => {
       const traced = createTracedHandler(
         'test-handler',
         completionHandler,
-        { attributesExtractor: apiGatewayV2Extractor }
+        apiGatewayV2Extractor
       );
       
       const handler = traced(async (_event, _context) => 'success');
@@ -209,7 +209,7 @@ describe('createTracedHandler', () => {
       const traced = createTracedHandler(
         'test-handler',
         completionHandler,
-        { attributesExtractor: apiGatewayV1Extractor }
+        apiGatewayV1Extractor
       );
       
       const handler = traced(async (_event, _context) => 'success');
@@ -238,7 +238,7 @@ describe('createTracedHandler', () => {
       const traced = createTracedHandler(
         'test-handler',
         completionHandler,
-        { attributesExtractor: albExtractor }
+        albExtractor
       );
       
       const handler = traced(async (_event, _context) => 'success');
