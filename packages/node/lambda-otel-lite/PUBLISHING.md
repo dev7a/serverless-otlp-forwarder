@@ -25,7 +25,6 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 - [ ] API documentation is complete
 - [ ] Breaking changes are clearly documented
 - [ ] `CHANGELOG.md` is updated
-- 
 
 ## Code Quality
 - [ ] All tests pass (`npm test`)
