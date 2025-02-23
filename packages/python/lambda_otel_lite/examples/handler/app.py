@@ -47,6 +47,7 @@ def nested_function(event: dict[str, Any]) -> str:
                 raise RuntimeError("unexpected error")
         return "success"
 
+
 @traced
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Lambda handler function.

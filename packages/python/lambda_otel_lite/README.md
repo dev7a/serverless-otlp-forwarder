@@ -417,27 +417,6 @@ ruff check .
 mypy src/lambda_otel_lite
 ```
 
-### Creating a Release
-
-1. Ensure all tests pass and code quality checks succeed
-2. Update version number in both:
-   - `src/lambda_otel_lite/__init__.py`: Update `__version__`
-   - `pyproject.toml`: Update `project.version`
-3. Update `CHANGELOG.md` with your changes
-4. Create and push a new tag:
-   ```bash
-   # Tag the current commit
-   git tag python/lambda-otel-lite/v0.8.0
-   
-   # Push the tag
-   git push origin python/lambda-otel-lite/v0.8.0
-   ```
-5. The GitHub Actions workflow will automatically:
-   - Verify version consistency
-   - Build the package
-   - Run all checks
-   - Publish to PyPI if on the main branch
-
 ## License
 
 MIT 

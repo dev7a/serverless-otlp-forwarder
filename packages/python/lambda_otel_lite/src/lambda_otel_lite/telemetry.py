@@ -121,6 +121,22 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
     # Start with Lambda attributes
     attributes: dict[str, str | int | float | bool] = {"cloud.provider": "aws"}
 
+    def parse_numeric_env(key: str, env_var: str, default: str) -> None:
+        """Parse numeric environment variable with default."""
+        try:
+            attributes[key] = int(os.environ.get(env_var, default))
+        except ValueError:
+            logger.warn(
+                "Invalid numeric value for %s: %s", key, os.environ.get(env_var)
+            )
+
+    def parse_memory_value(key: str, value: str | None, default: str) -> None:
+        """Parse memory value from MB to bytes."""
+        try:
+            attributes[key] = int(value or default) * 1024 * 1024  # Convert MB to bytes
+        except ValueError:
+            logger.warn("Invalid memory value for %s: %s", key, value)
+
     # Map environment variables to attribute names
     env_mappings = {
         "AWS_REGION": "cloud.region",
@@ -133,14 +149,8 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
     # Add attributes only if they exist in environment
     for env_var, attr_name in env_mappings.items():
         if value := os.environ.get(env_var):
-            # Convert memory from MB to bytes
             if attr_name == "faas.max_memory":
-                try:
-                    # Convert MB to bytes (1 MB = 1024 * 1024 bytes)
-                    memory_bytes = int(value) * 1024 * 1024
-                    attributes[attr_name] = memory_bytes
-                except ValueError:
-                    logger.warn("Invalid memory value %s", value)
+                parse_memory_value(attr_name, value, "128")
             else:
                 attributes[attr_name] = value
 
@@ -155,20 +165,25 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
     attributes["lambda_otel_lite.extension.span_processor_mode"] = os.environ.get(
         "LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "sync"
     )
-    # Parse numeric configuration values
-    try:
-        attributes["lambda_otel_lite.lambda_span_processor.queue_size"] = int(
-            os.environ.get("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048")
-        )
-        attributes["lambda_otel_lite.lambda_span_processor.batch_size"] = int(
-            os.environ.get("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512")
-        )
-        attributes["lambda_otel_lite.otlp_stdout_span_exporter.compression_level"] = (
-            int(os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6"))
-        )
-    except ValueError as e:
-        logger.warn("Invalid numeric configuration value:", e)
 
+    # Parse numeric configuration values
+    parse_numeric_env(
+        "lambda_otel_lite.lambda_span_processor.queue_size",
+        "LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE",
+        "2048",
+    )
+    parse_numeric_env(
+        "lambda_otel_lite.lambda_span_processor.batch_size",
+        "LAMBDA_SPAN_PROCESSOR_BATCH_SIZE",
+        "512",
+    )
+    parse_numeric_env(
+        "lambda_otel_lite.otlp_stdout_span_exporter.compression_level",
+        "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL",
+        "6",
+    )
+
+    # OTEL_RESOURCE_ATTRIBUTES are automatically parsed by the Resource create method
     # Create resource and merge with custom resource if provided
     resource = Resource(attributes)
 
