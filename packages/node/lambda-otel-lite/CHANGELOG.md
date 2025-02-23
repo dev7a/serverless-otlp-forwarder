@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `TracerConfig` interface as it's no longer needed
 
 ### Changed
+- Fixed `faas.max_memory` attribute to be in bytes instead of the raw MB value
+- Ensured all numeric attributes are set as numbers instead of strings:
+  - `lambda_otel_lite.lambda_span_processor.queue_size`
+  - `lambda_otel_lite.lambda_span_processor.batch_size`
+  - `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`
+- Added Prettier for code formatting:
+  - Added `.prettierrc.json` configuration
+  - Added `.prettierignore` file
+  - Added format scripts to package.json
+  - Formatted all code according to style guide
 - Updated examples to use the new direct extractor passing style
 - Improved alignment with Python and Rust implementations
 

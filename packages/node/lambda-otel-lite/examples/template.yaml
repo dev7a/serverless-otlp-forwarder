@@ -12,7 +12,7 @@ Globals:
     Runtime: nodejs22.x
     LoggingConfig:
       LogFormat: JSON
-      ApplicationLogLevel: DEBUG
+      ApplicationLogLevel: INFO
       SystemLogLevel: INFO
   
 

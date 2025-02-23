@@ -9,22 +9,22 @@ class Signal {
   private listeners: Array<() => void> = [];
 
   /**
-     * Signal all listeners that the event has occurred
-     */
+   * Signal all listeners that the event has occurred
+   */
   signal(): void {
-    this.listeners.forEach(listener => listener());
+    this.listeners.forEach((listener) => listener());
   }
 
   /**
-     * Register a listener to be called when the event is signaled
-     */
+   * Register a listener to be called when the event is signaled
+   */
   on(listener: () => void): void {
     this.listeners.push(listener);
   }
 
   /**
-     * Remove a listener
-     */
+   * Remove a listener
+   */
   off(listener: () => void): void {
     const index = this.listeners.indexOf(listener);
     if (index !== -1) {
@@ -54,7 +54,7 @@ if (!global._lambdaOtelState) {
     provider: null,
     mode: null,
     extensionInitialized: false,
-    handlerComplete: new Signal()
+    handlerComplete: new Signal(),
   };
 }
 
@@ -64,4 +64,4 @@ if (!global._lambdaOtelState) {
 export const state = global._lambdaOtelState;
 
 // Export the handler complete signal for convenience
-export const handlerComplete = state.handlerComplete; 
+export const handlerComplete = state.handlerComplete;

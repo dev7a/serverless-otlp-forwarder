@@ -24,16 +24,16 @@ export function setColdStart(value: boolean): void {
 
 /**
  * Create a Resource instance with AWS Lambda attributes and OTEL environment variables.
- * 
+ *
  * This function combines AWS Lambda environment attributes with any OTEL resource attributes
  * specified via environment variables (OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME).
- * 
+ *
  * @returns Resource instance with AWS Lambda and OTEL environment attributes
  */
 export function getLambdaResource(): Resource {
   // Start with Lambda attributes
-  const attributes: Record<string, string> = {
-    'cloud.provider': 'aws'
+  const attributes: Record<string, string | number> = {
+    'cloud.provider': 'aws',
   };
 
   // Map environment variables to attribute names
@@ -42,26 +42,62 @@ export function getLambdaResource(): Resource {
     AWS_LAMBDA_FUNCTION_NAME: 'faas.name',
     AWS_LAMBDA_FUNCTION_VERSION: 'faas.version',
     AWS_LAMBDA_LOG_STREAM_NAME: 'faas.instance',
-    AWS_LAMBDA_FUNCTION_MEMORY_SIZE: 'faas.max_memory'
+    AWS_LAMBDA_FUNCTION_MEMORY_SIZE: 'faas.max_memory',
+  };
+
+  // Helper function to parse memory value
+  const parseMemoryValue = (key: string, value: string | undefined, defaultValue: string) => {
+    try {
+      attributes[key] = parseInt(value || defaultValue, 10) * 1024 * 1024; // Convert MB to bytes
+    } catch (error) {
+      console.warn('Failed to parse memory value:', error);
+    }
   };
 
   // Add attributes only if they exist in environment
   for (const [envVar, attrName] of Object.entries(envMappings)) {
     const value = process.env[envVar];
     if (value) {
-      attributes[attrName] = value;
+      if (attrName === 'faas.max_memory') {
+        parseMemoryValue(attrName, value, '128');
+      } else {
+        attributes[attrName] = value;
+      }
     }
   }
 
   // Add service name (guaranteed to have a value)
-  const serviceName = process.env.OTEL_SERVICE_NAME || process.env.AWS_LAMBDA_FUNCTION_NAME || 'unknown_service';
+  const serviceName =
+    process.env.OTEL_SERVICE_NAME || process.env.AWS_LAMBDA_FUNCTION_NAME || 'unknown_service';
   attributes['service.name'] = serviceName;
 
+  // Helper function to parse numeric attributes
+  const parseNumericAttribute = (key: string, envVar: string | undefined, defaultValue: string) => {
+    try {
+      attributes[key] = parseInt(envVar || defaultValue, 10);
+    } catch (error) {
+      console.warn('Failed to parse numeric attribute:', error);
+    }
+  };
+
   // Add telemetry configuration attributes
-  attributes['lambda_otel_lite.extension.span_processor_mode'] = process.env.LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE || 'sync';
-  attributes['lambda_otel_lite.lambda_span_processor.queue_size'] = process.env.LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE || '2048';
-  attributes['lambda_otel_lite.lambda_span_processor.batch_size'] = process.env.LAMBDA_SPAN_PROCESSOR_BATCH_SIZE || '512';
-  attributes['lambda_otel_lite.otlp_stdout_span_exporter.compression_level'] = process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL || '6';
+  attributes['lambda_otel_lite.extension.span_processor_mode'] =
+    process.env.LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE || 'sync';
+  parseNumericAttribute(
+    'lambda_otel_lite.lambda_span_processor.queue_size',
+    process.env.LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE,
+    '2048'
+  );
+  parseNumericAttribute(
+    'lambda_otel_lite.lambda_span_processor.batch_size',
+    process.env.LAMBDA_SPAN_PROCESSOR_BATCH_SIZE,
+    '512'
+  );
+  parseNumericAttribute(
+    'lambda_otel_lite.otlp_stdout_span_exporter.compression_level',
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL,
+    '6'
+  );
 
   // Add OTEL environment resource attributes if present
   const envResourcesItems = process.env.OTEL_RESOURCE_ATTRIBUTES;
@@ -87,41 +123,41 @@ export function getLambdaResource(): Resource {
 
 /**
  * Initializes OpenTelemetry telemetry for a Lambda function.
- * 
+ *
  * This is the main entry point for setting up telemetry in your Lambda function.
  * It configures the OpenTelemetry SDK with Lambda-optimized defaults and returns
- * both a tracer for manual instrumentation and a completion handler that manages 
+ * both a tracer for manual instrumentation and a completion handler that manages
  * the telemetry lifecycle.
- * 
+ *
  * Features:
  * - Automatic Lambda resource detection (function name, version, memory, etc.)
  * - Environment-based configuration
  * - Custom span processor support
  * - Extension integration for async processing
- * 
+ *
  * @param options - Optional configuration options
  * @param options.resource - Custom Resource to use instead of auto-detected resources.
  *                          Useful for adding custom attributes or overriding defaults.
  * @param options.spanProcessors - Array of SpanProcessor implementations to use.
  *                                If not provided, defaults to LambdaSpanProcessor
  *                                with OTLPStdoutSpanExporter.
- * 
+ *
  * @returns Object containing:
  *   - tracer: Tracer instance for manual instrumentation
  *   - completionHandler: Handler for managing telemetry lifecycle
- * 
+ *
  * @example
  * Basic usage:
  * ```typescript
  * const { tracer, completionHandler } = initTelemetry();
- * 
+ *
  * // Use completionHandler with traced handler
  * export const handler = createTracedHandler(completionHandler, {
  *   name: 'my-handler'
  * }, async (event, context, span) => {
  *   // Add attributes to the handler's span
  *   span.setAttribute('request.id', context.awsRequestId);
- *   
+ *
  *   // Create a nested span for a sub-operation
  *   return tracer.startActiveSpan('process_request', span => {
  *     span.setAttribute('some.attribute', 'some value');
@@ -131,25 +167,25 @@ export function getLambdaResource(): Resource {
  *   });
  * });
  * ```
- * 
+ *
  * Custom configuration:
  * ```typescript
  * const resource = new Resource({
  *   'service.version': '1.0.0',
  *   'deployment.environment': 'production'
  * });
- * 
+ *
  * const processor = new BatchSpanProcessor(
  *   new OTLPTraceExporter({
  *     url: 'https://your-collector:4318/v1/traces'
  *   })
  * );
- * 
+ *
  * const { tracer, completionHandler } = initTelemetry({
  *   resource,
  *   spanProcessors: [processor]
  * });
- * 
+ *
  * // Then create the traced handler
  * export const handler = createTracedHandler(completionHandler, {
  *   name: 'my-handler'
@@ -158,7 +194,7 @@ export function getLambdaResource(): Resource {
  *   span.setAttribute('request.id', context.awsRequestId);
  * });
  * ```
- * 
+ *
  * Environment Variables:
  * - LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: Processing mode (sync, async, finalize)
  * - LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: Maximum spans to queue (default: 2048)
@@ -166,19 +202,17 @@ export function getLambdaResource(): Resource {
  * - OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL: GZIP level (default: 6)
  * - OTEL_SERVICE_NAME: Service name (defaults to function name)
  * - OTEL_RESOURCE_ATTRIBUTES: Additional resource attributes (key=value,...)
- * 
+ *
  * @note
  * - Initialize once outside the handler for better performance
  * - Use with tracedHandler for automatic completion handling
  * - For async mode, ensure extension is loaded via NODE_OPTIONS
  * - Cold start is automatically tracked
  */
-export function initTelemetry(
-  options?: {
-    resource?: Resource,
-    spanProcessors?: SpanProcessor[]
-  }
-): { tracer: Tracer; completionHandler: TelemetryCompletionHandler } {
+export function initTelemetry(options?: {
+  resource?: Resource;
+  spanProcessors?: SpanProcessor[];
+}): { tracer: Tracer; completionHandler: TelemetryCompletionHandler } {
   // Setup resource
   const baseResource = options?.resource || getLambdaResource();
 
@@ -186,16 +220,19 @@ export function initTelemetry(
   const processors = options?.spanProcessors || [
     new LambdaSpanProcessor(
       new OTLPStdoutSpanExporter({
-        gzipLevel: parseInt(process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL || '6', 10)
+        gzipLevel: parseInt(process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL || '6', 10),
       }),
-      { maxQueueSize: parseInt(process.env.LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE || '2048', 10), maxExportBatchSize: parseInt(process.env.LAMBDA_SPAN_PROCESSOR_BATCH_SIZE || '512', 10) }
-    )
+      {
+        maxQueueSize: parseInt(process.env.LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE || '2048', 10),
+        maxExportBatchSize: parseInt(process.env.LAMBDA_SPAN_PROCESSOR_BATCH_SIZE || '512', 10),
+      }
+    ),
   ];
 
   // Create provider with resources
   const provider = new NodeTracerProvider({
     resource: baseResource,
-    spanProcessors: processors
+    spanProcessors: processors,
   });
 
   // Store in shared state for extension
@@ -211,7 +248,7 @@ export function initTelemetry(
   if (mode === ProcessorMode.Async && !state.extensionInitialized) {
     logger.warn(
       'Async processor mode requested but extension not loaded. ' +
-      'Falling back to sync mode. To use async mode, set NODE_OPTIONS=--require @dev7a/lambda-otel-lite/extension'
+        'Falling back to sync mode. To use async mode, set NODE_OPTIONS=--require @dev7a/lambda-otel-lite/extension'
     );
     mode = ProcessorMode.Sync;
   }
@@ -223,6 +260,6 @@ export function initTelemetry(
   const completionHandler = new TelemetryCompletionHandler(provider, mode);
   return {
     tracer: completionHandler.getTracer(),
-    completionHandler
+    completionHandler,
   };
-} 
+}

@@ -2,7 +2,7 @@ import { SpanKind, Link } from '@opentelemetry/api';
 
 /**
  * Common trigger types for Lambda functions.
- * 
+ *
  * These follow OpenTelemetry semantic conventions:
  * - Datasource: Database triggers
  * - Http: HTTP/API triggers
@@ -11,34 +11,34 @@ import { SpanKind, Link } from '@opentelemetry/api';
  * - Other: Fallback for unknown types
  */
 export enum TriggerType {
-    Datasource = 'datasource',
-    Http = 'http',
-    PubSub = 'pubsub',
-    Timer = 'timer',
-    Other = 'other'
+  Datasource = 'datasource',
+  Http = 'http',
+  PubSub = 'pubsub',
+  Timer = 'timer',
+  Other = 'other',
 }
 
 /**
  * Data extracted from a Lambda event for span creation.
  */
 export interface SpanAttributes {
-    /** Optional span kind (defaults to SERVER) */
-    kind?: SpanKind;
-    /** Optional span name override */
-    spanName?: string;
-    /** Custom attributes to add to the span */
-    attributes: Record<string, string | number | boolean>;
-    /** Optional carrier headers for context propagation */
-    carrier?: Record<string, string>;
-    /** Optional span links */
-    links?: Link[];
-    /** 
-     * The type of trigger for this Lambda invocation.
-     * While common triggers are defined in TriggerType enum (http, pubsub, etc.),
-     * this is intentionally a string to allow for custom trigger types beyond
-     * the predefined ones.
-     */
-    trigger?: string;
+  /** Optional span kind (defaults to SERVER) */
+  kind?: SpanKind;
+  /** Optional span name override */
+  spanName?: string;
+  /** Custom attributes to add to the span */
+  attributes: Record<string, string | number | boolean>;
+  /** Optional carrier headers for context propagation */
+  carrier?: Record<string, string>;
+  /** Optional span links */
+  links?: Link[];
+  /**
+   * The type of trigger for this Lambda invocation.
+   * While common triggers are defined in TriggerType enum (http, pubsub, etc.),
+   * this is intentionally a string to allow for custom trigger types beyond
+   * the predefined ones.
+   */
+  trigger?: string;
 }
 
 /** API Gateway V2 HTTP API event interface */
@@ -102,10 +102,13 @@ function normalizeHeaders(headers?: Record<string, string>): Record<string, stri
   if (!headers) {
     return undefined;
   }
-  return Object.entries(headers).reduce((acc, [key, value]) => {
-    acc[key.toLowerCase()] = value;
-    return acc;
-  }, {} as Record<string, string>);
+  return Object.entries(headers).reduce(
+    (acc, [key, value]) => {
+      acc[key.toLowerCase()] = value;
+      return acc;
+    },
+    {} as Record<string, string>
+  );
 }
 
 /**
@@ -114,7 +117,7 @@ function normalizeHeaders(headers?: Record<string, string>): Record<string, stri
  */
 export function defaultExtractor(event: unknown, context: unknown): SpanAttributes {
   const attributes: Record<string, string | number | boolean> = {};
-  
+
   // Add invocation ID if available
   if (context && typeof context === 'object' && 'awsRequestId' in context) {
     const typedContext = context as LambdaContext;
@@ -136,13 +139,13 @@ export function defaultExtractor(event: unknown, context: unknown): SpanAttribut
   return {
     kind: SpanKind.SERVER,
     attributes,
-    trigger: TriggerType.Other
+    trigger: TriggerType.Other,
   };
 }
 
 /**
  * Extract attributes from API Gateway V2 HTTP API events.
- * 
+ *
  * Extracts standard HTTP attributes following OpenTelemetry semantic conventions:
  * - http.request.method: The HTTP method
  * - url.path: The request path
@@ -158,7 +161,7 @@ export function apiGatewayV2Extractor(event: unknown, context: unknown): SpanAtt
   // Start with default attributes
   const base = defaultExtractor(event, context);
   const attributes = { ...base.attributes };
-  
+
   const apiEvent = event as APIGatewayV2Event;
   const method = apiEvent?.requestContext?.http?.method;
 
@@ -216,7 +219,7 @@ export function apiGatewayV2Extractor(event: unknown, context: unknown): SpanAtt
     attributes,
     carrier: apiEvent?.headers,
     trigger: TriggerType.Http,
-    spanName: `${spanMethod} ${spanRoute}`
+    spanName: `${spanMethod} ${spanRoute}`,
   };
 }
 
@@ -227,7 +230,7 @@ export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAtt
   // Start with default attributes
   const base = defaultExtractor(event, context);
   const attributes = { ...base.attributes };
-  
+
   const apiEvent = event as APIGatewayV1Event;
   const method = apiEvent?.httpMethod;
   const route = apiEvent?.resource || '/';
@@ -242,7 +245,10 @@ export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAtt
   }
 
   // Handle query string parameters
-  if (apiEvent?.multiValueQueryStringParameters && Object.keys(apiEvent.multiValueQueryStringParameters).length > 0) {
+  if (
+    apiEvent?.multiValueQueryStringParameters &&
+    Object.keys(apiEvent.multiValueQueryStringParameters).length > 0
+  ) {
     const queryParts: string[] = [];
     for (const [key, values] of Object.entries(apiEvent.multiValueQueryStringParameters)) {
       if (Array.isArray(values)) {
@@ -292,7 +298,7 @@ export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAtt
     attributes,
     carrier: apiEvent?.headers,
     trigger: TriggerType.Http,
-    spanName: `${method} ${route}`
+    spanName: `${method} ${route}`,
   };
 }
 
@@ -303,7 +309,7 @@ export function albExtractor(event: unknown, context: unknown): SpanAttributes {
   // Start with default attributes
   const base = defaultExtractor(event, context);
   const attributes = { ...base.attributes };
-  
+
   const albEvent = event as ALBEvent;
   const method = albEvent?.httpMethod;
   const path = albEvent?.path || '/';
@@ -373,6 +379,6 @@ export function albExtractor(event: unknown, context: unknown): SpanAttributes {
     attributes,
     carrier: albEvent?.headers,
     trigger: TriggerType.Http,
-    spanName: `${method} ${path}`
+    spanName: `${method} ${path}`,
   };
-} 
+}

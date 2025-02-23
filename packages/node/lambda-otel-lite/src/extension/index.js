@@ -40,7 +40,6 @@ function syncHttpRequest(options, data) {
  * @param {string} extensionId - The extension ID
  */
 async function requestNextEvent(extensionId) {
-  const nextUrl = `http://${process.env.AWS_LAMBDA_RUNTIME_API}/2020-01-01/extension/event/next`;
   const [host, port] = (process.env.AWS_LAMBDA_RUNTIME_API || '').split(':');
 
   try {

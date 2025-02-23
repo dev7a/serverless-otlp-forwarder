@@ -12,7 +12,10 @@ export class TestSpanExporter implements SpanExporter {
   shutdownOnce = false;
   exportResult: { code: ExportResultCode; error?: Error } = { code: ExportResultCode.SUCCESS };
 
-  export(spans: ReadableSpan[], resultCallback: (result: { code: ExportResultCode; error?: Error }) => void): void {
+  export(
+    spans: ReadableSpan[],
+    resultCallback: (result: { code: ExportResultCode; error?: Error }) => void
+  ): void {
     this.exportCalledTimes++;
     if (this.exportResult.code === ExportResultCode.SUCCESS) {
       this.spans.push(...spans);
@@ -43,7 +46,7 @@ export const createSpan = (spanName = 'default'): Span => {
     spanContext: () => ({
       traceId: 'd4cda95b652f4a1592b449d5929fda1b',
       spanId: '6e0c63257de34c92',
-      traceFlags: TraceFlags.SAMPLED
+      traceFlags: TraceFlags.SAMPLED,
     }),
     parentSpanId: undefined,
     startTime: [1566156729, 709],
@@ -59,7 +62,7 @@ export const createSpan = (spanName = 'default'): Span => {
     _spanContext: {
       traceId: 'd4cda95b652f4a1592b449d5929fda1b',
       spanId: '6e0c63257de34c92',
-      traceFlags: TraceFlags.SAMPLED
+      traceFlags: TraceFlags.SAMPLED,
     },
     _droppedAttributesCount: 0,
     _droppedEventsCount: 0,
@@ -86,7 +89,7 @@ export const createTestSpan = (spanName = 'default'): ReadableSpan => {
       return {
         traceId: 'd4cda95b652f4a1592b449d5929fda1b',
         spanId: '6e0c63257de34c92',
-        traceFlags: TraceFlags.SAMPLED
+        traceFlags: TraceFlags.SAMPLED,
       };
     },
     parentSpanId: undefined,
@@ -102,7 +105,7 @@ export const createTestSpan = (spanName = 'default'): ReadableSpan => {
     instrumentationLibrary: { name: 'default', version: '0.0.1' },
     droppedAttributesCount: 0,
     droppedEventsCount: 0,
-    droppedLinksCount: 0
+    droppedLinksCount: 0,
   };
 };
 
@@ -123,4 +126,4 @@ export class EnvVarManager {
   restore() {
     process.env = this.originalEnv;
   }
-} 
+}

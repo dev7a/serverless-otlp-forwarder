@@ -8,40 +8,65 @@ module.exports = {
   ],
   overrides: [
     {
-      files: ['src/**/*.ts', '__tests__/**/*.ts'],
+      files: ['src/**/*.ts'],
       parser: '@typescript-eslint/parser',
       parserOptions: {
-        project: ['./tsconfig.json', './tsconfig.test.json'],
+        project: ['./tsconfig.json'],
         tsconfigRootDir: __dirname,
         sourceType: 'module'
       },
       plugins: ['@typescript-eslint'],
       extends: [
         'eslint:recommended',
-        'plugin:@typescript-eslint/recommended'
+        'plugin:@typescript-eslint/recommended',
+        'prettier'
       ],
       env: {
-        'node': true,
-        'jest': true
+        'node': true
       },
       rules: {
-        // Essential TypeScript rules
         '@typescript-eslint/no-explicit-any': 'off',
         '@typescript-eslint/explicit-function-return-type': 'off',
         '@typescript-eslint/no-unused-vars': ['error', { 
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_'
         }],
-
-        // Basic code style
         'semi': ['error', 'always'],
         'quotes': ['error', 'single'],
         'indent': ['error', 2, { 'SwitchCase': 1 }],
-
-        // Best practices
         'eqeqeq': ['error', 'always', { 'null': 'ignore' }],
         'no-console': ['warn', { allow: ['warn', 'error'] }],
         'curly': ['error', 'all']
+      }
+    },
+    {
+      files: ['__tests__/**/*.ts'],
+      parser: '@typescript-eslint/parser',
+      parserOptions: {
+        project: ['./tsconfig.test.json'],
+        tsconfigRootDir: __dirname,
+        sourceType: 'module'
+      },
+      plugins: ['@typescript-eslint'],
+      extends: [
+        'eslint:recommended',
+        'plugin:@typescript-eslint/recommended',
+        'prettier'
+      ],
+      env: {
+        'node': true,
+        'jest': true
+      },
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
+        '@typescript-eslint/explicit-function-return-type': 'off',
+        '@typescript-eslint/no-unused-vars': ['error', { 
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_'
+        }],
+        'semi': ['error', 'always'],
+        'quotes': ['error', 'single'],
+        'indent': ['error', 2, { 'SwitchCase': 1 }]
       }
     },
     {
@@ -53,10 +78,17 @@ module.exports = {
         ecmaVersion: 2020,
         sourceType: 'module'
       },
+      extends: ['eslint:recommended', 'prettier'],
       rules: {
-        'indent': ['error', 2, { 'SwitchCase': 1 }],
+        'no-unused-vars': ['error', {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_'
+        }],
         'semi': ['error', 'always'],
         'quotes': ['error', 'single']
+      },
+      globals: {
+        'Promise': 'readonly'
       }
     }
   ]

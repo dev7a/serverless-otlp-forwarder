@@ -1,12 +1,16 @@
 interface Logger {
-    debug: (...args: unknown[]) => void;
-    info: (...args: unknown[]) => void;
-    warn: (...args: unknown[]) => void;
-    error: (...args: unknown[]) => void;
+  debug: (...args: unknown[]) => void;
+  info: (...args: unknown[]) => void;
+  warn: (...args: unknown[]) => void;
+  error: (...args: unknown[]) => void;
 }
 
 // Simple logger with level filtering
-const logLevel = (process.env.AWS_LAMBDA_LOG_LEVEL || process.env.LOG_LEVEL || 'info').toLowerCase();
+const logLevel = (
+  process.env.AWS_LAMBDA_LOG_LEVEL ||
+  process.env.LOG_LEVEL ||
+  'info'
+).toLowerCase();
 
 /* eslint-disable no-console */
 const logger: Logger = {
@@ -29,7 +33,7 @@ const logger: Logger = {
     if (logLevel !== 'none') {
       console.error('[lambda-otel-lite]', ...args);
     }
-  }
+  },
 };
 /* eslint-enable no-console */
 
@@ -38,8 +42,8 @@ export function createLogger(prefix: string): Logger {
     debug: (...args: unknown[]) => logger.debug(`[${prefix}]`, ...args),
     info: (...args: unknown[]) => logger.info(`[${prefix}]`, ...args),
     warn: (...args: unknown[]) => logger.warn(`[${prefix}]`, ...args),
-    error: (...args: unknown[]) => logger.error(`[${prefix}]`, ...args)
+    error: (...args: unknown[]) => logger.error(`[${prefix}]`, ...args),
   };
 }
 
-export default logger; 
+export default logger;

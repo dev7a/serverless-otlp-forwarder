@@ -22,10 +22,10 @@ class CircularBuffer<T> {
   private _size = 0;
 
   /**
-     * Creates a new CircularBuffer with the specified capacity.
-     * @param capacity The maximum number of items the buffer can hold
-     * @throws {Error} If capacity is less than or equal to 0
-     */
+   * Creates a new CircularBuffer with the specified capacity.
+   * @param capacity The maximum number of items the buffer can hold
+   * @throws {Error} If capacity is less than or equal to 0
+   */
   constructor(private readonly capacity: number) {
     if (capacity <= 0) {
       throw new Error('Buffer capacity must be greater than 0');
@@ -34,17 +34,17 @@ class CircularBuffer<T> {
   }
 
   /**
-     * Returns the current number of items in the buffer.
-     */
+   * Returns the current number of items in the buffer.
+   */
   get size(): number {
     return this._size;
   }
 
   /**
-     * Attempts to add an item to the buffer.
-     * @param item The item to add
-     * @returns true if the item was added, false if the buffer is full
-     */
+   * Attempts to add an item to the buffer.
+   * @param item The item to add
+   * @returns true if the item was added, false if the buffer is full
+   */
   push(item: T): boolean {
     if (this._size === this.capacity) {
       return false;
@@ -56,16 +56,18 @@ class CircularBuffer<T> {
   }
 
   /**
-     * Removes and returns up to maxSize items from the buffer.
-     * This operation helps with batch processing while maintaining memory efficiency
-     * by clearing references to processed items.
-     * 
-     * @param maxSize Maximum number of items to remove
-     * @returns Array of removed items
-     */
+   * Removes and returns up to maxSize items from the buffer.
+   * This operation helps with batch processing while maintaining memory efficiency
+   * by clearing references to processed items.
+   *
+   * @param maxSize Maximum number of items to remove
+   * @returns Array of removed items
+   */
   drainBatch(maxSize: number): T[] {
     const batchSize = Math.min(maxSize, this._size);
-    if (batchSize === 0) {return [];}
+    if (batchSize === 0) {
+      return [];
+    }
 
     const items: T[] = new Array(batchSize);
     for (let i = 0; i < batchSize; i++) {
@@ -78,9 +80,9 @@ class CircularBuffer<T> {
   }
 
   /**
-     * Removes and returns all items currently in the buffer.
-     * @returns Array of all items
-     */
+   * Removes and returns all items currently in the buffer.
+   * @returns Array of all items
+   */
   drain(): T[] {
     return this.drainBatch(this._size);
   }
@@ -92,7 +94,7 @@ class CircularBuffer<T> {
  * 1. Memory efficiency using a circular buffer
  * 2. Non-blocking batch exports that yield to the event loop
  * 3. Configurable batch sizes to balance throughput and latency
- * 
+ *
  * @example
  * ```typescript
  * const exporter = new OTLPExporter();
@@ -109,17 +111,17 @@ export class LambdaSpanProcessor implements SpanProcessor {
   private readonly maxExportBatchSize: number;
 
   /**
-     * Creates a new LambdaSpanProcessor.
-     * 
-     * @param exporter - The span exporter to use
-     * @param config - Configuration options
-     * @param config.maxQueueSize - Maximum number of spans that can be buffered (default: 2048)
-     * @param config.maxExportBatchSize - Maximum number of spans to export in each batch (default: 512).
-     *                                    Lower values reduce event loop blocking but may decrease throughput.
-     */
+   * Creates a new LambdaSpanProcessor.
+   *
+   * @param exporter - The span exporter to use
+   * @param config - Configuration options
+   * @param config.maxQueueSize - Maximum number of spans that can be buffered (default: 2048)
+   * @param config.maxExportBatchSize - Maximum number of spans to export in each batch (default: 512).
+   *                                    Lower values reduce event loop blocking but may decrease throughput.
+   */
   constructor(
-        private readonly exporter: SpanExporter,
-        config?: { maxQueueSize?: number; maxExportBatchSize?: number }
+    private readonly exporter: SpanExporter,
+    config?: { maxQueueSize?: number; maxExportBatchSize?: number }
   ) {
     const maxQueueSize = config?.maxQueueSize || 2048;
     this.maxExportBatchSize = config?.maxExportBatchSize || 512;
@@ -127,11 +129,11 @@ export class LambdaSpanProcessor implements SpanProcessor {
   }
 
   /**
-     * Forces a flush of all buffered spans.
-     * This should be called before the Lambda function ends to ensure all spans are exported.
-     * 
-     * @returns Promise that resolves when all spans have been exported
-     */
+   * Forces a flush of all buffered spans.
+   * This should be called before the Lambda function ends to ensure all spans are exported.
+   *
+   * @returns Promise that resolves when all spans have been exported
+   */
   forceFlush(): Promise<void> {
     if (this.isShutdown) {
       logger.warn('Cannot force flush - span processor is shutdown');
@@ -141,22 +143,22 @@ export class LambdaSpanProcessor implements SpanProcessor {
   }
 
   /**
-     * Called when a span starts. Currently a no-op as we only process spans on end.
-     */
+   * Called when a span starts. Currently a no-op as we only process spans on end.
+   */
   onStart(_span: Span, _context: Context): void {}
 
   /**
-     * Called when a span ends. The span is added to the buffer if it is sampled.
-     * If the buffer is full, the span will be dropped and counted in droppedSpansCount.
-     * 
-     * @param span - The span that has ended
-     */
+   * Called when a span ends. The span is added to the buffer if it is sampled.
+   * If the buffer is full, the span will be dropped and counted in droppedSpansCount.
+   *
+   * @param span - The span that has ended
+   */
   onEnd(span: ReadableSpan): void {
     if (this.isShutdown) {
       logger.warn('span processor is shutdown, dropping span');
       return;
     }
-        
+
     // Skip unsampled spans
     if ((span.spanContext().traceFlags & TraceFlags.SAMPLED) === 0) {
       return;
@@ -170,17 +172,19 @@ export class LambdaSpanProcessor implements SpanProcessor {
   }
 
   /**
-     * Attempts to add a span to the buffer.
-     * Tracks and logs dropped spans if the buffer is full.
-     * 
-     * @param span - The span to add to the buffer
-     */
+   * Attempts to add a span to the buffer.
+   * Tracks and logs dropped spans if the buffer is full.
+   *
+   * @param span - The span to add to the buffer
+   */
   private addToBuffer(span: ReadableSpan): void {
     const added = this.buffer.push(span);
     if (!added) {
       this.droppedSpansCount++;
       if (this.droppedSpansCount === 1 || this.droppedSpansCount % 100 === 0) {
-        logger.warn(`Dropping spans: ${this.droppedSpansCount} spans dropped because buffer is full`);
+        logger.warn(
+          `Dropping spans: ${this.droppedSpansCount} spans dropped because buffer is full`
+        );
       }
       return;
     }
@@ -207,7 +211,7 @@ export class LambdaSpanProcessor implements SpanProcessor {
       const processNextBatch = () => {
         // Get next batch using configured batch size
         const spansToExport = this.buffer.drainBatch(this.maxExportBatchSize);
-                
+
         if (spansToExport.length === 0) {
           resolve();
           return;
@@ -230,14 +234,14 @@ export class LambdaSpanProcessor implements SpanProcessor {
   }
 
   /**
-     * Shuts down the processor and flushes any remaining spans.
-     * After shutdown, no new spans will be accepted.
-     * 
-     * @returns Promise that resolves when shutdown is complete
-     */
+   * Shuts down the processor and flushes any remaining spans.
+   * After shutdown, no new spans will be accepted.
+   *
+   * @returns Promise that resolves when shutdown is complete
+   */
   async shutdown(): Promise<void> {
     this.isShutdown = true;
     await this.flush();
     await this.exporter.shutdown();
   }
-} 
+}

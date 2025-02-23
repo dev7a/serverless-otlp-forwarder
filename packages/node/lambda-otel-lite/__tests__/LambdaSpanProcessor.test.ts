@@ -31,10 +31,10 @@ describe('LambdaSpanProcessor', () => {
       spanContext: () => ({
         traceId: 'd4cda95b652f4a1592b449d5929fda1b',
         spanId: '6e0c63257de34c92',
-        traceFlags: TraceFlags.NONE
-      })
+        traceFlags: TraceFlags.NONE,
+      }),
     };
-    
+
     processor.onStart(createSpan(), context.active());
     processor.onEnd(span);
     expect(exporter.exportCalledTimes).toBe(0);
@@ -78,11 +78,11 @@ describe('LambdaSpanProcessor', () => {
 
   it('should drop spans when maxQueueSize is reached', async () => {
     const processor = new LambdaSpanProcessor(exporter, { maxQueueSize: 1 });
-    
+
     // Add two spans - second one should be dropped
     const span1 = createTestSpan('span-1');
     const span2 = createTestSpan('span-2');
-    
+
     processor.onStart(createSpan(), context.active());
     processor.onEnd(span1);
     processor.onEnd(span2);
@@ -110,7 +110,7 @@ describe('LambdaSpanProcessor', () => {
 
   it('should not accept spans after shutdown', async () => {
     await processor.shutdown();
-    
+
     const span = createTestSpan();
     processor.onStart(createSpan(), context.active());
     processor.onEnd(span);
@@ -122,10 +122,10 @@ describe('LambdaSpanProcessor', () => {
     // Mock export failure
     const failingExporter = new TestSpanExporter();
     failingExporter.exportResult = { code: ExportResultCode.FAILED };
-    
+
     const processor = new LambdaSpanProcessor(failingExporter);
     const span = createTestSpan();
-    
+
     processor.onStart(createSpan(), context.active());
     processor.onEnd(span);
 
@@ -138,19 +138,21 @@ describe('LambdaSpanProcessor', () => {
   it('should handle concurrent span additions', async () => {
     const processor = new LambdaSpanProcessor(exporter, { maxQueueSize: 100 });
     const numSpans = 50;
-    
+
     // Simulate concurrent span additions
-    await Promise.all(Array.from({ length: numSpans }).map(async (_, i) => {
-      const span = createTestSpan(`span-${i}`);
-      processor.onStart(createSpan(), context.active());
-      processor.onEnd(span);
-    }));
+    await Promise.all(
+      Array.from({ length: numSpans }).map(async (_, i) => {
+        const span = createTestSpan(`span-${i}`);
+        processor.onStart(createSpan(), context.active());
+        processor.onEnd(span);
+      })
+    );
 
     await processor.forceFlush();
     expect(exporter.spans.length).toBe(numSpans);
-    
+
     // Verify span order is maintained
-    const spanNames = exporter.spans.map(s => s.name);
+    const spanNames = exporter.spans.map((s) => s.name);
     expect(spanNames).toEqual(Array.from({ length: numSpans }).map((_, i) => `span-${i}`));
   });
 
@@ -159,9 +161,9 @@ describe('LambdaSpanProcessor', () => {
     const testAttributes = {
       'test.key': 'test-value',
       'test.number': 123,
-      'test.bool': true
+      'test.bool': true,
     };
-    
+
     Object.entries(testAttributes).forEach(([key, value]) => {
       span.attributes[key] = value;
     });
@@ -173,4 +175,4 @@ describe('LambdaSpanProcessor', () => {
     expect(exporter.spans.length).toBe(1);
     expect(exporter.spans[0].attributes).toEqual(testAttributes);
   });
-}); 
+});

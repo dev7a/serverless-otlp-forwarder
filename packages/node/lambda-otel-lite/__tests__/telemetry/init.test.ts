@@ -12,12 +12,12 @@ jest.mock('../../src/internal/logger', () => {
     debug: jest.fn(),
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn()
+    error: jest.fn(),
   };
   return {
     __esModule: true,
     default: mockLogger,
-    createLogger: () => mockLogger
+    createLogger: () => mockLogger,
   };
 });
 
@@ -41,7 +41,7 @@ describe('telemetry/init', () => {
 
       expect(completionHandler).toBeDefined();
       expect(tracer).toBeDefined();
-            
+
       // Verify that a provider is registered and can create spans
       const testSpan = tracer.startSpan('test');
       expect(testSpan).toBeDefined();
@@ -51,13 +51,13 @@ describe('telemetry/init', () => {
     it('should initialize telemetry with custom settings', () => {
       const { tracer, completionHandler } = initTelemetry({
         resource: new Resource({
-          'service.name': 'test-service'
-        })
+          'service.name': 'test-service',
+        }),
       });
 
       expect(completionHandler).toBeDefined();
       expect(tracer).toBeDefined();
-            
+
       // Verify that a provider is registered and can create spans
       const testSpan = tracer.startSpan('test');
       expect(testSpan).toBeDefined();
@@ -71,14 +71,14 @@ describe('telemetry/init', () => {
             forceFlush: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
             shutdown: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
             onStart: jest.fn(),
-            onEnd: jest.fn()
-          }
-        ]
+            onEnd: jest.fn(),
+          },
+        ],
       });
 
       expect(completionHandler).toBeDefined();
       expect(tracer).toBeDefined();
-            
+
       // Verify that a provider is registered and can create spans
       const testSpan = tracer.startSpan('test');
       expect(testSpan).toBeDefined();
@@ -92,14 +92,14 @@ describe('telemetry/init', () => {
             forceFlush: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
             shutdown: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
             onStart: jest.fn(),
-            onEnd: jest.fn()
-          }
-        ]
+            onEnd: jest.fn(),
+          },
+        ],
       });
 
       expect(completionHandler).toBeDefined();
       expect(tracer).toBeDefined();
-            
+
       // Verify that a provider is registered and can create spans
       const testSpan = tracer.startSpan('test');
       expect(testSpan).toBeDefined();
@@ -113,14 +113,14 @@ describe('telemetry/init', () => {
             forceFlush: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
             shutdown: jest.fn<() => Promise<void>>().mockImplementation(() => Promise.resolve()),
             onStart: jest.fn(),
-            onEnd: jest.fn()
-          }
-        ]
+            onEnd: jest.fn(),
+          },
+        ],
       });
 
       expect(completionHandler).toBeDefined();
       expect(tracer).toBeDefined();
-            
+
       // Verify that a provider is registered and can create spans
       const testSpan = tracer.startSpan('test');
       expect(testSpan).toBeDefined();
@@ -130,48 +130,48 @@ describe('telemetry/init', () => {
     it('should use service name from environment variables', () => {
       envManager.setup({
         OTEL_SERVICE_NAME: 'env-service',
-        AWS_LAMBDA_FUNCTION_NAME: 'lambda-function'
+        AWS_LAMBDA_FUNCTION_NAME: 'lambda-function',
       });
 
       const { completionHandler: _ } = initTelemetry();
-            
+
       // Service name will be in the provider's resource
       expect(state.provider?.resource.attributes['service.name']).toBe('env-service');
     });
 
     it('should fallback to Lambda function name if OTEL_SERVICE_NAME not set', () => {
       envManager.setup({
-        AWS_LAMBDA_FUNCTION_NAME: 'lambda-function'
+        AWS_LAMBDA_FUNCTION_NAME: 'lambda-function',
       });
 
       const { completionHandler: _ } = initTelemetry();
-            
+
       expect(state.provider?.resource.attributes['service.name']).toBe('lambda-function');
     });
 
     it('should use unknown_service if no environment variables set', () => {
       const { completionHandler: _ } = initTelemetry();
-            
+
       expect(state.provider?.resource.attributes['service.name']).toBe('unknown_service');
     });
 
     it('should use custom resource service name if provided', () => {
       const { completionHandler: _ } = initTelemetry({
         resource: new Resource({
-          'service.name': 'test-service'
-        })
+          'service.name': 'test-service',
+        }),
       });
-            
+
       expect(state.provider?.resource.attributes['service.name']).toBe('test-service');
     });
 
     it('should use custom resource if provided', () => {
       const customResource = new Resource({
-        'custom.attribute': 'value'
+        'custom.attribute': 'value',
       });
 
       const { completionHandler: _ } = initTelemetry({
-        resource: customResource
+        resource: customResource,
       });
 
       expect(state.provider?.resource.attributes['custom.attribute']).toBe('value');
@@ -198,9 +198,9 @@ describe('telemetry/init', () => {
       }
 
       const testProcessor = new TestProcessor();
-            
+
       const { tracer } = initTelemetry({
-        spanProcessors: [testProcessor]
+        spanProcessors: [testProcessor],
       });
 
       // Create and end a span to trigger the processor
@@ -213,11 +213,11 @@ describe('telemetry/init', () => {
 
     it('should configure default processor queue size from environment', () => {
       envManager.setup({
-        LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: '1024'
+        LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: '1024',
       });
 
       const { tracer } = initTelemetry();
-            
+
       // Create multiple spans to verify they are processed
       for (let i = 0; i < 10; i++) {
         const span = tracer.startSpan(`test-${i}`);
@@ -250,9 +250,9 @@ describe('telemetry/init', () => {
 
       const processor1 = new TestProcessor('processor1');
       const processor2 = new TestProcessor('processor2');
-            
+
       const { tracer } = initTelemetry({
-        spanProcessors: [processor1, processor2]
+        spanProcessors: [processor1, processor2],
       });
 
       // Create and end a span to trigger both processors
@@ -277,9 +277,9 @@ describe('telemetry/init', () => {
             forceFlush: () => Promise.resolve(),
             shutdown: () => Promise.resolve(),
             onStart: jest.fn(),
-            onEnd: jest.fn()
-          }
-        ]
+            onEnd: jest.fn(),
+          },
+        ],
       });
       expect(state.mode).toBe('sync');
     });
@@ -287,7 +287,7 @@ describe('telemetry/init', () => {
     it('should initialize with async mode', () => {
       // Set up environment and extension state
       envManager.setup({
-        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: 'async'
+        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: 'async',
       });
       state.extensionInitialized = true;
 
@@ -297,9 +297,9 @@ describe('telemetry/init', () => {
             forceFlush: () => Promise.resolve(),
             shutdown: () => Promise.resolve(),
             onStart: jest.fn(),
-            onEnd: jest.fn()
-          }
-        ]
+            onEnd: jest.fn(),
+          },
+        ],
       });
       expect(state.mode).toBe('async');
     });
@@ -307,7 +307,7 @@ describe('telemetry/init', () => {
     it('should initialize with finalize mode', () => {
       // Set up environment and extension state
       envManager.setup({
-        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: 'finalize'
+        LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: 'finalize',
       });
       state.extensionInitialized = true;
 
@@ -317,9 +317,9 @@ describe('telemetry/init', () => {
             forceFlush: () => Promise.resolve(),
             shutdown: () => Promise.resolve(),
             onStart: jest.fn(),
-            onEnd: jest.fn()
-          }
-        ]
+            onEnd: jest.fn(),
+          },
+        ],
       });
       expect(state.mode).toBe('finalize');
     });
@@ -329,11 +329,11 @@ describe('telemetry/init', () => {
         forceFlush: () => Promise.resolve(),
         shutdown: () => Promise.resolve(),
         onStart: jest.fn(),
-        onEnd: jest.fn()
+        onEnd: jest.fn(),
       };
 
       const { completionHandler: _ } = initTelemetry({
-        spanProcessors: [mockSpanProcessor]
+        spanProcessors: [mockSpanProcessor],
       });
       expect(state.mode).toBe('sync');
     });
@@ -346,4 +346,4 @@ describe('telemetry/init', () => {
       expect(isColdStart()).toBe(false);
     });
   });
-}); 
+});

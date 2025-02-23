@@ -6,6 +6,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -16,9 +17,7 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.js",
-    "__tests__/**/*.ts",
-    "__tests__/**/*.json"
+    "src/**/*.js"
   ],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "__tests__"]
 } 

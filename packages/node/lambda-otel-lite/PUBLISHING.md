@@ -27,6 +27,8 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 
 ## Code Quality
 - [ ] All tests pass (`npm test`)
+- [ ] Code is properly formatted (`npm run format`)
+- [ ] Format check passes (`npm run format:check`)
 - [ ] Linting passes (`npm run lint`)
 - [ ] TypeScript compilation succeeds (`npm run build`)
 - [ ] No debug code or console.logs (except in logger)
@@ -42,14 +44,16 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 ## Publishing Steps
 1. Update version in `package.json`
 2. Update `CHANGELOG.md`
-3. Run tests: `npm test`
-4. Run linting: `npm run lint`
-5. Clean build: `npm run clean && npm run build`
-6. Commit changes: `git commit -am "Release vX.Y.Z"`
-7. Create git tag: `git tag vX.Y.Z`
-8. Push changes: `git push && git push --tags`
-9. Publish to npm: `npm publish`
-10. Verify package on npm: https://www.npmjs.com/package/@dev7a/lambda-otel-lite
+3. Format code: `npm run format`
+4. Run format check: `npm run format:check`
+5. Run linting: `npm run lint`
+6. Run tests: `npm test`
+7. Clean build: `npm run clean && npm run build`
+8. Commit changes: `git commit -am "Release vX.Y.Z"`
+9. Create git tag: `git tag vX.Y.Z`
+10. Push changes: `git push && git push --tags`
+11. Publish to npm: `npm publish`
+12. Verify package on npm: https://www.npmjs.com/package/@dev7a/lambda-otel-lite
 
 ## Post-Publishing
 - [ ] Verify package installation works: `npm install @dev7a/lambda-otel-lite`

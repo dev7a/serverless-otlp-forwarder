@@ -1,20 +1,20 @@
 // Mock OpenTelemetry API
 const mockApi = {
   SpanKind: {
-    SERVER: 'SERVER'
+    SERVER: 'SERVER',
   },
   SpanStatusCode: {
     OK: 'OK',
-    ERROR: 'ERROR'
+    ERROR: 'ERROR',
   },
   ROOT_CONTEXT: {},
   trace: {
     getSpan: jest.fn(),
-    getTracer: jest.fn()
+    getTracer: jest.fn(),
   },
   propagation: {
-    extract: jest.fn().mockReturnValue({})
-  }
+    extract: jest.fn().mockReturnValue({}),
+  },
 };
 
 jest.doMock('@opentelemetry/api', () => mockApi);
@@ -34,14 +34,14 @@ jest.doMock('../src/internal/state', () => ({
   clearState: jest.fn(),
   state: {
     mode: null,
-    extensionInitialized: false
-  }
+    extensionInitialized: false,
+  },
 }));
 
 // Mock cold start functions
 jest.doMock('../src/internal/telemetry/init', () => ({
   isColdStart: jest.fn(),
-  setColdStart: jest.fn()
+  setColdStart: jest.fn(),
 }));
 
 // Import after mocks
@@ -50,7 +50,11 @@ import { jest } from '@jest/globals';
 import { createTracedHandler } from '../src/handler';
 import * as init from '../src/internal/telemetry/init';
 import { TelemetryCompletionHandler } from '../src/internal/telemetry/completion';
-import { apiGatewayV1Extractor, apiGatewayV2Extractor, albExtractor } from '../src/internal/telemetry/extractors';
+import {
+  apiGatewayV1Extractor,
+  apiGatewayV2Extractor,
+  albExtractor,
+} from '../src/internal/telemetry/extractors';
 import { describe, it, beforeEach, expect } from '@jest/globals';
 
 // Import fixtures
@@ -68,34 +72,36 @@ describe('createTracedHandler', () => {
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
-        
+
     // Create mock span
     mockSpan = {
       setAttribute: jest.fn(),
       setStatus: jest.fn(),
       end: jest.fn(),
       recordException: jest.fn(),
-      addEvent: jest.fn()
+      addEvent: jest.fn(),
     };
 
     // Create mock tracer
     tracer = {
-      startActiveSpan: jest.fn((name: string, options: any, context: any, fn: (span: any) => Promise<any>) => {
-        return fn(mockSpan);
-      })
+      startActiveSpan: jest.fn(
+        (name: string, options: any, context: any, fn: (span: any) => Promise<any>) => {
+          return fn(mockSpan);
+        }
+      ),
     };
 
     // Create mock span processor
     const _mockSpanProcessor = {
       onStart: jest.fn(),
-      onEnd: jest.fn()
+      onEnd: jest.fn(),
     };
 
     // Create mock completion handler
     completionHandler = {
       complete: jest.fn(),
       shutdown: jest.fn(),
-      getTracer: jest.fn().mockReturnValue(tracer)
+      getTracer: jest.fn().mockReturnValue(tracer),
     } as any;
 
     // Set up default event and context
@@ -106,7 +112,7 @@ describe('createTracedHandler', () => {
       functionName: 'test-function',
       functionVersion: '$LATEST',
       memoryLimitInMB: '128',
-      getRemainingTimeInMillis: () => 1000
+      getRemainingTimeInMillis: () => 1000,
     };
 
     // Mock cold start as true initially
@@ -118,11 +124,8 @@ describe('createTracedHandler', () => {
 
   describe('basic functionality', () => {
     it('should work with basic options', async () => {
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => 'success');
       const result = await handler(defaultEvent, defaultContext);
 
@@ -134,11 +137,8 @@ describe('createTracedHandler', () => {
 
     it('should set default faas.trigger for non-HTTP events', async () => {
       const event = { type: 'custom' };
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => 'success');
       const result = await handler(event, defaultContext);
 
@@ -155,14 +155,11 @@ describe('createTracedHandler', () => {
         functionName: 'test-function',
         functionVersion: '$LATEST',
         memoryLimitInMB: '128',
-        getRemainingTimeInMillis: () => 1000
+        getRemainingTimeInMillis: () => 1000,
       };
 
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => 'success');
       await handler(defaultEvent, lambdaContext);
 
@@ -177,18 +174,14 @@ describe('createTracedHandler', () => {
 
   describe('API Gateway event handling', () => {
     it('should handle API Gateway v2 events', async () => {
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler,
-        apiGatewayV2Extractor
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler, apiGatewayV2Extractor);
+
       const handler = traced(async (_event, _context) => 'success');
       await handler(apigwV2Event, defaultContext);
 
       // Get all calls to setAttribute
       const calls = mockSpan.setAttribute.mock.calls;
-            
+
       // Create a map of all attributes that were set
       const attributesSet = new Map<string, string | number | boolean>(
         calls.map(([k, v]: [string, string | number | boolean]) => [k, v])
@@ -206,18 +199,14 @@ describe('createTracedHandler', () => {
     });
 
     it('should handle API Gateway v1 events', async () => {
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler,
-        apiGatewayV1Extractor
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler, apiGatewayV1Extractor);
+
       const handler = traced(async (_event, _context) => 'success');
       await handler(apigwV1Event, defaultContext);
 
       // Get all calls to setAttribute
       const calls = mockSpan.setAttribute.mock.calls;
-            
+
       // Create a map of all attributes that were set
       const attributesSet = new Map<string, string | number | boolean>(
         calls.map(([k, v]: [string, string | number | boolean]) => [k, v])
@@ -230,23 +219,21 @@ describe('createTracedHandler', () => {
       expect(attributesSet.get('url.path')).toBe('/path/to/resource');
       expect(attributesSet.get('url.scheme')).toBe('https');
       expect(attributesSet.get('user_agent.original')).toBe('Custom User Agent String');
-      expect(attributesSet.get('server.address')).toBe('1234567890.execute-api.us-east-1.amazonaws.com');
+      expect(attributesSet.get('server.address')).toBe(
+        '1234567890.execute-api.us-east-1.amazonaws.com'
+      );
       expect(attributesSet.get('client.address')).toBe('127.0.0.1');
     });
 
     it('should handle ALB events', async () => {
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler,
-        albExtractor
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler, albExtractor);
+
       const handler = traced(async (_event, _context) => 'success');
       await handler(albEvent, defaultContext);
 
       // Get all calls to setAttribute
       const calls = mockSpan.setAttribute.mock.calls;
-            
+
       // Create a map of all attributes that were set
       const attributesSet = new Map<string, string | number | boolean>(
         calls.map(([k, v]: [string, string | number | boolean]) => [k, v])
@@ -257,23 +244,26 @@ describe('createTracedHandler', () => {
       expect(attributesSet.get('http.request.method')).toBe('POST');
       expect(attributesSet.get('url.path')).toBe('/path/to/resource');
       expect(attributesSet.get('url.scheme')).toBe('http');
-      expect(attributesSet.get('user_agent.original')).toBe('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36');
-      expect(attributesSet.get('server.address')).toBe('lambda-alb-123578498.us-east-2.elb.amazonaws.com');
+      expect(attributesSet.get('user_agent.original')).toBe(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36'
+      );
+      expect(attributesSet.get('server.address')).toBe(
+        'lambda-alb-123578498.us-east-2.elb.amazonaws.com'
+      );
       expect(attributesSet.get('client.address')).toBe('72.12.164.125');
-      expect(attributesSet.get('alb.target_group_arn')).toBe('arn:aws:elasticloadbalancing:us-east-2:123456789012:targetgroup/lambda-279XGJDqGZ5rsrHC2Fjr/49e9d65c45c6791a');
+      expect(attributesSet.get('alb.target_group_arn')).toBe(
+        'arn:aws:elasticloadbalancing:us-east-2:123456789012:targetgroup/lambda-279XGJDqGZ5rsrHC2Fjr/49e9d65c45c6791a'
+      );
     });
   });
 
   describe('HTTP response handling', () => {
     it('should handle successful HTTP responses', async () => {
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => ({
         statusCode: 200,
-        body: 'success'
+        body: 'success',
       }));
       await handler(defaultEvent, defaultContext);
 
@@ -282,21 +272,18 @@ describe('createTracedHandler', () => {
     });
 
     it('should handle error HTTP responses', async () => {
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => ({
         statusCode: 500,
-        body: 'error'
+        body: 'error',
       }));
       await handler(defaultEvent, defaultContext);
 
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('http.status_code', 500);
       expect(mockSpan.setStatus).toHaveBeenCalledWith({
         code: SpanStatusCode.ERROR,
-        message: 'HTTP 500 response'
+        message: 'HTTP 500 response',
       });
     });
   });
@@ -304,11 +291,8 @@ describe('createTracedHandler', () => {
   describe('error handling', () => {
     it('should handle errors in handler', async () => {
       const error = new Error('test error');
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => {
         throw error;
       });
@@ -318,7 +302,7 @@ describe('createTracedHandler', () => {
       expect(mockSpan.setAttribute).toHaveBeenCalledWith('error', true);
       expect(mockSpan.setStatus).toHaveBeenCalledWith({
         code: SpanStatusCode.ERROR,
-        message: 'test error'
+        message: 'test error',
       });
     });
 
@@ -327,11 +311,8 @@ describe('createTracedHandler', () => {
         throw new Error('extraction error');
       });
 
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => 'success');
       const result = await handler(defaultEvent, defaultContext);
 
@@ -341,11 +322,8 @@ describe('createTracedHandler', () => {
 
     it('should complete telemetry even if handler throws', async () => {
       const error = new Error('test error');
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => {
         throw error;
       });
@@ -357,11 +335,8 @@ describe('createTracedHandler', () => {
 
   describe('cold start handling', () => {
     it('should handle cold start correctly', async () => {
-      const traced = createTracedHandler(
-        'test-handler',
-        completionHandler
-      );
-      
+      const traced = createTracedHandler('test-handler', completionHandler);
+
       const handler = traced(async (_event, _context) => 'success');
       await handler(defaultEvent, defaultContext);
 
@@ -369,4 +344,4 @@ describe('createTracedHandler', () => {
       expect(init.setColdStart).toHaveBeenCalledWith(false);
     });
   });
-}); 
+});

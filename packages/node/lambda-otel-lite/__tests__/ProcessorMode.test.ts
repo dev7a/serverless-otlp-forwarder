@@ -74,7 +74,9 @@ describe('ProcessorMode', () => {
 
     it('should use provided default mode over global default', () => {
       envManager.setup({ TEST_MODE: undefined });
-      expect(processorModeFromEnv('TEST_MODE', ProcessorMode.Finalize)).toBe(ProcessorMode.Finalize);
+      expect(processorModeFromEnv('TEST_MODE', ProcessorMode.Finalize)).toBe(
+        ProcessorMode.Finalize
+      );
     });
 
     it('should handle non-string environment values', () => {
@@ -87,4 +89,4 @@ describe('ProcessorMode', () => {
       expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
     });
   });
-}); 
+});

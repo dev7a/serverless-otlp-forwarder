@@ -12,10 +12,7 @@ describe('TelemetryCompletionHandler', () => {
 
       new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
 
-      expect(getTracerSpy).toHaveBeenCalledWith(
-        VERSION.NAME,
-        VERSION.VERSION
-      );
+      expect(getTracerSpy).toHaveBeenCalledWith(VERSION.NAME, VERSION.VERSION);
     });
   });
 
@@ -23,7 +20,7 @@ describe('TelemetryCompletionHandler', () => {
     it('should return cached tracer instance', () => {
       const provider = new NodeTracerProvider();
       const getTracerSpy = jest.spyOn(provider, 'getTracer');
-      
+
       const handler = new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
       const tracer1 = handler.getTracer();
       const tracer2 = handler.getTracer();
@@ -32,4 +29,4 @@ describe('TelemetryCompletionHandler', () => {
       expect(getTracerSpy).toHaveBeenCalledTimes(1);
     });
   });
-}); 
+});
