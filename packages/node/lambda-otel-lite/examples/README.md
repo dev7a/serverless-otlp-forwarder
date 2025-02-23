@@ -1,4 +1,4 @@
-# lambda-otel-lite Examples
+# Examples
 
 This directory contains examples demonstrating how to use `lambda-otel-lite` in AWS Lambda functions. The examples showcase different deployment methods and configurations using AWS SAM.
 
