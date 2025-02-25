@@ -14,7 +14,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.0"
+version = "0.9.0"
 edition = "2021"
 authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
 license = "MIT"
@@ -28,7 +28,7 @@ lambda-otel-utils = { path = "packages/rust/lambda-otel-utils" }
 lambda-lw-http-router = { path = "packages/rust/lambda-lw-http-router" }
 lambda-lw-http-router-core = { path = "packages/rust/lambda-lw-http-router/router-core" }
 lambda-lw-http-router-macro = { path = "packages/rust/lambda-lw-http-router/router-macro" }
-otlp-stdout-span-exporter = { version = "0.6.0", path = "packages/rust/otlp-stdout-span-exporter" }
+otlp-stdout-span-exporter = { path = "packages/rust/otlp-stdout-span-exporter" }
 lambda-otel-lite = { path = "packages/rust/lambda-otel-lite" }
 # Runtime and async
 tokio = { version = "1", features = ["full"] }
@@ -36,13 +36,14 @@ async-trait = "0.1.82"
 futures = "0.3.31"
 
 # OpenTelemetry and tracing
-opentelemetry = { version = "0.27.1", features = ["trace"] }
-opentelemetry-http = { version = "0.27.0" }
-opentelemetry_sdk = { version = "0.27.1", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.27.0", features = ["http-proto", "http-json", "reqwest-client"] }
-opentelemetry-aws = { version = "0.15.0", features = ["detector-aws-lambda"] }
+opentelemetry = { version = "0.28.0", features = ["trace"] }
+opentelemetry-http = { version = "0.28.0" }
+opentelemetry_sdk = { version = "0.28.0", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.28.0", features = ["http-proto", "http-json", "reqwest-client"] }
+opentelemetry-proto = { version = "0.28.0", features = ["gen-tonic", "trace"] }
+opentelemetry-aws = { version = "0.16.0", features = ["detector-aws-lambda"] }
 tracing = { version = "0.1", features = ["log"] }
-tracing-opentelemetry = "0.28.0"
+tracing-opentelemetry = "0.29.0"
 
 # AWS related
 aws-config = { version = "1.5.7", features = ["behavior-version-latest"] }

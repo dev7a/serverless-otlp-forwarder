@@ -1,5 +1,5 @@
 use opentelemetry::trace::{Tracer, TracerProvider};
-use opentelemetry_sdk::{runtime, trace::TracerProvider as SdkTracerProvider, Resource};
+use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 use std::thread;
 use std::time::Duration;
@@ -13,8 +13,8 @@ async fn main() {
 
     // Create a new tracer provider with the exporter
     let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter, runtime::Tokio)
-        .with_resource(Resource::default())
+        .with_batch_exporter(exporter)
+        .with_resource(Resource::builder().build())
         .build();
 
     // Create a tracer

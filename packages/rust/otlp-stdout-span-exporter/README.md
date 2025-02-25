@@ -75,6 +75,7 @@ The exporter respects the following environment variables:
 - `AWS_LAMBDA_FUNCTION_NAME`: Fallback service name (if `OTEL_SERVICE_NAME` not set)
 - `OTEL_EXPORTER_OTLP_HEADERS`: Global headers for OTLP export
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence)
+- `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 
 Header format examples:
 ```bash
@@ -86,6 +87,9 @@ export OTEL_EXPORTER_OTLP_HEADERS="api-key=secret123,custom-header=value"
 
 # Headers with special characters
 export OTEL_EXPORTER_OTLP_HEADERS="authorization=Basic dXNlcjpwYXNzd29yZA=="
+
+# Set compression level (0 = no compression, 9 = maximum compression)
+export OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL="9"
 ```
 
 ## Output Format
@@ -117,6 +121,8 @@ The exporter can be configured with different GZIP compression levels:
 // Create exporter with custom GZIP level (0-9)
 let exporter = OtlpStdoutSpanExporter::with_gzip_level(9);
 ```
+
+You can also configure the compression level using the `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable. The explicit configuration via code will override any environment variable setting.
 
 ## Development
 

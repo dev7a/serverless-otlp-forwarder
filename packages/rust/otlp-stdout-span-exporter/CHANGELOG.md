@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.9.0] - 2025-02-24
+
+### Added
+- Support for configuring GZIP compression level via `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable
+- Comprehensive tests for GZIP compression level functionality
+
+### Changed
+- Upgraded OpenTelemetry dependencies from 0.27.0 to 0.28.0
+- Updated API implementation to match OpenTelemetry SDK 0.28.0 changes
+- Improved error handling using `OTelSdkError` instead of `TraceError`
+- Enhanced documentation with examples for the new environment variable
+
 ## [0.6.0] - 2025-02-09
 
 ### Changed
