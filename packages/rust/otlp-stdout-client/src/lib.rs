@@ -117,7 +117,7 @@ pub const KEY_BASE64: &str = "base64";
 pub const KEY_HEADERS: &str = "headers";
 
 // Constant for OTEL version prefix
-pub const OTEL_VERSION_PREFIX: &str = "oltp-stdout-";
+pub const OTEL_VERSION_PREFIX: &str = "otlp-stdout-";
 
 // Constant for GZIP encoding
 pub const ENCODING_GZIP: &str = "gzip";
@@ -421,7 +421,12 @@ impl StdoutClient {
     ///
     /// A String containing the version identifier in the format "package@version"
     fn get_version_identifier() -> String {
-        format!("{}@{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+        format!(
+            "{}{}@{}",
+            OTEL_VERSION_PREFIX,
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION")
+        )
     }
 }
 

@@ -15,7 +15,9 @@ use crate::collectors::Collector;
 use crate::telemetry::TelemetryData;
 use aws_credential_types::Credentials;
 use otlp_sigv4_client::signing::sign_request;
-use otlp_stdout_client::{LogRecord, CONTENT_ENCODING_HEADER, CONTENT_TYPE_HEADER};
+use otlp_stdout_client::{
+    LogRecord, CONTENT_ENCODING_HEADER, CONTENT_TYPE_HEADER, OTEL_VERSION_PREFIX,
+};
 
 /// Headers builder for outgoing log record requests.
 /// Uses the builder pattern to construct the final set of headers
@@ -169,7 +171,7 @@ mod tests {
         headers.insert("x-another-header".to_string(), "another-value".to_string());
 
         LogRecord {
-            _otel: "test".to_string(),
+            _otel: format!("{}test", OTEL_VERSION_PREFIX),
             source: "test-source".to_string(),
             endpoint: "http://example.com".to_string(),
             method: "POST".to_string(),
@@ -303,7 +305,7 @@ mod tests {
         headers.insert("invalid header name".to_string(), "value".to_string());
 
         let log_record = LogRecord {
-            _otel: "test".to_string(),
+            _otel: format!("{}test", OTEL_VERSION_PREFIX),
             source: "test-source".to_string(),
             endpoint: "http://example.com".to_string(),
             method: "POST".to_string(),
@@ -326,7 +328,7 @@ mod tests {
         headers.insert("x-test".to_string(), "invalid\u{0000}value".to_string());
 
         let log_record = LogRecord {
-            _otel: "test".to_string(),
+            _otel: format!("{}test", OTEL_VERSION_PREFIX),
             source: "test-source".to_string(),
             endpoint: "http://example.com".to_string(),
             method: "POST".to_string(),
