@@ -35,8 +35,8 @@
 //! - Implements graceful shutdown on SIGTERM
 //! - Handles channel communication failures
 
-use crate::ProcessorMode;
 use crate::logger::Logger;
+use crate::ProcessorMode;
 use lambda_extension::{service_fn, Error, Extension, NextEvent};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::Arc;

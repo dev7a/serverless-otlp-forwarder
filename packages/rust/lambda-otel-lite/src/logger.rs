@@ -1,11 +1,11 @@
 //! Logging utilities for lambda-otel-lite.
 //!
 //! This module provides a simple logging interface with level filtering and prefixing.
-//! 
+//!
 //! # Example
 //! ```
 //! use lambda_otel_lite::logger::Logger;
-//! 
+//!
 //! // Create a logger for your module
 //! let logger = Logger::new("my_module");
 //! logger.info("Starting module");
@@ -14,10 +14,10 @@
 //! # Static Logger Example
 //! ```
 //! use lambda_otel_lite::logger::Logger;
-//! 
+//!
 //! // Define a static logger for your module
 //! static LOGGER: Logger = Logger::const_new("my_module");
-//! 
+//!
 //! // Use it directly
 //! LOGGER.info("Starting module");
 //! ```
@@ -35,9 +35,9 @@ static LOG_LEVEL: OnceLock<&'static str> = OnceLock::new();
 fn get_log_level() -> &'static str {
     LOG_LEVEL.get_or_init(|| {
         let level = env::var("AWS_LAMBDA_LOG_LEVEL")
-        .or_else(|_| env::var("LOG_LEVEL"))
-        .unwrap_or_else(|_| "info".to_string())
-        .to_lowercase();
+            .or_else(|_| env::var("LOG_LEVEL"))
+            .unwrap_or_else(|_| "info".to_string())
+            .to_lowercase();
 
         match level.as_str() {
             "none" | "error" | "warn" | "info" | "debug" => Box::leak(level.into_boxed_str()),
@@ -58,13 +58,13 @@ impl Logger {
     pub fn new(prefix: impl Into<String>) -> Self {
         // Convert the prefix to a &'static str
         let static_prefix = Box::leak(prefix.into().into_boxed_str());
-        
+
         Self {
             prefix: static_prefix,
             log_level_fn: get_log_level,
         }
     }
-    
+
     /// Create a new logger with the given prefix that can be used in const contexts
     pub const fn const_new(prefix: &'static str) -> Self {
         Self {
@@ -131,7 +131,7 @@ mod tests {
     #[serial]
     fn test_log_levels() {
         let logger = Logger::new("test");
-        
+
         assert!(logger.should_log("error"));
         assert!(logger.should_log("warn"));
         assert!(logger.should_log("info"));
@@ -142,10 +142,7 @@ mod tests {
     #[serial]
     fn test_format_message() {
         let logger = Logger::new("test");
-        
-        assert_eq!(
-            logger.format_message("hello"),
-            "[test] hello"
-        );
+
+        assert_eq!(logger.format_message("hello"), "[test] hello");
     }
-} 
+}

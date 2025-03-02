@@ -103,8 +103,8 @@
 //!    - Monitor for export failures in logs
 //!    - Consider retry strategies in custom exporters
 
-use bon::bon;
 use crate::logger::Logger;
+use bon::bon;
 
 /// Module-specific logger
 static LOGGER: Logger = Logger::const_new("processor");
@@ -351,10 +351,7 @@ where
                 if !batch.is_empty() {
                     let result = futures_executor::block_on(exporter.export(batch));
                     if let Err(err) = &result {
-                        LOGGER.debug(format!(
-                            "LambdaSpanProcessor.force_flush.Error: {:?}",
-                            err
-                        ));
+                        LOGGER.debug(format!("LambdaSpanProcessor.force_flush.Error: {:?}", err));
                         return result;
                     }
                 }
@@ -399,9 +396,9 @@ mod tests {
         trace::SpanExporter,
         trace::{SpanEvents, SpanLinks},
     };
+    use serial_test::serial;
     use std::{borrow::Cow, future::Future, pin::Pin, sync::Arc};
     use tokio::sync::Mutex;
-    use serial_test::serial;
 
     fn setup_test_logger() -> Logger {
         Logger::new("test")
