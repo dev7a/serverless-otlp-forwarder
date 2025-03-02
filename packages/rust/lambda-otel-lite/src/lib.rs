@@ -100,28 +100,25 @@
 //! ## Using the Tower Layer
 //!
 //! ```no_run
-//! use lambda_otel_lite::{init_telemetry, TelemetryConfig, OtelTracingLayer};
+//! use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
 //! use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
-//! use lambda_runtime::tower::ServiceBuilder;
 //! use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
+//! use tower::ServiceBuilder;
+//! use serde_json::Value;
 //!
-//! async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_json::Value, Error> {
-//!     Ok(serde_json::json!({
-//!         "statusCode": 200,
-//!         "body": format!("Hello from request {}", event.context.request_id)
-//!     }))
+//! async fn function_handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<Value, Error> {
+//!     Ok(serde_json::json!({ "statusCode": 200 }))
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-//!
+//!     let (tracer, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
+//!     
 //!     let service = ServiceBuilder::new()
 //!         .layer(OtelTracingLayer::new(completion_handler).with_name("tower-handler"))
-//!         .service_fn(handler);
+//!         .service_fn(function_handler);
 //!
-//!     let runtime = Runtime::new(service);
-//!     runtime.run().await
+//!     Runtime::new(service).run().await
 //! }
 //! ```
 //!
@@ -130,26 +127,27 @@
 //! ## Using the Handler Wrapper
 //!
 //! ```no_run
-//! use lambda_otel_lite::{init_telemetry, TelemetryConfig, traced_handler};
+//! use lambda_otel_lite::{init_telemetry, create_traced_handler, TelemetryConfig};
 //! use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
-//! use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
+//! use serde_json::Value;
 //!
-//! async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_json::Value, Error> {
-//!     Ok(serde_json::json!({
-//!         "statusCode": 200,
-//!         "body": format!("Hello from request {}", event.context.request_id)
-//!     }))
+//! async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+//!     Ok(serde_json::json!({ "statusCode": 200 }))
 //! }
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+//!     let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 //!     
-//!     let runtime = Runtime::new(service_fn(|event| {
-//!         traced_handler("my-handler", event, completion_handler.clone(), handler)
-//!     }));
+//!     // Create the traced handler
+//!     let handler = create_traced_handler(
+//!         "my-handler",
+//!         completion_handler,
+//!         handler
+//!     );
 //!
-//!     runtime.run().await
+//!     // Use it directly with the runtime
+//!     Runtime::new(service_fn(handler)).run().await
 //! }
 //! ```
 
@@ -159,15 +157,17 @@ pub mod extension;
 pub mod extractors;
 pub mod handler;
 pub mod layer;
+pub mod mode;
 pub mod processor;
 pub mod resource;
 pub mod telemetry;
 
-pub use extension::{register_extension, OtelInternalExtension};
+pub use extension::OtelInternalExtension;
 pub use extractors::{SpanAttributes, SpanAttributesExtractor, TriggerType};
-pub use handler::traced_handler;
+pub use handler::create_traced_handler;
 pub use layer::OtelTracingLayer;
-pub use processor::{LambdaSpanProcessor, ProcessorConfig, ProcessorMode};
+pub use mode::ProcessorMode;
+pub use processor::LambdaSpanProcessor;
 pub use resource::get_lambda_resource;
 pub use telemetry::{
     init_telemetry, TelemetryCompletionHandler, TelemetryConfig, TelemetryConfigBuilder,

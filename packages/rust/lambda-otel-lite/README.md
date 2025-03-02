@@ -179,7 +179,7 @@ use lambda_runtime::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+    let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
     // ...
     Ok(())
 }
@@ -194,16 +194,18 @@ use lambda_runtime::Error;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let resource = Resource::new(vec![
-        KeyValue::new("service.version", "1.0.0"),
-        KeyValue::new("deployment.environment", "production"),
-    ]);
+    let resource = Resource::builder()
+        .with_attributes(vec![
+            KeyValue::new("service.version", "1.0.0"),
+            KeyValue::new("deployment.environment", "production"),
+        ])
+        .build();
 
     let config = TelemetryConfig::builder()
         .resource(resource)
         .build();
 
-    let completion_handler = init_telemetry(config).await?;
+    let (_, completion_handler) = init_telemetry(config).await?;
     // ...
     Ok(())
 }
@@ -224,7 +226,7 @@ async fn main() -> Result<(), Error> {
         .with_propagator(BaggagePropagator::new())
         .build();
 
-    let completion_handler = init_telemetry(config).await?;
+    let (_, completion_handler) = init_telemetry(config).await?;
     // ...
     Ok(())
 }
@@ -246,14 +248,14 @@ async fn main() -> Result<(), Error> {
         .with_span_processor(SimpleSpanProcessor::new(
             Box::new(OtlpStdoutSpanExporter::default())
         ))
-        .library_name("instrumented-service".to_string())
         .enable_fmt_layer(true)
         .build();
 
-    let completion_handler = init_telemetry(config).await?;
+    let (_, completion_handler) = init_telemetry(config).await?;
     Ok(())
 }
 ```
+
 Note that the `.with_span_processor` method accepts a `SpanProcessor` trait object, so you can pass in any type that implements the `SpanProcessor` trait, and can be called multiple times. The order of the processors is the order of the calls to `.with_span_processor`.
 
 ### Using the Tower Layer
@@ -264,8 +266,9 @@ use lambda_otel_lite::{init_telemetry, TelemetryConfig, OtelTracingLayer};
 use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
 use lambda_runtime::tower::ServiceBuilder;
 use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
+use serde_json::Value;
 
-async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_json::Value, Error> {
+async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<Value, Error> {
     Ok(serde_json::json!({
         "statusCode": 200,
         "body": format!("Hello from request {}", event.context.request_id)
@@ -275,7 +278,7 @@ async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_js
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Initialize telemetry with default configuration
-    let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+    let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 
     // Build service with OpenTelemetry tracing middleware
     let service = ServiceBuilder::new()
@@ -283,36 +286,34 @@ async fn main() -> Result<(), Error> {
         .service_fn(handler);
 
     // Create and run the Lambda runtime
-    let runtime = Runtime::new(service);
-    runtime.run().await
+    Runtime::new(service).run().await
 }
 ```
 
 ### Using the handler wrapper function
-Or, you can use the `traced_handler` function to wrap your handler:
+Or, you can use the `create_traced_handler` function to wrap your handler:
 
 ```rust no_run
-use lambda_otel_lite::{init_telemetry, traced_handler, TelemetryConfig};
+use lambda_otel_lite::{init_telemetry, TelemetryConfig, create_traced_handler};
 use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
 use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
+use serde_json::Value;
 
-async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_json::Value, Error> {
-    Ok(serde_json::json!({
-        "statusCode": 200,
-        "body": format!("Hello from request {}", event.context.request_id)
-    }))
+async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<Value, Error> {
+    Ok(serde_json::json!({ "statusCode": 200 }))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+    let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
     
-    // Create and run the Lambda runtime with the traced handler
-    let runtime = Runtime::new(service_fn(|event| {
-        traced_handler("my-handler", event, completion_handler.clone(), handler)
-    }));
+    let handler = create_traced_handler(
+        "my-handler",
+        completion_handler,
+        handler
+    );
 
-    runtime.run().await
+    Runtime::new(service_fn(handler)).run().await
 }
 ```
 
@@ -321,11 +322,12 @@ async fn main() -> Result<(), Error> {
 For other events than the one directly supported by the crate, you can implement the `SpanAttributesExtractor` trait for your own event types:
 
 ```rust no_run
-use lambda_otel_lite::{init_telemetry, traced_handler, TelemetryConfig, SpanAttributes, SpanAttributesExtractor};
+use lambda_otel_lite::{init_telemetry, TelemetryConfig, create_traced_handler, SpanAttributes, SpanAttributesExtractor};
 use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use opentelemetry::Value;
+use serde_json::Value as JsonValue;
 
 // Define a custom event type
 #[derive(Clone, Deserialize, Serialize)]
@@ -353,7 +355,7 @@ impl SpanAttributesExtractor for MyEvent {
     }
 }
 
-async fn handler(event: LambdaEvent<MyEvent>) -> Result<serde_json::Value, Error> {
+async fn handler(event: LambdaEvent<MyEvent>) -> Result<JsonValue, Error> {
     Ok(serde_json::json!({
         "statusCode": 200,
         "body": format!("Hello, user {}", event.payload.user_id)
@@ -362,51 +364,18 @@ async fn handler(event: LambdaEvent<MyEvent>) -> Result<serde_json::Value, Error
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+    let config = TelemetryConfig::default();
+    let (_, completion_handler) = init_telemetry(config).await?;
     
-    // Create and run the Lambda runtime with the traced handler
-    let runtime = Runtime::new(service_fn(|event| {
-        traced_handler("my-handler", event, completion_handler.clone(), handler)
-    }));
+    let handler = create_traced_handler(
+        "my-handler",
+        completion_handler,
+        handler
+    );
 
-    runtime.run().await
+    Runtime::new(service_fn(handler)).run().await
 }
 ```
-
-
-## Automatic FAAS Attributes
-
-The crate automatically sets relevant FAAS attributes based on the Lambda context and event:
-
-| Attribute Type | Attribute Name | Source | Description |
-|----------------|----------------|---------|-------------|
-| Resource Attributes | `cloud.provider` | "aws" | Cloud provider identifier |
-| | `cloud.region` | AWS_REGION | AWS region where function runs |
-| | `faas.name` | AWS_LAMBDA_FUNCTION_NAME | Lambda function name |
-| | `faas.version` | AWS_LAMBDA_FUNCTION_VERSION | Function version ($LATEST or version number) |
-| | `faas.instance` | AWS_LAMBDA_LOG_STREAM_NAME | Unique instance identifier |
-| | `faas.max_memory` | AWS_LAMBDA_FUNCTION_MEMORY_SIZE | Maximum memory in bytes |
-| | `service.name` | OTEL_SERVICE_NAME or function name | Service identifier |
-| | Additional attributes | OTEL_RESOURCE_ATTRIBUTES | Custom key-value pairs |
-| Span Attributes | `faas.coldstart` | Runtime detection | Boolean flag set to true only on first invocation of a new instance |
-| | `faas.invocation_id` | Lambda request ID | Unique invocation identifier |
-| | `cloud.account.id` | Function ARN | AWS account ID |
-| | `cloud.resource_id` | Function ARN | Complete function ARN |
-| | `otel.kind` | "SERVER" (default) | Span kind |
-| | `otel.status_code`/`message` | Response processing | Error details if applicable |
-| HTTP Attributes | `faas.trigger` | Event type detection | "http" for API/ALB events |
-| | `http.status_code` | Response | HTTP status code if present |
-| | `http.route` | Event source | Route key or resource path |
-| | `http.method` | Event source | HTTP method |
-| | `url.path` | Event source | Request path |
-| | `url.query` | Event source | Query parameters if present |
-| | `url.scheme` | Event source | Protocol (https) |
-| | `network.protocol.version` | Event source | HTTP version |
-| | `client.address` | Event source | Client IP address |
-| | `user_agent.original` | Event source | User agent string |
-| | `server.address` | Event source | Server hostname |
-
-The crate automatically detects API Gateway v1/v2 and ALB events and sets the appropriate HTTP attributes. For HTTP responses, the status code is automatically extracted from the handler's response and set as `http.status_code`. For 5xx responses, the span status is set to ERROR.
 
 ## Distributed Tracing with non-HTTP events
 
@@ -467,19 +436,17 @@ async fn function_handler(event: LambdaEvent<MyCustomEvent>) -> Result<JsonValue
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     // Initialize telemetry with default configuration
-    let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+    let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 
     // Create a service with the OtelTracingLayer
     let service = ServiceBuilder::new()
-        .layer(OtelTracingLayer::<MyCustomEvent>::new(completion_handler))
+        .layer(OtelTracingLayer::new(completion_handler))
         .service_fn(function_handler);
 
     // Start the Lambda runtime
     Runtime::new(service).run().await
 }
 ```
-
-The above example shows how to implement distributed tracing for custom events. The `MyCustomEvent` type includes the standard W3C trace context fields (`traceparent` and `tracestate`). When an event is published to your Lambda function, the downstream service should include these trace context headers. The `SpanAttributesExtractor` implementation extracts these headers, allowing the Lambda function's spans to be properly connected to the downstream service's trace.
 
 ## Environment Variables
 
@@ -491,6 +458,7 @@ The crate can be configured using the following environment variables:
   - `async`: Deferred export via extension
   - `finalize`: Custom export strategy
 - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Maximum number of spans to queue in the ring buffer (default: 2048)
+- `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Maximum number of spans to export in a single batch (default: 512)
 
 ### Resource Configuration
 - `OTEL_SERVICE_NAME`: Override the service name (defaults to function name)
@@ -509,7 +477,8 @@ The crate can be configured using the following environment variables:
   - `RUST_LOG` takes precedence if both are set
   - Example: `RUST_LOG=lambda_otel_lite=debug`
   - Example: `AWS_LAMBDA_LOG_LEVEL=DEBUG` (used if RUST_LOG is not set)
+  - Can be customized via `TelemetryConfig::builder().env_var_name("CUSTOM_LOG_VAR")`
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

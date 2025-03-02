@@ -34,25 +34,11 @@
 //! - Logs all export errors without failing the function
 //! - Implements graceful shutdown on SIGTERM
 //! - Handles channel communication failures
-//!
-//! # Example
-//!
-//! ```no_run
-//! use lambda_otel_lite::{init_telemetry, TelemetryConfig};
-//! use lambda_extension::Error;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Error> {
-//!     // The extension is automatically registered when using init_telemetry
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-//!     Ok(())
-//! }
-//! ```
 
 use crate::ProcessorMode;
 use lambda_extension::{service_fn, Error, Extension, NextEvent};
 use opentelemetry::{otel_debug, otel_error};
-use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::Arc;
 use tokio::{
     signal::unix::{signal, SignalKind},
@@ -96,7 +82,7 @@ pub struct OtelInternalExtension {
     /// Channel receiver to know when the handler is done
     request_done_receiver: Mutex<UnboundedReceiver<()>>,
     /// Reference to the tracer provider for flushing spans
-    tracer_provider: Arc<TracerProvider>,
+    tracer_provider: Arc<SdkTracerProvider>,
 }
 
 impl OtelInternalExtension {
@@ -108,7 +94,7 @@ impl OtelInternalExtension {
     /// * `tracer_provider` - TracerProvider for span management
     pub fn new(
         request_done_receiver: UnboundedReceiver<()>,
-        tracer_provider: Arc<TracerProvider>,
+        tracer_provider: Arc<SdkTracerProvider>,
     ) -> Self {
         Self {
             request_done_receiver: Mutex::new(request_done_receiver),
@@ -178,13 +164,12 @@ impl OtelInternalExtension {
                 .await
                 .ok_or_else(|| Error::from("channel closed"))?;
             // Force flush all spans and handle any errors
-            for result in self.tracer_provider.force_flush() {
-                if let Err(err) = result {
-                    otel_error!(
-                        name: "OtelInternalExtension.invoke.Error",
-                        reason = format!("{:?}", err)
-                    );
-                }
+            println!("Flushing spans");
+            if let Err(err) = self.tracer_provider.force_flush() {
+                otel_error!(
+                    name: "OtelInternalExtension.invoke.Error",
+                    reason = format!("{:?}", err)
+                );
             }
         }
 
@@ -194,56 +179,18 @@ impl OtelInternalExtension {
 
 /// Register an internal extension for handling OpenTelemetry span processing.
 ///
-/// **Note**: This function is called automatically by [`init_telemetry`](crate::init_telemetry)
-/// and should not be called directly in your code. Use [`init_telemetry`](crate::init_telemetry)
-/// instead to set up telemetry for your Lambda function.
+/// # Warning
 ///
-/// # Initialization Sequence
+/// This is an internal API used by [`init_telemetry`](crate::init_telemetry) and should not be called directly.
+/// Use [`init_telemetry`](crate::init_telemetry) instead to set up telemetry for your Lambda function.
 ///
-/// 1. **Channel Setup**:
-///    - Creates an unbounded channel for handler-extension communication
-///    - Channel sender is returned to the handler
-///    - Channel receiver is managed by the extension
+/// # Internal Details
 ///
-/// 2. **Extension Registration**:
-///    - Creates a new Lambda extension instance
-///    - Configures event subscriptions based on processor mode
-///    - Registers with the Lambda Extensions API
-///    - Starts the extension in a background task
-///
-/// 3. **Signal Handler Setup**:
-///    - Registers a SIGTERM handler for graceful shutdown
-///    - Ensures pending spans are flushed before termination
-///
-/// # Processing Modes
-///
-/// The extension's behavior varies by processor mode:
-///
-/// - **Async Mode**:
-///    - Registers for INVOKE events
-///    - Waits for handler completion signal
-///    - Flushes spans after each invocation
-///    - Best for scenarios with high span counts
-///
-/// - **Finalize Mode**:
-///    - Registers for no events
-///    - Relies on processor's internal timing
-///    - Minimal overhead on handler
-///
-/// # Error Handling
-///
-/// The function handles these error scenarios:
-///
-/// - **Registration Failures**:
-///    - Extension API errors
-///    - Invalid configuration
-///    - Network issues
-///
-/// - **Runtime Errors**:
-///    - Extension execution failures
-///    - Channel communication errors
-///    - Span export failures
-///
+/// The extension registration process:
+/// 1. Creates communication channels for handler-extension coordination
+/// 2. Registers with Lambda Extensions API based on processor mode
+/// 3. Sets up signal handlers for graceful shutdown
+/// 4. Manages span export timing based on processor mode
 ///
 /// # Arguments
 ///
@@ -253,24 +200,8 @@ impl OtelInternalExtension {
 /// # Returns
 ///
 /// Returns a channel sender for signaling completion, or an Error if registration fails.
-/// The sender should be used by the handler to signal completion of request processing.
-///
-/// # Example
-///
-/// Instead of calling this function directly, use [`init_telemetry`](crate::init_telemetry):
-///
-/// ```no_run
-/// use lambda_otel_lite::{init_telemetry, TelemetryConfig};
-/// use lambda_extension::Error;
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Error> {
-///     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-///     Ok(())
-/// }
-/// ```
-pub async fn register_extension(
-    tracer_provider: Arc<TracerProvider>,
+pub(crate) async fn register_extension(
+    tracer_provider: Arc<SdkTracerProvider>,
     processor_mode: ProcessorMode,
 ) -> Result<UnboundedSender<()>, Error> {
     otel_debug!(
@@ -323,13 +254,11 @@ pub async fn register_extension(
                 message = "SIGTERM received, flushing spans"
             );
             // Direct synchronous flush
-            for result in tracer_provider.force_flush() {
-                if let Err(err) = result {
-                    otel_error!(
-                        name: "OtelInternalExtension.SIGTERM.Error",
-                        reason = format!("{:?}", err)
-                    );
-                }
+            if let Err(err) = tracer_provider.force_flush() {
+                otel_error!(
+                    name: "OtelInternalExtension.SIGTERM.Error",
+                    reason = format!("{:?}", err)
+                );
             }
             otel_debug!(
                 name: "OtelInternalExtension.SIGTERM",
@@ -347,10 +276,8 @@ mod tests {
     use super::*;
     use futures_util::future::BoxFuture;
     use lambda_extension::{InvokeEvent, LambdaEvent};
-    use opentelemetry::trace::TraceResult;
     use opentelemetry_sdk::{
-        export::trace::{SpanData, SpanExporter},
-        trace::TracerProvider,
+        trace::{SdkTracerProvider, SpanData, SpanExporter},
         Resource,
     };
     use std::sync::{
@@ -380,18 +307,21 @@ mod tests {
     }
 
     impl SpanExporter for TestExporter {
-        fn export(&mut self, spans: Vec<SpanData>) -> BoxFuture<'static, TraceResult<()>> {
+        fn export(
+            &mut self,
+            spans: Vec<SpanData>,
+        ) -> BoxFuture<'static, opentelemetry_sdk::error::OTelSdkResult> {
             self.export_count.fetch_add(spans.len(), Ordering::SeqCst);
             self.spans.lock().unwrap().extend(spans);
             Box::pin(futures_util::future::ready(Ok(())))
         }
     }
 
-    fn setup_test_provider() -> (Arc<TracerProvider>, Arc<TestExporter>) {
+    fn setup_test_provider() -> (Arc<SdkTracerProvider>, Arc<TestExporter>) {
         let exporter = TestExporter::new();
-        let provider = TracerProvider::builder()
+        let provider = SdkTracerProvider::builder()
             .with_simple_exporter(exporter.clone())
-            .with_resource(Resource::empty())
+            .with_resource(Resource::builder_empty().build())
             .build();
 
         (Arc::new(provider), Arc::new(exporter))

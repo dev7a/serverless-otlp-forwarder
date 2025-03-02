@@ -51,7 +51,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+//!     let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 //!     
 //!     let service = ServiceBuilder::new()
 //!         .layer(OtelTracingLayer::new(completion_handler)
@@ -201,7 +201,7 @@ where
 /// }
 ///
 /// # async fn example() -> Result<(), Error> {
-/// let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+/// let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 ///
 /// // Create a layer with custom name
 /// let layer = OtelTracingLayer::new(completion_handler)
@@ -376,11 +376,9 @@ mod tests {
     use crate::ProcessorMode;
     use futures_util::future::BoxFuture;
     use lambda_runtime::Context;
-    use opentelemetry::trace::TraceResult;
     use opentelemetry::trace::TracerProvider as _;
     use opentelemetry_sdk::{
-        export::trace::{SpanData, SpanExporter},
-        trace::TracerProvider,
+        trace::{SdkTracerProvider, SpanData, SpanExporter},
         Resource,
     };
     use serial_test::serial;
@@ -405,12 +403,17 @@ mod tests {
     }
 
     impl SpanExporter for CountingExporter {
-        fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, TraceResult<()>> {
+        fn export(
+            &mut self,
+            batch: Vec<SpanData>,
+        ) -> BoxFuture<'static, opentelemetry_sdk::error::OTelSdkResult> {
             self.export_count.fetch_add(batch.len(), Ordering::SeqCst);
             Box::pin(futures_util::future::ready(Ok(())))
         }
 
-        fn shutdown(&mut self) {}
+        fn shutdown(&mut self) -> opentelemetry_sdk::error::OTelSdkResult {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -419,9 +422,9 @@ mod tests {
         let exporter = CountingExporter::new();
         let export_count = exporter.export_count.clone();
 
-        let provider = TracerProvider::builder()
+        let provider = SdkTracerProvider::builder()
             .with_simple_exporter(exporter)
-            .with_resource(Resource::empty())
+            .with_resource(Resource::builder().build())
             .build();
         let provider = Arc::new(provider);
 

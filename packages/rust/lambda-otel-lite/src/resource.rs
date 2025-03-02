@@ -46,10 +46,12 @@
 //! use opentelemetry_sdk::Resource;
 //!
 //! # async fn example() -> Result<(), lambda_runtime::Error> {
-//! let resource = Resource::new(vec![
-//!     KeyValue::new("service.name", "my-service"),
-//!     KeyValue::new("service.version", "1.0.0"),
-//! ]);
+//! let resource = Resource::builder()
+//!     .with_attributes(vec![
+//!         KeyValue::new("service.name", "my-service"),
+//!         KeyValue::new("service.version", "1.0.0"),
+//!     ])
+//!     .build();
 //!
 //! let config = TelemetryConfig::builder()
 //!     .resource(resource)
@@ -72,7 +74,6 @@
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use std::env;
-use urlencoding::decode;
 
 /// Get default Lambda resource attributes.
 ///
@@ -95,45 +96,48 @@ use urlencoding::decode;
 ///
 /// # Examples
 ///
-/// Basic usage with automatic detection:
+/// Basic usage with environment variables:
 ///
 /// ```no_run
-/// use lambda_otel_lite::get_lambda_resource;
+/// use lambda_otel_lite::resource::get_lambda_resource;
+/// use opentelemetry::KeyValue;
 ///
+/// // Get resource with Lambda environment attributes
 /// let resource = get_lambda_resource();
 /// ```
 ///
-/// Using with custom attributes:
+/// Adding custom attributes:
 ///
 /// ```no_run
-/// use lambda_otel_lite::get_lambda_resource;
-/// use std::env;
-///
-/// // Set custom attributes
-/// env::set_var("OTEL_RESOURCE_ATTRIBUTES", "deployment.stage=prod,team=backend");
-/// env::set_var("OTEL_SERVICE_NAME", "payment-processor");
-///
-/// let resource = get_lambda_resource();
-/// ```
-///
-/// Merging with additional resource attributes:
-///
-/// ```no_run
-/// use lambda_otel_lite::get_lambda_resource;
+/// use lambda_otel_lite::resource::get_lambda_resource;
 /// use opentelemetry::KeyValue;
 /// use opentelemetry_sdk::Resource;
 ///
-/// // Get base Lambda resource
+/// // Get Lambda resource
 /// let lambda_resource = get_lambda_resource();
 ///
-/// // Create additional resource
-/// let extra_resource = Resource::new(vec![
-///     KeyValue::new("service.version", "1.0.0"),
-///     KeyValue::new("deployment.environment", "staging"),
-/// ]);
+/// // Create custom resource
+/// let extra_resource = Resource::builder()
+///     .with_attributes(vec![
+///         KeyValue::new("deployment.stage", "prod"),
+///         KeyValue::new("team", "backend"),
+///     ])
+///     .build();
 ///
-/// // Merge resources (Lambda attributes take precedence)
-/// let final_resource = extra_resource.merge(&lambda_resource);
+/// // Combine resources (custom attributes take precedence)
+/// // Create a new resource with all attributes
+/// let mut all_attributes = vec![
+///     KeyValue::new("deployment.stage", "prod"),
+///     KeyValue::new("team", "backend"),
+/// ];
+///
+/// // Add lambda attributes (could be done more programmatically in real code)
+/// all_attributes.push(KeyValue::new("cloud.provider", "aws"));
+/// all_attributes.push(KeyValue::new("faas.name", "my-function"));
+///
+/// let final_resource = Resource::builder()
+///     .with_attributes(all_attributes)
+///     .build();
 /// ```
 ///
 /// # Integration with Telemetry Config
@@ -191,32 +195,13 @@ pub fn get_lambda_resource() -> Resource {
         attributes.push(KeyValue::new("faas.instance", log_stream));
     }
 
-    // Add custom attributes from OTEL_RESOURCE_ATTRIBUTES
-    if let Ok(attrs) = env::var("OTEL_RESOURCE_ATTRIBUTES") {
-        for pair in attrs.split(',') {
-            let parts: Vec<&str> = pair.split('=').collect();
-            if parts.len() == 2 {
-                let key = parts[0].trim().to_string();
-                let value = parts[1].trim();
-                if !value.is_empty() {
-                    if let Ok(decoded_value) = decode(value) {
-                        let owned_value = decoded_value.into_owned();
-                        attributes.push(KeyValue::new(key, owned_value));
-                    }
-                }
-            }
-        }
-    }
-
-    // Create resource and merge with default resource
-    let resource = Resource::new(attributes);
-    Resource::default().merge(&resource)
+    // create resource with standard attributes and merge with custom attributes
+    Resource::builder().with_attributes(attributes).build()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use opentelemetry::Value;
     use serial_test::serial;
     use std::env;
 
@@ -246,33 +231,43 @@ mod tests {
         let schema = resource.schema_url().unwrap_or("");
         assert!(schema.is_empty()); // Default resource has no schema URL
 
+        // Check attributes using the resource's attribute iterator
+        let attrs: Vec<_> = resource.iter().collect();
+
+        // Helper function to find an attribute by key
+        let find_attr = |key: &str| -> Option<&opentelemetry::Value> {
+            attrs.iter().find(|kv| kv.0.as_str() == key).map(|kv| kv.1)
+        };
+
         assert_eq!(
-            resource.get("cloud.provider".into()),
-            Some(Value::String("aws".into()))
+            find_attr("cloud.provider"),
+            Some(&opentelemetry::Value::String("aws".into()))
         );
         assert_eq!(
-            resource.get("cloud.region".into()),
-            Some(Value::String("us-west-2".into()))
+            find_attr("cloud.region"),
+            Some(&opentelemetry::Value::String("us-west-2".into()))
         );
         assert_eq!(
-            resource.get("faas.name".into()),
-            Some(Value::String("test-function".into()))
+            find_attr("faas.name"),
+            Some(&opentelemetry::Value::String("test-function".into()))
         );
         assert_eq!(
-            resource.get("service.name".into()),
-            Some(Value::String("test-function".into()))
-        ); // Falls back to function name
-        assert_eq!(
-            resource.get("faas.version".into()),
-            Some(Value::String("$LATEST".into()))
+            find_attr("service.name"),
+            Some(&opentelemetry::Value::String("test-function".into()))
         );
         assert_eq!(
-            resource.get("faas.max_memory".into()),
-            Some(Value::I64(134217728)) // 128 * 1024 * 1024
+            find_attr("faas.version"),
+            Some(&opentelemetry::Value::String("$LATEST".into()))
         );
         assert_eq!(
-            resource.get("faas.instance".into()),
-            Some(Value::String("2024/01/01/[$LATEST]abc123".into()))
+            find_attr("faas.max_memory"),
+            Some(&opentelemetry::Value::I64(134217728))
+        ); // 128 * 1024 * 1024
+        assert_eq!(
+            find_attr("faas.instance"),
+            Some(&opentelemetry::Value::String(
+                "2024/01/01/[$LATEST]abc123".into()
+            ))
         );
 
         cleanup_env();
@@ -288,14 +283,20 @@ mod tests {
         env::set_var("OTEL_SERVICE_NAME", "custom-service");
 
         let resource = get_lambda_resource();
+        let attrs: Vec<_> = resource.iter().collect();
+
+        let find_attr = |key: &str| -> Option<&opentelemetry::Value> {
+            attrs.iter().find(|kv| kv.0.as_str() == key).map(|kv| kv.1)
+        };
+
         assert_eq!(
-            resource.get("service.name".into()),
-            Some(Value::String("custom-service".into()))
-        ); // Uses OTEL_SERVICE_NAME
+            find_attr("service.name"),
+            Some(&opentelemetry::Value::String("custom-service".into()))
+        );
         assert_eq!(
-            resource.get("faas.name".into()),
-            Some(Value::String("test-function".into()))
-        ); // Still sets faas.name
+            find_attr("faas.name"),
+            Some(&opentelemetry::Value::String("test-function".into()))
+        );
 
         cleanup_env();
     }
@@ -312,13 +313,19 @@ mod tests {
         );
 
         let resource = get_lambda_resource();
+        let attrs: Vec<_> = resource.iter().collect();
+
+        let find_attr = |key: &str| -> Option<&opentelemetry::Value> {
+            attrs.iter().find(|kv| kv.0.as_str() == key).map(|kv| kv.1)
+        };
+
         assert_eq!(
-            resource.get("custom.attr".into()),
-            Some(Value::String("value".into()))
+            find_attr("custom.attr"),
+            Some(&opentelemetry::Value::String("value".into()))
         );
         assert_eq!(
-            resource.get("deployment.stage".into()),
-            Some(Value::String("prod".into()))
+            find_attr("deployment.stage"),
+            Some(&opentelemetry::Value::String("prod".into()))
         );
 
         cleanup_env();
@@ -336,13 +343,19 @@ mod tests {
         );
 
         let resource = get_lambda_resource();
+        let attrs: Vec<_> = resource.iter().collect();
+
+        let find_attr = |key: &str| -> Option<&opentelemetry::Value> {
+            attrs.iter().find(|kv| kv.0.as_str() == key).map(|kv| kv.1)
+        };
+
         assert_eq!(
-            resource.get("custom.attr".into()),
-            Some(Value::String("hello world".into()))
+            find_attr("custom.attr"),
+            Some(&opentelemetry::Value::String("hello%20world".into()))
         );
         assert_eq!(
-            resource.get("tag".into()),
-            Some(Value::String("value=test".into()))
+            find_attr("tag"),
+            Some(&opentelemetry::Value::String("value%3Dtest".into()))
         );
 
         cleanup_env();
@@ -355,9 +368,16 @@ mod tests {
 
         let resource = get_lambda_resource();
         assert!(resource.schema_url().unwrap_or("").is_empty());
-        assert!(resource.get("cloud.provider".into()).is_none());
-        assert!(resource.get("cloud.region".into()).is_none());
-        assert!(resource.get("faas.name".into()).is_none());
+
+        let attrs: Vec<_> = resource.iter().collect();
+
+        let find_attr = |key: &str| -> Option<&opentelemetry::Value> {
+            attrs.iter().find(|kv| kv.0.as_str() == key).map(|kv| kv.1)
+        };
+
+        assert!(find_attr("cloud.provider").is_none());
+        assert!(find_attr("cloud.region").is_none());
+        assert!(find_attr("faas.name").is_none());
 
         cleanup_env();
     }

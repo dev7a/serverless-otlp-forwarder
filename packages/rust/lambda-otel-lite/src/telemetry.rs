@@ -24,36 +24,37 @@
 //! # Basic Usage
 //!
 //! ```no_run
-//! use lambda_otel_lite::{init_telemetry, TelemetryConfig};
+//! use lambda_otel_lite::telemetry::{init_telemetry, TelemetryConfig};
 //! use lambda_runtime::Error;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
-//!     // Initialize with default configuration
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
+//!     let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 //!     Ok(())
 //! }
 //! ```
 //!
 //! Custom configuration with custom resource attributes:
 //! ```no_run
-//! use lambda_otel_lite::{init_telemetry, TelemetryConfig};
+//! use lambda_otel_lite::telemetry::{init_telemetry, TelemetryConfig};
 //! use opentelemetry::KeyValue;
 //! use opentelemetry_sdk::Resource;
 //! use lambda_runtime::Error;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Error> {
-//!     let resource = Resource::new(vec![
-//!         KeyValue::new("service.version", "1.0.0"),
-//!         KeyValue::new("deployment.environment", "production"),
-//!     ]);
+//!     let resource = Resource::builder()
+//!         .with_attributes(vec![
+//!             KeyValue::new("service.version", "1.0.0"),
+//!             KeyValue::new("deployment.environment", "production"),
+//!         ])
+//!         .build();
 //!
 //!     let config = TelemetryConfig::builder()
 //!         .resource(resource)
 //!         .build();
 //!
-//!     let completion_handler = init_telemetry(config).await?;
+//!     let (_, completion_handler) = init_telemetry(config).await?;
 //!     Ok(())
 //! }
 //! ```
@@ -71,11 +72,10 @@
 //!         .with_span_processor(SimpleSpanProcessor::new(
 //!             Box::new(OtlpStdoutSpanExporter::default())
 //!         ))
-//!         .library_name("instrumented-service".to_string())
 //!         .enable_fmt_layer(true)
 //!         .build();
 //!
-//!     let completion_handler = init_telemetry(config).await?;
+//!     let (_, completion_handler) = init_telemetry(config).await?;
 //!     Ok(())
 //! }
 //! ```
@@ -92,50 +92,22 @@
 //! - `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`: Log level configuration
 
 use crate::{
-    extension::register_extension,
-    processor::{LambdaSpanProcessor, ProcessorConfig, ProcessorMode},
+    extension::register_extension, mode::ProcessorMode, processor::LambdaSpanProcessor,
     resource::get_lambda_resource,
 };
 use bon::Builder;
 use lambda_runtime::Error;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
-use opentelemetry::{global, global::set_tracer_provider, trace::TracerProvider as _};
+use opentelemetry::{global, global::set_tracer_provider, trace::TracerProvider as _, KeyValue};
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
-    trace::{Builder as TracerProviderBuilder, SpanProcessor, TracerProvider as SdkTracerProvider},
+    trace::{SdkTracerProvider, SpanProcessor, TracerProviderBuilder},
     Resource,
 };
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
 use std::{borrow::Cow, env, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing_subscriber::layer::SubscriberExt;
-
-static LEAKED_NAMES: LazyLock<Mutex<HashMap<String, &'static str>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Get or create a static string reference, leaking memory only once per unique string.
-///
-/// # Note on Memory Management
-///
-/// This function uses `Box::leak` to convert strings into static references, which is required
-/// by the OpenTelemetry API. To minimize memory leaks, it maintains a cache of previously
-/// leaked strings, ensuring each unique string is only leaked once.
-///
-/// While this still technically leaks memory, it's bounded by the number of unique library
-/// names used in the application. In a Lambda context, this is typically just one name
-/// per function, making the leak negligible.
-fn get_static_str(s: String) -> &'static str {
-    let mut cache = LEAKED_NAMES.lock().unwrap();
-    if let Some(&static_str) = cache.get(&s) {
-        static_str
-    } else {
-        let leaked = Box::leak(s.clone().into_boxed_str());
-        cache.insert(s, leaked);
-        leaked
-    }
-}
 
 /// Manages the lifecycle of span export based on the processing mode.
 ///
@@ -153,6 +125,7 @@ pub struct TelemetryCompletionHandler {
     provider: Arc<SdkTracerProvider>,
     sender: Option<UnboundedSender<()>>,
     mode: ProcessorMode,
+    tracer: opentelemetry_sdk::trace::Tracer,
 }
 
 impl TelemetryCompletionHandler {
@@ -161,11 +134,35 @@ impl TelemetryCompletionHandler {
         sender: Option<UnboundedSender<()>>,
         mode: ProcessorMode,
     ) -> Self {
+        // Create instrumentation scope with attributes
+        let scope = opentelemetry::InstrumentationScope::builder(env!("CARGO_PKG_NAME"))
+            .with_version(Cow::Borrowed(env!("CARGO_PKG_VERSION")))
+            .with_schema_url(Cow::Borrowed("https://opentelemetry.io/schemas/1.30.0"))
+            .with_attributes(vec![
+                KeyValue::new("library.language", "rust"),
+                KeyValue::new("library.type", "instrumentation"),
+                KeyValue::new("library.runtime", "aws_lambda"),
+            ])
+            .build();
+
+        // Create tracer with instrumentation scope
+        let tracer = provider.tracer_with_scope(scope);
+
         Self {
             provider,
             sender,
             mode,
+            tracer,
         }
+    }
+
+    /// Get the tracer instance for creating spans.
+    ///
+    /// Returns the cached tracer instance configured with this package's instrumentation scope.
+    /// The tracer is configured with the provider's settings and will automatically use
+    /// the correct span processor based on the processing mode.
+    pub fn get_tracer(&self) -> &opentelemetry_sdk::trace::Tracer {
+        &self.tracer
     }
 
     /// Complete telemetry processing for the current invocation
@@ -174,9 +171,10 @@ impl TelemetryCompletionHandler {
     /// In Async mode, this will send a completion signal to the extension.
     /// In Finalize mode, this will do nothing (handled by drop).
     pub fn complete(&self) {
+        println!("Completing telemetry");
         match self.mode {
             ProcessorMode::Sync => {
-                if let Some(Err(e)) = self.provider.force_flush().into_iter().find(|r| r.is_err()) {
+                if let Err(e) = self.provider.force_flush() {
                     tracing::warn!(error = ?e, "Error flushing telemetry");
                 }
             }
@@ -201,30 +199,43 @@ impl TelemetryCompletionHandler {
 ///
 /// # Fields
 ///
-/// * `enable_fmt_layer` - Enable console output (default: false)
+/// * `enable_fmt_layer` - Enable console output for debugging (default: false)
 /// * `set_global_provider` - Set as global tracer provider (default: true)
 /// * `resource` - Custom resource attributes (default: auto-detected from Lambda)
-/// * `library_name` - Name for the tracer (default: crate name)
-/// * `propagators` - List of propagators for trace context propagation
+/// * `env_var_name` - Environment variable name for log level configuration
 ///
 /// # Examples
 ///
-/// Default configuration:
+/// Basic usage with default configuration:
+///
 /// ```no_run
-/// use lambda_otel_lite::TelemetryConfig;
+/// use lambda_otel_lite::telemetry::TelemetryConfig;
 ///
 /// let config = TelemetryConfig::default();
 /// ```
 ///
-/// Custom configuration:
+/// Custom configuration with resource attributes:
+///
 /// ```no_run
-/// use lambda_otel_lite::TelemetryConfig;
-/// use opentelemetry_sdk::Resource;
+/// use lambda_otel_lite::telemetry::TelemetryConfig;
 /// use opentelemetry::KeyValue;
+/// use opentelemetry_sdk::Resource;
 ///
 /// let config = TelemetryConfig::builder()
-///     .resource(Resource::new(vec![KeyValue::new("version", "1.0.0")]))
-///     .enable_fmt_layer(true)
+///     .resource(Resource::builder()
+///         .with_attributes(vec![KeyValue::new("version", "1.0.0")])
+///         .build())
+///     .build();
+/// ```
+///
+/// Custom configuration with logging options:
+///
+/// ```no_run
+/// use lambda_otel_lite::telemetry::TelemetryConfig;
+///
+/// let config = TelemetryConfig::builder()
+///     .enable_fmt_layer(true)  // Enable console output for debugging
+///     .env_var_name("MY_CUSTOM_LOG_LEVEL".to_string())  // Custom env var for log level
 ///     .build();
 /// ```
 #[derive(Builder, Debug)]
@@ -239,16 +250,42 @@ pub struct TelemetryConfig {
     #[builder(field)]
     propagators: Vec<Box<dyn TextMapPropagator + Send + Sync>>,
 
+    /// Enable console output for debugging.
+    ///
+    /// When enabled, spans and events will be printed to the console in addition
+    /// to being exported through the configured span processors. This is useful
+    /// for debugging but adds overhead and should be disabled in production.
+    ///
+    /// Default: `false`
     #[builder(default = false)]
     pub enable_fmt_layer: bool,
 
+    /// Set this provider as the global OpenTelemetry provider.
+    ///
+    /// When enabled, the provider will be registered as the global provider
+    /// for the OpenTelemetry API. This allows using the global tracer API
+    /// without explicitly passing around the provider.
+    ///
+    /// Default: `true`
     #[builder(default = true)]
     pub set_global_provider: bool,
 
+    /// Custom resource attributes for all spans.
+    ///
+    /// If not provided, resource attributes will be automatically detected
+    /// from the Lambda environment. Custom resources will override any
+    /// automatically detected attributes with the same keys.
+    ///
+    /// Default: `None` (auto-detected from Lambda environment)
     pub resource: Option<Resource>,
 
-    pub library_name: Option<String>,
-
+    /// Environment variable name to use for log level configuration.
+    ///
+    /// This field specifies which environment variable should be used to configure
+    /// the tracing subscriber's log level filter. If not specified, the system will
+    /// first check for `RUST_LOG` and then fall back to `AWS_LAMBDA_LOG_LEVEL`.
+    ///
+    /// Default: `None` (uses `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`)
     pub env_var_name: Option<String>,
 }
 
@@ -328,7 +365,9 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
 ///
 /// # Returns
 ///
-/// Returns a completion handler for managing span export timing
+/// Returns a tuple containing:
+/// - A tracer instance for manual instrumentation
+/// - A completion handler for managing span export timing
 ///
 /// # Errors
 ///
@@ -339,18 +378,100 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
 ///
 /// # Examples
 ///
+/// Basic usage with default configuration:
+///
+/// ```no_run
+/// use lambda_otel_lite::telemetry::{init_telemetry, TelemetryConfig};
+///
+/// # async fn example() -> Result<(), lambda_runtime::Error> {
+/// // Initialize with default configuration
+/// let (_, telemetry) = init_telemetry(TelemetryConfig::default()).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Custom configuration:
+///
+/// ```no_run
+/// use lambda_otel_lite::telemetry::{init_telemetry, TelemetryConfig};
+/// use opentelemetry::KeyValue;
+/// use opentelemetry_sdk::Resource;
+///
+/// # async fn example() -> Result<(), lambda_runtime::Error> {
+/// // Create custom resource
+/// let resource = Resource::builder()
+///     .with_attributes(vec![
+///         KeyValue::new("service.name", "payment-api"),
+///         KeyValue::new("service.version", "1.2.3"),
+///     ])
+///     .build();
+///
+/// // Initialize with custom configuration
+/// let (_, telemetry) = init_telemetry(
+///     TelemetryConfig::builder()
+///         .resource(resource)
+///         .build()
+/// ).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// Advanced usage with BatchSpanProcessor (required for async exporters):
+///
 /// ```no_run
 /// use lambda_otel_lite::{init_telemetry, TelemetryConfig};
+/// use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, Protocol};
+/// use opentelemetry_sdk::trace::BatchSpanProcessor;
+/// use lambda_runtime::Error;
 ///
-/// #[tokio::main]
-/// async fn main() -> Result<(), lambda_runtime::Error> {
-///     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-///     Ok(())
-/// }
+/// # async fn example() -> Result<(), Error> {
+/// let batch_exporter = opentelemetry_otlp::SpanExporter::builder()
+///     .with_http()
+///     .with_http_client(reqwest::Client::new())
+///     .with_protocol(Protocol::HttpBinary)
+///     .build()?;
+///
+/// let (provider, completion) = init_telemetry(
+///     TelemetryConfig::builder()
+///         .with_span_processor(BatchSpanProcessor::builder(batch_exporter).build())
+///         .build()
+/// ).await?;
+/// # Ok(())
+/// # }
 /// ```
+///
+/// Using LambdaSpanProcessor with blocking http client:
+///
+/// ```no_run
+/// use lambda_otel_lite::{init_telemetry, TelemetryConfig, LambdaSpanProcessor};
+/// use opentelemetry_otlp::{WithExportConfig, WithHttpConfig, Protocol};
+/// use lambda_runtime::Error;
+///
+/// # async fn example() -> Result<(), Error> {
+/// let lambda_exporter = opentelemetry_otlp::SpanExporter::builder()
+///     .with_http()
+///     .with_http_client(reqwest::blocking::Client::new())
+///     .with_protocol(Protocol::HttpBinary)
+///     .build()?;
+///
+/// let (provider, completion) = init_telemetry(
+///     TelemetryConfig::builder()
+///         .with_span_processor(
+///             LambdaSpanProcessor::builder()
+///                 .exporter(lambda_exporter)
+///                 .max_batch_size(512)
+///                 .max_queue_size(2048)
+///                 .build()
+///         )
+///         .build()
+/// ).await?;
+/// # Ok(())
+/// # }
+/// ```
+///
 pub async fn init_telemetry(
     mut config: TelemetryConfig,
-) -> Result<TelemetryCompletionHandler, Error> {
+) -> Result<(opentelemetry_sdk::trace::Tracer, TelemetryCompletionHandler), Error> {
     let mode = ProcessorMode::from_env();
 
     // Set up the propagator(s)
@@ -365,30 +486,15 @@ pub async fn init_telemetry(
 
     // Add default span processor if none was added
     if !config.has_processor {
-        let compression_level = env::var("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(6);
-        let exporter = Box::new(OtlpStdoutSpanExporter::with_gzip_level(compression_level));
-        let max_queue_size = env::var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(2048);
-        let processor = LambdaSpanProcessor::new(exporter, ProcessorConfig { max_queue_size });
+        let processor = LambdaSpanProcessor::builder()
+            .exporter(OtlpStdoutSpanExporter::default())
+            .build();
         config.provider_builder = config.provider_builder.with_span_processor(processor);
     }
 
     // Apply defaults and build the provider
     let resource = config.resource.unwrap_or_else(get_lambda_resource);
     let provider = Arc::new(config.provider_builder.with_resource(resource).build());
-
-    // Convert library_name to a static str, reusing if possible
-    let library_name = get_static_str(
-        config
-            .library_name
-            .unwrap_or_else(|| Cow::Borrowed(env!("CARGO_PKG_NAME")).into_owned()),
-    );
-    let tracer = provider.tracer(library_name);
 
     // Register the extension if in async or finalize mode
     let sender = match mode {
@@ -415,6 +521,9 @@ pub async fn init_telemetry(
     let env_filter = tracing_subscriber::EnvFilter::builder()
         .with_env_var(env_var_name)
         .from_env_lossy();
+
+    let completion_handler = TelemetryCompletionHandler::new(provider.clone(), sender, mode);
+    let tracer = completion_handler.get_tracer().clone();
 
     let subscriber = tracing_subscriber::registry::Registry::default()
         .with(tracing_opentelemetry::OpenTelemetryLayer::new(
@@ -452,52 +561,34 @@ pub async fn init_telemetry(
         tracing::subscriber::set_global_default(subscriber)?;
     }
 
-    Ok(TelemetryCompletionHandler::new(provider, sender, mode))
+    Ok((tracer, completion_handler))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use opentelemetry::KeyValue;
     use opentelemetry_sdk::trace::SimpleSpanProcessor;
     use sealed_test::prelude::*;
     use tokio::sync::mpsc;
 
-    #[test]
-    fn test_static_str_caching() {
-        // First call should leak
-        let first = get_static_str("test-name".to_string());
-
-        // Second call with same string should reuse
-        let second = get_static_str("test-name".to_string());
-
-        // Verify we got the same pointer
-        assert!(std::ptr::eq(first, second));
-
-        // Different string should get different pointer
-        let third = get_static_str("other-name".to_string());
-        assert!(!std::ptr::eq(first, third));
-    }
-
     #[tokio::test]
     #[sealed_test]
     async fn test_init_telemetry_defaults() {
-        let completion_handler = init_telemetry(TelemetryConfig::default()).await.unwrap();
+        let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await.unwrap();
         assert!(completion_handler.sender.is_none()); // Default mode is Sync
     }
 
     #[tokio::test]
     #[sealed_test]
     async fn test_init_telemetry_custom() {
-        let resource = Resource::new(vec![KeyValue::new("test", "value")]);
+        let resource = Resource::builder().build();
         let config = TelemetryConfig::builder()
             .resource(resource)
-            .library_name("test".into())
             .enable_fmt_layer(true)
             .set_global_provider(false)
             .build();
 
-        let completion_handler = init_telemetry(config).await.unwrap();
+        let (_, completion_handler) = init_telemetry(config).await.unwrap();
         assert!(completion_handler.sender.is_none());
     }
 
@@ -512,7 +603,7 @@ mod tests {
     #[test]
     fn test_completion_handler_sync_mode() {
         let provider = Arc::new(
-            TracerProviderBuilder::default()
+            SdkTracerProvider::builder()
                 .with_span_processor(SimpleSpanProcessor::new(Box::new(
                     OtlpStdoutSpanExporter::default(),
                 )))
@@ -530,7 +621,7 @@ mod tests {
     #[tokio::test]
     async fn test_completion_handler_async_mode() {
         let provider = Arc::new(
-            TracerProviderBuilder::default()
+            SdkTracerProvider::builder()
                 .with_span_processor(SimpleSpanProcessor::new(Box::new(
                     OtlpStdoutSpanExporter::default(),
                 )))
@@ -554,7 +645,7 @@ mod tests {
     #[test]
     fn test_completion_handler_finalize_mode() {
         let provider = Arc::new(
-            TracerProviderBuilder::default()
+            SdkTracerProvider::builder()
                 .with_span_processor(SimpleSpanProcessor::new(Box::new(
                     OtlpStdoutSpanExporter::default(),
                 )))
@@ -574,7 +665,7 @@ mod tests {
     #[test]
     fn test_completion_handler_clone() {
         let provider = Arc::new(
-            TracerProviderBuilder::default()
+            SdkTracerProvider::builder()
                 .with_span_processor(SimpleSpanProcessor::new(Box::new(
                     OtlpStdoutSpanExporter::default(),
                 )))
@@ -597,7 +688,7 @@ mod tests {
     #[test]
     fn test_completion_handler_sync_mode_error_handling() {
         let provider = Arc::new(
-            TracerProviderBuilder::default()
+            SdkTracerProvider::builder()
                 .with_span_processor(SimpleSpanProcessor::new(Box::new(
                     OtlpStdoutSpanExporter::default(),
                 )))
@@ -614,7 +705,7 @@ mod tests {
     #[tokio::test]
     async fn test_completion_handler_async_mode_error_handling() {
         let provider = Arc::new(
-            TracerProviderBuilder::default()
+            SdkTracerProvider::builder()
                 .with_span_processor(SimpleSpanProcessor::new(Box::new(
                     OtlpStdoutSpanExporter::default(),
                 )))

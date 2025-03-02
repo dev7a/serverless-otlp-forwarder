@@ -13,6 +13,9 @@ lambda_runtime.workspace = true
 tracing.workspace = true
 aws_lambda_events.workspace = true
 lambda-otel-lite.workspace = true
+tracing-opentelemetry.workspace = true
+opentelemetry.workspace = true
+rand = "0.9.0"
 
 [[bin]]
 name = "handler-example"

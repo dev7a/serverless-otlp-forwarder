@@ -58,64 +58,33 @@
 //! - You want standardized instrumentation
 //!
 //! # Examples
-//!
-//! Basic usage with JSON events:
-//!
-//! ```rust,no_run
-//! use lambda_otel_lite::{init_telemetry, traced_handler, TelemetryConfig};
-//! use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
-//! use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
-//!
-//! async fn function_handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<serde_json::Value, Error> {
-//!     Ok(serde_json::json!({
-//!         "statusCode": 200,
-//!         "body": format!("Hello from request {}", event.context.request_id)
-//!     }))
-//! }
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Error> {
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-//!     
-//!     let runtime = Runtime::new(service_fn(|event| {
-//!         traced_handler("my-handler", event, completion_handler.clone(), function_handler)
-//!     }));
-//!
-//!     runtime.run().await
-//! }
-//! ```
-//!
-//! Using with API Gateway events:
-//!
-//! ```rust,no_run
-//! use lambda_otel_lite::{init_telemetry, traced_handler, TelemetryConfig};
-//! use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
-//! use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
-//!
-//! async fn api_handler(
-//!     event: LambdaEvent<ApiGatewayV2httpRequest>
-//! ) -> Result<serde_json::Value, Error> {
-//!     // HTTP attributes will be automatically extracted
-//!     Ok(serde_json::json!({
-//!         "statusCode": 200,
-//!         "body": format!("Hello from request {}", event.context.request_id)
-//!     }))
-//! }
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Error> {
-//!     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-//!     
-//!     let runtime = Runtime::new(service_fn(|event| {
-//!         traced_handler("api-handler", event, completion_handler.clone(), api_handler)
-//!     }));
-//!
-//!     runtime.run().await
-//! }
-//! ```
-
+///
+/// ```rust,no_run
+/// use std::result::Result;
+/// use lambda_runtime::{Error, LambdaEvent};
+/// use serde_json::Value;
+/// use lambda_otel_lite::{init_telemetry, create_traced_handler, TelemetryConfig};
+///
+/// async fn my_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+///     let prefix = event.payload.get("prefix").and_then(|p| p.as_str()).unwrap_or("default");
+///     Ok::<Value, Error>(serde_json::json!({ "prefix": prefix }))
+/// }
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Error> {
+///     let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
+///     let handler = create_traced_handler(
+///         "my-handler",
+///         completion_handler,
+///         my_handler
+///     );
+///     // ... use handler with Runtime ...
+/// #   Ok(())
+/// # }
+/// ```
 use crate::extractors::{set_common_attributes, set_response_attributes, SpanAttributesExtractor};
 use crate::TelemetryCompletionHandler;
+use futures_util::future::BoxFuture;
 use lambda_runtime::{Error, LambdaEvent};
 use serde::{de::DeserializeOwned, Serialize};
 use std::future::Future;
@@ -125,136 +94,16 @@ use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 static IS_COLD_START: AtomicBool = AtomicBool::new(true);
-/// Wraps a Lambda handler function with OpenTelemetry tracing.
+
+/// Type representing a traced Lambda handler function.
+/// Takes a `LambdaEvent<T>` and returns a `Future` that resolves to `Result<R, Error>`.
+pub type TracedHandler<T, R> =
+    Box<dyn Fn(LambdaEvent<T>) -> BoxFuture<'static, Result<R, Error>> + Send + Sync>;
+
+/// Internal implementation that wraps a Lambda handler function with OpenTelemetry tracing.
 ///
-/// This function wraps a Lambda handler function to automatically create and configure
-/// OpenTelemetry spans for each invocation. It provides automatic instrumentation
-/// with minimal code changes required.
-///
-/// # Features
-///
-/// - Creates spans for each invocation with configurable names
-/// - Extracts attributes from events implementing `SpanAttributesExtractor`
-/// - Propagates context from incoming requests via headers
-/// - Tracks response status codes for HTTP responses
-/// - Supports both sync and async span processing modes
-///
-/// # Span Attributes
-///
-/// The following attributes are automatically set:
-///
-/// - `otel.name`: The handler name provided
-/// - `otel.kind`: "SERVER" by default, can be overridden by extractor
-/// - `requestId`: The Lambda request ID
-/// - `faas.invocation_id`: The Lambda request ID
-/// - `cloud.resource_id`: The Lambda function ARN
-/// - `cloud.account.id`: The AWS account ID (extracted from ARN)
-/// - `faas.trigger`: "http" or "other" based on event type
-/// - `http.status_code`: For HTTP responses
-///
-/// Additional attributes can be added through the `SpanAttributesExtractor` trait.
-///
-/// # Error Handling
-///
-/// The wrapper handles errors gracefully:
-/// - Extraction failures don't fail the function
-/// - Invalid headers are skipped
-/// - Export errors are logged but don't fail the function
-/// - 5xx status codes set the span status to ERROR
-///
-/// # Type Parameters
-///
-/// * `T` - The event payload type that must be deserializable and serializable
-/// * `R` - The response type that must be serializable
-/// * `F` - The handler function type
-/// * `Fut` - The future returned by the handler function
-///
-/// # Arguments
-///
-/// * `name` - Name of the handler/span
-/// * `event` - Lambda event containing both payload and context
-/// * `completion_handler` - Handler for managing span export
-/// * `handler_fn` - The actual Lambda handler function to wrap
-///
-/// # Returns
-///
-/// Returns the result from the handler function
-///
-/// # Examples
-///
-/// Basic usage:
-///
-/// ```rust,no_run
-/// use lambda_otel_lite::{init_telemetry, traced_handler, TelemetryConfig};
-/// use lambda_runtime::{service_fn, Error, LambdaEvent};
-/// use serde_json::Value;
-///
-/// async fn function_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
-///     Ok(serde_json::json!({ "statusCode": 200 }))
-/// }
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Error> {
-///     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-///     
-///     let func = service_fn(|event| {
-///         traced_handler(
-///             "my-handler",
-///             event,
-///             completion_handler.clone(),
-///             function_handler,
-///         )
-///     });
-///
-///     lambda_runtime::run(func).await
-/// }
-/// ```
-///
-/// With custom event type implementing `SpanAttributesExtractor`:
-///
-/// ```rust,no_run
-/// use lambda_otel_lite::{init_telemetry, traced_handler, TelemetryConfig};
-/// use lambda_otel_lite::{SpanAttributes, SpanAttributesExtractor};
-/// use lambda_runtime::{service_fn, Error, LambdaEvent};
-/// use std::collections::HashMap;
-/// use serde::{Serialize, Deserialize};
-/// use opentelemetry::Value;
-/// #[derive(Serialize, Deserialize)]
-/// struct CustomEvent {
-///     operation: String,
-/// }
-///
-/// impl SpanAttributesExtractor for CustomEvent {
-///     fn extract_span_attributes(&self) -> SpanAttributes {
-///         let mut attributes = HashMap::new();
-///         attributes.insert("operation".to_string(), Value::String(self.operation.clone().into()));
-///         SpanAttributes::builder()
-///             .attributes(attributes)
-///             .build()
-///     }
-/// }
-///
-/// async fn handler(event: LambdaEvent<CustomEvent>) -> Result<serde_json::Value, Error> {
-///     Ok(serde_json::json!({ "statusCode": 200 }))
-/// }
-///
-/// #[tokio::main]
-/// async fn main() -> Result<(), Error> {
-///     let completion_handler = init_telemetry(TelemetryConfig::default()).await?;
-///     
-///     let func = service_fn(|event| {
-///         traced_handler(
-///             "custom-handler",
-///             event,
-///             completion_handler.clone(),
-///             handler,
-///         )
-///     });
-///
-///     lambda_runtime::run(func).await
-/// }
-/// ```
-pub async fn traced_handler<T, R, F, Fut>(
+/// This is an implementation detail. Users should use `create_traced_handler` instead.
+pub(crate) async fn traced_handler<T, R, F, Fut>(
     name: &'static str,
     event: LambdaEvent<T>,
     completion_handler: TelemetryCompletionHandler,
@@ -340,17 +189,102 @@ where
     result
 }
 
+/// Creates a traced handler function that can be used directly with `service_fn`.
+///
+/// This is a convenience wrapper around `traced_handler` that returns a function suitable
+/// for direct use with the Lambda runtime. It provides a more ergonomic interface by
+/// allowing handler creation to be separated from usage.
+///
+/// # Type Parameters
+///
+/// * `T` - The event payload type that must be deserializable and serializable
+/// * `R` - The response type that must be serializable
+/// * `F` - The handler function type, must be `Clone` to allow reuse across invocations
+/// * `Fut` - The future returned by the handler function
+///
+/// # Handler Requirements
+///
+/// The handler function must implement `Clone`. This is automatically satisfied by:
+/// - Regular functions (e.g., `fn(LambdaEvent<T>) -> Future<...>`)
+/// - Closures that capture only `Clone` types
+///
+/// For example:
+/// ```ignore
+/// // Regular function - automatically implements Clone
+/// async fn my_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+///     Ok(serde_json::json!({}))
+/// }
+///
+/// // Closure capturing Clone types - implements Clone
+/// let prefix = "my-prefix".to_string();
+/// let handler = |event: LambdaEvent<Value>| async move {
+///     let prefix = prefix.clone();
+///     Ok::<Value, Error>(serde_json::json!({ "prefix": prefix }))
+/// };
+/// ```
+///
+/// # Arguments
+///
+/// * `name` - Name of the handler/span
+/// * `completion_handler` - Handler for managing span export
+/// * `handler_fn` - The actual Lambda handler function to wrap
+///
+/// # Returns
+///
+/// Returns a boxed function that can be used directly with `service_fn`
+///
+/// # Examples
+///
+/// ```rust
+/// use lambda_runtime::{Error, LambdaEvent};
+/// use serde_json::Value;
+/// use lambda_otel_lite::{init_telemetry, create_traced_handler, TelemetryConfig};
+///
+/// async fn my_handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+///     let prefix = event.payload.get("prefix").and_then(|p| p.as_str()).unwrap_or("default");
+///     Ok::<Value, Error>(serde_json::json!({ "prefix": prefix }))
+/// }
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Error> {
+///     let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
+///     let handler = create_traced_handler(
+///         "my-handler",
+///         completion_handler,
+///         my_handler
+///     );
+///     // ... use handler with Runtime ...
+/// #   Ok(())
+/// # }
+/// ```
+pub fn create_traced_handler<T, R, F, Fut>(
+    name: &'static str,
+    completion_handler: TelemetryCompletionHandler,
+    handler_fn: F,
+) -> TracedHandler<T, R>
+where
+    T: SpanAttributesExtractor + DeserializeOwned + Serialize + Send + 'static,
+    R: Serialize + Send + 'static,
+    F: Fn(LambdaEvent<T>) -> Fut + Send + Sync + Clone + 'static,
+    Fut: Future<Output = Result<R, Error>> + Send + 'static,
+{
+    Box::new(move |event: LambdaEvent<T>| {
+        let completion_handler = completion_handler.clone();
+        let handler_fn = handler_fn.clone();
+        Box::pin(traced_handler(name, event, completion_handler, handler_fn))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::processor::ProcessorMode;
+    use crate::mode::ProcessorMode;
     use futures_util::future::BoxFuture;
     use lambda_runtime::Context;
+    use opentelemetry::trace::Status;
     use opentelemetry::trace::TracerProvider as _;
-    use opentelemetry::trace::{Status, TraceResult};
     use opentelemetry_sdk::{
-        export::trace::{SpanData, SpanExporter},
-        trace::TracerProvider,
+        trace::{SdkTracerProvider, SpanData, SpanExporter},
         Resource,
     };
     use serde_json::Value;
@@ -361,7 +295,8 @@ mod tests {
     };
     use std::time::Duration;
     use tracing_subscriber::prelude::*;
-    // Test exporter that captures spans and their attributes
+
+    // Test infrastructure
     #[derive(Debug, Default, Clone)]
     struct TestExporter {
         export_count: Arc<AtomicUsize>,
@@ -389,7 +324,10 @@ mod tests {
     }
 
     impl SpanExporter for TestExporter {
-        fn export(&mut self, spans: Vec<SpanData>) -> BoxFuture<'static, TraceResult<()>> {
+        fn export(
+            &mut self,
+            spans: Vec<SpanData>,
+        ) -> BoxFuture<'static, opentelemetry_sdk::error::OTelSdkResult> {
             self.export_count.fetch_add(spans.len(), Ordering::SeqCst);
             self.spans.lock().unwrap().extend(spans);
             Box::pin(futures_util::future::ready(Ok(())))
@@ -397,14 +335,14 @@ mod tests {
     }
 
     fn setup_test_provider() -> (
-        Arc<TracerProvider>,
+        Arc<SdkTracerProvider>,
         Arc<TestExporter>,
         tracing::dispatcher::DefaultGuard,
     ) {
         let exporter = Arc::new(TestExporter::new());
-        let provider = TracerProvider::builder()
+        let provider = SdkTracerProvider::builder()
             .with_simple_exporter(exporter.as_ref().clone())
-            .with_resource(Resource::empty())
+            .with_resource(Resource::builder().build())
             .build();
         let subscriber = tracing_subscriber::registry::Registry::default()
             .with(tracing_opentelemetry::OpenTelemetryLayer::new(
@@ -414,26 +352,38 @@ mod tests {
         (Arc::new(provider), exporter, subscriber)
     }
 
+    async fn wait_for_spans(duration: Duration) {
+        tokio::time::sleep(duration).await;
+    }
+
+    // Basic functionality tests
     #[tokio::test]
     #[serial]
-    async fn test_basic_handler_wrapping() -> Result<(), Error> {
-        let (provider, exporter, _subscriber_guard) = setup_test_provider();
-
+    async fn test_successful_response() -> Result<(), Error> {
+        let (provider, exporter, _guard) = setup_test_provider();
         let completion_handler =
-            TelemetryCompletionHandler::new(provider.clone(), None, ProcessorMode::Sync);
+            TelemetryCompletionHandler::new(provider, None, ProcessorMode::Sync);
 
-        let handler_fn =
-            |_event: LambdaEvent<Value>| async move { Ok(serde_json::json!({"statusCode": 200})) };
+        async fn handler(_: LambdaEvent<Value>) -> Result<Value, Error> {
+            Ok(serde_json::json!({ "statusCode": 200, "body": "Success" }))
+        }
 
+        let traced_handler = create_traced_handler("test-handler", completion_handler, handler);
         let event = LambdaEvent::new(serde_json::json!({}), Context::default());
 
-        let result = traced_handler("test-handler", event, completion_handler, handler_fn).await?;
+        let result = traced_handler(event).await?;
 
-        // Wait a bit longer for spans to be exported
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        wait_for_spans(Duration::from_millis(100)).await;
 
         let spans = exporter.get_spans();
-        assert!(!spans.is_empty());
+        assert!(!spans.is_empty(), "No spans were exported");
+
+        let span = &spans[0];
+        assert_eq!(span.name, "test-handler", "Unexpected span name");
+        assert_eq!(
+            TestExporter::find_attribute(span, "http.status_code"),
+            Some("200".to_string())
+        );
         assert_eq!(result["statusCode"], 200);
 
         Ok(())
@@ -442,36 +392,101 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn test_error_response() -> Result<(), Error> {
-        let (provider, exporter, _subscriber_guard) = setup_test_provider();
-
+        let (provider, exporter, _guard) = setup_test_provider();
         let completion_handler =
-            TelemetryCompletionHandler::new(provider.clone(), None, ProcessorMode::Sync);
+            TelemetryCompletionHandler::new(provider, None, ProcessorMode::Sync);
 
-        let event = LambdaEvent::new(serde_json::json!({}), Context::default());
-
-        let handler_fn = |_event: LambdaEvent<Value>| async move {
+        async fn handler(_: LambdaEvent<Value>) -> Result<Value, Error> {
             Ok(serde_json::json!({
                 "statusCode": 500,
                 "body": "Internal Server Error"
             }))
-        };
+        }
 
-        let result = traced_handler("test-handler", event, completion_handler, handler_fn).await?;
+        let traced_handler = create_traced_handler("test-handler", completion_handler, handler);
+        let event = LambdaEvent::new(serde_json::json!({}), Context::default());
 
-        assert_eq!(result["statusCode"], 500);
+        let result = traced_handler(event).await?;
 
-        // Wait a bit for spans to be exported
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        wait_for_spans(Duration::from_millis(100)).await;
 
         let spans = exporter.get_spans();
-        assert!(!spans.is_empty());
-        let span = &spans[0];
+        assert!(!spans.is_empty(), "No spans were exported");
 
+        let span = &spans[0];
+        assert_eq!(span.name, "test-handler", "Unexpected span name");
         assert_eq!(
             TestExporter::find_attribute(span, "http.status_code"),
             Some("500".to_string())
         );
         assert!(matches!(span.status, Status::Error { .. }));
+        assert_eq!(result["statusCode"], 500);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_handler_reuse() -> Result<(), Error> {
+        let (provider, exporter, _guard) = setup_test_provider();
+        let completion_handler =
+            TelemetryCompletionHandler::new(provider, None, ProcessorMode::Sync);
+
+        async fn handler(_: LambdaEvent<Value>) -> Result<Value, Error> {
+            Ok(serde_json::json!({ "status": "ok" }))
+        }
+
+        let traced_handler = create_traced_handler("test-handler", completion_handler, handler);
+
+        // Call the handler multiple times to verify it can be reused
+        for _ in 0..3 {
+            let event = LambdaEvent::new(serde_json::json!({}), Context::default());
+            let _ = traced_handler(event).await?;
+        }
+
+        wait_for_spans(Duration::from_millis(100)).await;
+
+        let spans = exporter.get_spans();
+        assert_eq!(spans.len(), 3, "Expected exactly 3 spans");
+
+        // Verify all spans have the correct name
+        for span in spans {
+            assert_eq!(span.name, "test-handler", "Unexpected span name");
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_handler_with_closure() -> Result<(), Error> {
+        let (provider, exporter, _guard) = setup_test_provider();
+        let completion_handler =
+            TelemetryCompletionHandler::new(provider, None, ProcessorMode::Sync);
+
+        let prefix = "test-prefix".to_string();
+        let handler = move |_event: LambdaEvent<Value>| {
+            let prefix = prefix.clone();
+            async move {
+                Ok(serde_json::json!({
+                    "statusCode": 200,
+                    "prefix": prefix
+                }))
+            }
+        };
+
+        let traced_handler = create_traced_handler("test-handler", completion_handler, handler);
+        let event = LambdaEvent::new(serde_json::json!({}), Context::default());
+
+        let result = traced_handler(event).await?;
+
+        wait_for_spans(Duration::from_millis(100)).await;
+
+        let spans = exporter.get_spans();
+        assert!(!spans.is_empty(), "No spans were exported");
+
+        assert_eq!(result["prefix"], "test-prefix");
+        assert_eq!(spans[0].name, "test-handler", "Unexpected span name");
 
         Ok(())
     }
