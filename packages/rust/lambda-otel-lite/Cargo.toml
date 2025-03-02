@@ -19,7 +19,7 @@ opentelemetry_sdk.workspace = true
 tokio.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-otlp-stdout-span-exporter.workspace = true
+otlp-stdout-span-exporter = { version = "0.9.0" }
 urlencoding = "2.1.3"
 lambda_runtime.workspace = true
 lambda-extension = "0.11.0"
