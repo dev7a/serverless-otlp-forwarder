@@ -66,7 +66,7 @@
 //! ```
 
 use opentelemetry::trace::TracerProvider;
-use opentelemetry_sdk::{metrics::SdkMeterProvider, trace::TracerProvider as SdkTracerProvider};
+use opentelemetry_sdk::{metrics::SdkMeterProvider, trace::SdkTracerProvider};
 use tracing_subscriber::prelude::*;
 
 /// Returns a tracing layer configured with the given tracer provider and tracer name.

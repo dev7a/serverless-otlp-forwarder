@@ -15,8 +15,8 @@ use std::time::Duration;
 use opentelemetry_http::HttpClient;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
+    error::OTelSdkError,
     metrics::{PeriodicReader, SdkMeterProvider},
-    runtime,
 };
 use otlp_stdout_client::StdoutClient;
 
@@ -111,7 +111,7 @@ impl HttpMeterProviderBuilder {
     }
 
     /// Builds the `MeterProvider` with the configured settings.
-    pub fn build(self) -> Result<SdkMeterProvider, opentelemetry_sdk::error::Error> {
+    pub fn build(self) -> Result<SdkMeterProvider, OTelSdkError> {
         let mut exporter_builder = opentelemetry_otlp::MetricExporter::builder()
             .with_http()
             .with_protocol(crate::protocol::get_protocol())
@@ -121,9 +121,11 @@ impl HttpMeterProviderBuilder {
             exporter_builder = exporter_builder.with_http_client(client);
         }
 
-        let exporter = exporter_builder.build()?;
+        let exporter = exporter_builder
+            .build()
+            .map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
 
-        let reader = PeriodicReader::builder(exporter, runtime::Tokio)
+        let reader = PeriodicReader::builder(exporter)
             .with_interval(self.export_interval)
             .build();
 

@@ -38,7 +38,7 @@ use opentelemetry_http::HttpClient;
 use opentelemetry_otlp::{WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
-    trace::{IdGenerator, RandomIdGenerator, TracerProvider as SdkTracerProvider},
+    trace::{IdGenerator, RandomIdGenerator, SdkTracerProvider},
 };
 use otlp_stdout_client::StdoutClient;
 use std::{env, fmt::Debug};
@@ -366,8 +366,7 @@ where
 
         let builder = match self.exporter_type {
             ExporterType::Simple => SdkTracerProvider::builder().with_simple_exporter(exporter),
-            ExporterType::Batch => SdkTracerProvider::builder()
-                .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio),
+            ExporterType::Batch => SdkTracerProvider::builder().with_batch_exporter(exporter),
         };
 
         let tracer_provider = builder

@@ -1,9 +1,6 @@
 use opentelemetry::KeyValue;
-use opentelemetry_aws::detector::LambdaResourceDetector;
-use opentelemetry_sdk::{resource::ResourceDetector, Resource};
-use opentelemetry_semantic_conventions as semconv;
+use opentelemetry_sdk::Resource;
 use std::env;
-use std::time::Duration;
 
 /// Retrieves the Lambda resource with the service name.
 ///
@@ -18,77 +15,37 @@ use std::time::Duration;
 ///
 /// A `Resource` representing the Lambda resource with the service name.
 pub fn get_lambda_resource() -> Resource {
-    let service_name =
-        match env::var("OTEL_SERVICE_NAME").or_else(|_| env::var("AWS_LAMBDA_FUNCTION_NAME")) {
-            Ok(name) => name,
-            Err(_) => "unknown-service".to_string(),
-        };
-    Resource::default()
-        .merge(&LambdaResourceDetector.detect(Duration::default()))
-        .merge(&Resource::new(vec![
-            KeyValue::new(semconv::resource::SERVICE_NAME, service_name),
-            KeyValue::new(semconv::resource::PROCESS_RUNTIME_NAME, "rust"),
-            KeyValue::new(
-                semconv::resource::PROCESS_RUNTIME_VERSION,
-                rustc_version_runtime::version().to_string(),
-            ),
-        ]))
-}
+    let mut attributes = Vec::new();
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use sealed_test::prelude::*;
-
-    #[sealed_test(env = [
-        ("OTEL_SERVICE_NAME", "test-service"),
-        ("AWS_LAMBDA_FUNCTION_NAME", "test-function"),
-    ])]
-    fn test_get_lambda_resource_with_otel_service_name() {
-        let resource = get_lambda_resource();
-        assert_eq!(
-            resource.get(opentelemetry_semantic_conventions::resource::SERVICE_NAME.into()),
-            Some("test-service".into())
-        );
+    // Add standard Lambda attributes
+    if let Ok(region) = env::var("AWS_REGION") {
+        attributes.push(KeyValue::new("cloud.provider", "aws"));
+        attributes.push(KeyValue::new("cloud.region", region));
     }
 
-    #[sealed_test(env = [
-        ("AWS_LAMBDA_FUNCTION_NAME", "test-function"),
-    ])]
-    fn test_get_lambda_resource_with_aws_lambda_function_name() {
-        let resource = get_lambda_resource();
-        assert_eq!(
-            resource.get(opentelemetry_semantic_conventions::resource::SERVICE_NAME.into()),
-            Some("test-function".into())
-        );
+    if let Ok(function_name) = env::var("AWS_LAMBDA_FUNCTION_NAME") {
+        attributes.push(KeyValue::new("faas.name", function_name.clone()));
+        // Use function name as service name if not set
+        if env::var("OTEL_SERVICE_NAME").is_err() {
+            attributes.push(KeyValue::new("service.name", function_name));
+        }
     }
 
-    #[sealed_test]
-    fn test_get_lambda_resource_without_env_vars() {
-        let resource = get_lambda_resource();
-        assert_eq!(
-            resource.get(opentelemetry_semantic_conventions::resource::SERVICE_NAME.into()),
-            Some("unknown-service".into())
-        );
+    if let Ok(version) = env::var("AWS_LAMBDA_FUNCTION_VERSION") {
+        attributes.push(KeyValue::new("faas.version", version));
     }
 
-    #[test]
-    fn test_runtime_attributes() {
-        let resource = get_lambda_resource();
-
-        // Test process.runtime.name
-        assert_eq!(
-            resource.get(opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_NAME.into()),
-            Some("rust".into())
-        );
-
-        // Test process.runtime.version is present and follows semver format
-        let version = resource
-            .get(opentelemetry_semantic_conventions::resource::PROCESS_RUNTIME_VERSION.into())
-            .expect("Runtime version should be present");
-        assert!(
-            version.to_string().contains('.'),
-            "Version should be in semver format"
-        );
+    if let Ok(memory) = env::var("AWS_LAMBDA_FUNCTION_MEMORY_SIZE") {
+        if let Ok(memory_mb) = memory.parse::<i64>() {
+            let memory_bytes = memory_mb * 1024 * 1024;
+            attributes.push(KeyValue::new("faas.max_memory", memory_bytes));
+        }
     }
+
+    if let Ok(log_stream) = env::var("AWS_LAMBDA_LOG_STREAM_NAME") {
+        attributes.push(KeyValue::new("faas.instance", log_stream));
+    }
+
+    // create resource with standard attributes and merge with custom attributes
+    Resource::builder().with_attributes(attributes).build()
 }

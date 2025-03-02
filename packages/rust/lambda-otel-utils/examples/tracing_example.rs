@@ -140,10 +140,8 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
     });
 
     // flush and shutdown
-    for result in tracer_provider_ref.force_flush() {
-        if let Err(e) = result {
-            eprintln!("Error flushing tracer provider: {}", e);
-        }
+    if let Err(e) = tracer_provider_ref.force_flush() {
+        eprintln!("Error flushing tracer provider: {}", e);
     }
     if let Err(e) = meter_provider_ref.force_flush() {
         eprintln!("Error flushing meter provider: {}", e);
@@ -152,7 +150,7 @@ async fn main() -> Result<(), Box<dyn StdError + Send + Sync + 'static>> {
 }
 
 fn shutdown_providers(
-    tracer_provider: &opentelemetry_sdk::trace::TracerProvider,
+    tracer_provider: &opentelemetry_sdk::trace::SdkTracerProvider,
     meter_provider: &opentelemetry_sdk::metrics::SdkMeterProvider,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
     tracer_provider.shutdown()?;
