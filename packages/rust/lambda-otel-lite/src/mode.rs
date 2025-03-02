@@ -1,4 +1,8 @@
-use opentelemetry::{otel_debug, otel_warn};
+use crate::logger::Logger;
+
+/// Module-specific logger
+static LOGGER: Logger = Logger::const_new("mode");
+
 use std::env;
 
 /// Controls how spans are processed and exported.
@@ -68,38 +72,26 @@ impl ProcessorMode {
             .as_deref()
         {
             Ok("sync") => {
-                otel_debug!(
-                    name: "ProcessorMode.from_env",
-                    message = "using sync processor mode"
-                );
+                LOGGER.debug("ProcessorMode.from_env: using sync processor mode");
                 ProcessorMode::Sync
             }
             Ok("async") => {
-                otel_debug!(
-                    name: "ProcessorMode.from_env",
-                    message = "using async processor mode"
-                );
+                LOGGER.debug("ProcessorMode.from_env: using async processor mode");
                 ProcessorMode::Async
             }
             Ok("finalize") => {
-                otel_debug!(
-                    name: "ProcessorMode.from_env",
-                    message = "using finalize processor mode"
-                );
+                LOGGER.debug("ProcessorMode.from_env: using finalize processor mode");
                 ProcessorMode::Finalize
             }
             Ok(value) => {
-                otel_warn!(
-                    name: "ProcessorMode.from_env",
-                    message = format!("invalid processor mode: {}, defaulting to sync", value)
-                );
+                LOGGER.warn(format!(
+                    "ProcessorMode.from_env: invalid processor mode: {}, defaulting to sync",
+                    value
+                ));
                 ProcessorMode::Sync
             }
             Err(_) => {
-                otel_debug!(
-                    name: "ProcessorMode.from_env",
-                    message = "no processor mode set, defaulting to sync"
-                );
+                LOGGER.debug("ProcessorMode.from_env: no processor mode set, defaulting to sync");
                 ProcessorMode::Sync
             }
         }
@@ -109,26 +101,31 @@ impl ProcessorMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::env;
+
+    /// Test-specific logger
 
     #[test]
+    #[serial]
     fn test_processor_mode_from_env() {
-        // Test default when not set
+        // Default to sync mode
         env::remove_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE");
         assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Sync));
 
-        // Test sync mode
+        // Explicit sync mode
         env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "sync");
         assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Sync));
 
-        // Test async mode
+        // Async mode
         env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "async");
         assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Async));
 
-        // Test finalize mode
+        // Finalize mode
         env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "finalize");
         assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Finalize));
 
-        // Test invalid value
+        // Invalid mode defaults to sync
         env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "invalid");
         assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Sync));
     }

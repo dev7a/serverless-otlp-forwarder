@@ -161,6 +161,7 @@ pub mod mode;
 pub mod processor;
 pub mod resource;
 pub mod telemetry;
+pub mod logger;
 
 pub use extension::OtelInternalExtension;
 pub use extractors::{SpanAttributes, SpanAttributesExtractor, TriggerType};

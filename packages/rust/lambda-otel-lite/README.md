@@ -123,12 +123,7 @@ sequenceDiagram
 
     Note over Extension Thread: Started by init_telemetry()
     Extension Thread->>Lambda Runtime: Register extension (POST /register)
-    alt Registration Success
-        Lambda Runtime-->>Extension Thread: Extension ID
-    else Registration Failure
-        Lambda Runtime-->>Extension Thread: Error
-        Note over Extension Thread: Log error and exit
-    end
+    Lambda Runtime-->>Extension Thread: Extension ID
 
     par Extension Setup
         Extension Thread->>Extension Thread: Setup SIGTERM handler
@@ -137,32 +132,20 @@ sequenceDiagram
 
     loop For each invocation
         Extension Thread->>Lambda Runtime: Get next event (GET /next)
-        alt Success
-            Lambda Runtime-->>Extension Thread: INVOKE event
-            Note over Handler: Function execution starts
-            Handler->>LambdaSpanProcessor: Add spans during execution
-            Handler->>Channel: Send completion signal
-            Channel->>Extension Thread: Receive completion signal
-            alt Export Success
-                Extension Thread->>LambdaSpanProcessor: Flush spans
-                LambdaSpanProcessor->>OTLPStdoutSpanExporter: Export spans
-                Note over OTLPStdoutSpanExporter: Log success
-            else Export Failure
-                Note over Extension Thread: Log error but continue
-            end
-        else Error
-            Note over Extension Thread: Log error but continue
-        end
+        Lambda Runtime-->>Extension Thread: INVOKE event
+        Lambda Runtime->>Handler: INVOKE event (function invocation)
+        Note over Handler: Function execution starts
+        Handler->>LambdaSpanProcessor: Add spans during execution
+        Handler->>Channel: Send completion signal
+        Channel->>Extension Thread: Receive completion signal
+        Extension Thread->>LambdaSpanProcessor: Flush spans
+        LambdaSpanProcessor->>OTLPStdoutSpanExporter: Export spans
     end
 
     Note over Extension Thread: On SIGTERM
     Lambda Runtime->>Extension Thread: SHUTDOWN event
     Extension Thread->>LambdaSpanProcessor: Force flush all spans
-    alt Final Export Success
-        LambdaSpanProcessor->>OTLPStdoutSpanExporter: Export remaining spans
-    else Final Export Failure
-        Note over Extension Thread: Log error before exit
-    end
+    LambdaSpanProcessor->>OTLPStdoutSpanExporter: Export remaining spans
     Extension Thread->>Lambda Runtime: Clean shutdown
 ```
 

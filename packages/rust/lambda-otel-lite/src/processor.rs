@@ -104,8 +104,12 @@
 //!    - Consider retry strategies in custom exporters
 
 use bon::bon;
+use crate::logger::Logger;
+
+/// Module-specific logger
+static LOGGER: Logger = Logger::const_new("processor");
+
 use opentelemetry::Context;
-use opentelemetry::{otel_debug, otel_warn};
 use opentelemetry_sdk::{
     error::{OTelSdkError, OTelSdkResult},
     trace::{Span, SpanProcessor},
@@ -302,6 +306,8 @@ where
 
     fn on_end(&self, span: SpanData) {
         if self.is_shutdown.load(Ordering::Relaxed) {
+            LOGGER.warn("LambdaSpanProcessor.on_end: processor is shut down, dropping span");
+            self.dropped_count.fetch_add(1, Ordering::Relaxed);
             return;
         }
 
@@ -315,22 +321,19 @@ where
             if !spans.push(span) {
                 let prev = self.dropped_count.fetch_add(1, Ordering::Relaxed);
                 if prev == 0 || prev % 100 == 0 {
-                    otel_warn!(
-                        name: "LambdaSpanProcessor.on_end",
-                        message = "Dropping span because buffer is full",
-                        dropped_spans = prev + 1
-                    );
+                    LOGGER.warn(format!(
+                        "LambdaSpanProcessor.on_end: Dropping span because buffer is full (dropped_spans={})",
+                        prev + 1
+                    ));
                 }
             }
         } else {
-            otel_warn!(
-                name: "LambdaSpanProcessor.on_end",
-                message = "Failed to acquire spans lock in on_end"
-            );
+            LOGGER.warn("LambdaSpanProcessor.on_end: Failed to acquire spans lock in on_end");
         }
     }
 
     fn force_flush(&self) -> OTelSdkResult {
+        LOGGER.debug("LambdaSpanProcessor.force_flush: flushing spans");
         if let Ok(mut spans) = self.spans.lock() {
             if spans.is_empty() {
                 return Ok(());
@@ -348,10 +351,10 @@ where
                 if !batch.is_empty() {
                     let result = futures_executor::block_on(exporter.export(batch));
                     if let Err(err) = &result {
-                        otel_debug!(
-                            name: "LambdaSpanProcessor.force_flush.Error",
-                            reason = format!("{:?}", err)
-                        );
+                        LOGGER.debug(format!(
+                            "LambdaSpanProcessor.force_flush.Error: {:?}",
+                            err
+                        ));
                         return result;
                     }
                 }
@@ -387,6 +390,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::logger::Logger;
     use opentelemetry::{
         trace::{SpanContext, SpanId, TraceFlags, TraceId, TraceState},
         InstrumentationScope,
@@ -397,6 +401,11 @@ mod tests {
     };
     use std::{borrow::Cow, future::Future, pin::Pin, sync::Arc};
     use tokio::sync::Mutex;
+    use serial_test::serial;
+
+    fn setup_test_logger() -> Logger {
+        Logger::new("test")
+    }
 
     // Mock exporter that captures exported spans
     #[derive(Debug)]
@@ -457,6 +466,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ring_buffer_basic_operations() {
         let mut buffer = SpanRingBuffer::new(2);
 
@@ -477,6 +487,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ring_buffer_overflow() {
         let mut buffer = SpanRingBuffer::new(2);
 
@@ -495,6 +506,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_ring_buffer_batch_operations() {
         let mut buffer = SpanRingBuffer::new(5);
 
@@ -510,7 +522,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_processor_sync_mode() {
+        let _logger = setup_test_logger();
         let mock_exporter = MockExporter::new();
         let spans_exported = mock_exporter.spans.clone();
 
@@ -533,7 +547,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_shutdown_exports_remaining_spans() {
+        let _logger = setup_test_logger();
         let mock_exporter = MockExporter::new();
         let spans_exported = mock_exporter.spans.clone();
 
@@ -560,7 +576,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_concurrent_span_processing() {
+        let _logger = setup_test_logger();
         let mock_exporter = MockExporter::new();
         let spans_exported = mock_exporter.spans.clone();
 
@@ -598,7 +616,9 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_batch_processing() {
+        let _logger = setup_test_logger();
         let mock_exporter = MockExporter::new();
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
@@ -623,6 +643,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_builder_default_values() {
         let mock_exporter = MockExporter::new();
 
@@ -640,6 +661,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_builder_env_var_values() {
         let mock_exporter = MockExporter::new();
 
@@ -661,6 +683,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_builder_explicit_values_override_env() {
         let mock_exporter = MockExporter::new();
 
@@ -684,6 +707,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_builder_invalid_env_vars() {
         let mock_exporter = MockExporter::new();
 

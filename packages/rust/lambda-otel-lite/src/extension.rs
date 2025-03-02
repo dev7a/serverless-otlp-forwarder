@@ -36,8 +36,8 @@
 //! - Handles channel communication failures
 
 use crate::ProcessorMode;
+use crate::logger::Logger;
 use lambda_extension::{service_fn, Error, Extension, NextEvent};
-use opentelemetry::{otel_debug, otel_error};
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use std::sync::Arc;
 use tokio::{
@@ -47,6 +47,8 @@ use tokio::{
         Mutex,
     },
 };
+
+static LOGGER: Logger = Logger::const_new("extension");
 
 /// Extension that flushes OpenTelemetry spans after each Lambda invocation.
 ///
@@ -164,12 +166,11 @@ impl OtelInternalExtension {
                 .await
                 .ok_or_else(|| Error::from("channel closed"))?;
             // Force flush all spans and handle any errors
-            println!("Flushing spans");
             if let Err(err) = self.tracer_provider.force_flush() {
-                otel_error!(
-                    name: "OtelInternalExtension.invoke.Error",
-                    reason = format!("{:?}", err)
-                );
+                LOGGER.error(format!(
+                    "OtelInternalExtension.invoke.Error: Error flushing tracer provider: {:?}",
+                    err
+                ));
             }
         }
 
@@ -204,10 +205,7 @@ pub(crate) async fn register_extension(
     tracer_provider: Arc<SdkTracerProvider>,
     processor_mode: ProcessorMode,
 ) -> Result<UnboundedSender<()>, Error> {
-    otel_debug!(
-        name: "OtelInternalExtension.register_extension",
-        message = "starting registration"
-    );
+    LOGGER.debug("OtelInternalExtension.register_extension: starting registration");
     let (request_done_sender, request_done_receiver) = unbounded_channel::<()>();
 
     let extension = Arc::new(OtelInternalExtension::new(
@@ -237,10 +235,10 @@ pub(crate) async fn register_extension(
     // Run the extension in the background
     tokio::spawn(async move {
         if let Err(err) = registered_extension.run().await {
-            otel_error!(
-                name: "OtelInternalExtension.run.Error",
-                reason = format!("{:?}", err)
-            );
+            LOGGER.error(format!(
+                "OtelInternalExtension.run.Error: Error running extension: {:?}",
+                err
+            ));
         }
     });
 
@@ -249,21 +247,15 @@ pub(crate) async fn register_extension(
         let mut sigterm = signal(SignalKind::terminate()).unwrap();
 
         if sigterm.recv().await.is_some() {
-            otel_debug!(
-                name: "OtelInternalExtension.SIGTERM",
-                message = "SIGTERM received, flushing spans"
-            );
+            LOGGER.debug("OtelInternalExtension.SIGTERM: SIGTERM received, flushing spans");
             // Direct synchronous flush
             if let Err(err) = tracer_provider.force_flush() {
-                otel_error!(
-                    name: "OtelInternalExtension.SIGTERM.Error",
-                    reason = format!("{:?}", err)
-                );
+                LOGGER.error(format!(
+                    "OtelInternalExtension.SIGTERM.Error: Error during shutdown: {:?}",
+                    err
+                ));
             }
-            otel_debug!(
-                name: "OtelInternalExtension.SIGTERM",
-                message = "Shutdown complete"
-            );
+            LOGGER.debug("OtelInternalExtension.SIGTERM: Shutdown complete");
             std::process::exit(0);
         }
     });
@@ -284,6 +276,8 @@ mod tests {
         atomic::{AtomicUsize, Ordering},
         Mutex,
     };
+
+    /// Test-specific logger
 
     // Test exporter that captures spans
     #[derive(Debug, Default, Clone)]

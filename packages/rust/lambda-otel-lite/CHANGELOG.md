@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated tracing-opentelemetry from v0.28.0 to v0.29.0
 - Updated error handling to use `OTelSdkError` and `OTelSdkResult` instead of `TraceError` and `TraceResult`
 
+### Improved
+- **Logging System**: Enhanced the `Logger` implementation with compile-time initialization support through `const_new`
+- **Module Loggers**: Added static module-specific loggers for improved performance and code readability
+
 ### Fixed
 - Fixed resource attribute access in tests to properly handle the tuple structure returned by the resource iterator
 
@@ -32,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated examples to handle the new tuple return type from `init_telemetry()`
 - Improved module-level documentation with clearer examples
 - Enhanced API documentation to reflect the updated methods
+- Added documentation for using static loggers with the new `const_new` constructor
 
 ## [0.6.0] - 2025-02-07
 ### Added
