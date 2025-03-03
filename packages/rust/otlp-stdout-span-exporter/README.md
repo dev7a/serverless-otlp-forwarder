@@ -1,52 +1,67 @@
-# otlp-stdout-span-exporter
+# OTLP Stdout Span Exporter
 
-A Rust span exporter that writes OpenTelemetry spans to stdout in OTLP format. Part of the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder) project.
+A Rust span exporter that writes OpenTelemetry spans to stdout, using a custom serialization format that embeds the spans serialized as OTLP protobuf in the `payload` field. 
+The message envelope carries some metadata about the spans, such as the service name, the OTLP endpoint, and the HTTP method:
 
-This exporter is particularly useful in serverless environments like AWS Lambda where writing to stdout is a common pattern for exporting telemetry data.
+```json
+{
+  "__otel_otlp_stdout": "0.1.0",
+  "source": "my-service",
+  "endpoint": "http://localhost:4318/v1/traces",
+  "method": "POST",
+  "content-type": "application/x-protobuf",
+  "content-encoding": "gzip",
+  "headers": {
+    "custom-header": "value"
+  },
+  "payload": "<base64-encoded-gzipped-protobuf>",
+  "base64": true
+}
+```
+Outputting the telemetry data in this format directly to stdout makes the library easily usable in network constrained environments, or in enviroments that are particularly sensitive to the overhead of HTTP connections, such as AWS Lambda.
+
+Part of the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder) project, that implements a forwarder for OTLP telemetry data from serverless environments to OTLP compliant collectors.
 
 ## Features
 
 - Uses OTLP Protobuf serialization for efficient encoding
 - Applies GZIP compression with configurable levels
-- Detects service name from environment variables
-- Supports custom headers via environment variables
+- Detects service name from environment variables or AWS Lambda function name
+- Supports custom headers via standard OTEL environment variables
 - Consistent JSON output format
 - Zero external HTTP dependencies
 - Lightweight and fast
 
 ## Installation
 
-Add this to your `Cargo.toml`:
-
-```toml
-[dependencies]
-otlp-stdout-span-exporter = "0.1.0"
-```
+Run `cargo add otlp-stdout-span-exporter` to add the crate to your project.
 
 ## Usage
 
-The recommended way to use this exporter is with batch export, which provides better performance by buffering and exporting spans in batches:
+The recommended way to use this exporter is with the standard OpenTelemetry `BatchSpanProcessor`, which provides better performance by buffering and exporting spans in batches, or, in conjunction with the [lambda-otel-lite](https://crates.io/crates/lambda-otel-lite) crate, with the `LambdaSpanProcessor` strategy, which is particularly optimized for AWS Lambda.
+
+You can create a simple tracer provider with the default configuration:
 
 ```rust
-use opentelemetry::{trace::{Tracer, TracerProvider}, KeyValue};
-use opentelemetry_sdk::{trace::TracerProvider as SdkTracerProvider, Resource, runtime};
+use opentelemetry::global;
+use opentelemetry::trace::Tracer;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
+
+fn init_tracer() -> SdkTracerProvider {
+    let exporter = OtlpStdoutSpanExporter::new();
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .build();
+
+    global::set_tracer_provider(provider.clone());
+    provider
+}
 
 #[tokio::main]
 async fn main() {
-    // Create a new stdout exporter
-    let exporter = OtlpStdoutSpanExporter::new();
-
-    // Create a new tracer provider with batch export
-    let provider = SdkTracerProvider::builder()
-        .with_batch_exporter(exporter, runtime::Tokio)
-        .with_resource(Resource::new(vec![KeyValue::new("service.name", "my-service")]))
-        .build();
-
-    // Create a tracer
-    let tracer = provider.tracer("my-service");
-
-    // Create spans
+    let provider = init_tracer();
+    let tracer = global::tracer("example/simple");
     tracer.in_span("parent-operation", |_cx| {
         println!("Doing work...");
         
@@ -55,9 +70,10 @@ async fn main() {
             println!("Doing more work...");
         });
     });
-    
-    // Shut down the provider
-    let _ = provider.shutdown();
+
+    if let Err(err) = provider.force_flush() {
+        println!("Error flushing provider: {:?}", err);
+    }
 }
 ```
 
@@ -71,53 +87,19 @@ This setup ensures that:
 
 The exporter respects the following environment variables:
 
-- `OTEL_SERVICE_NAME`: Service name to use in output
+- `OTEL_SERVICE_NAME`: Service name to use in output, used in the `source` field
 - `AWS_LAMBDA_FUNCTION_NAME`: Fallback service name (if `OTEL_SERVICE_NAME` not set)
-- `OTEL_EXPORTER_OTLP_HEADERS`: Global headers for OTLP export
-- `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence)
+- `OTEL_EXPORTER_OTLP_HEADERS`: Headers for OTLP export, used in the `headers` field
+- `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 
-Header format examples:
-```bash
-# Single header
-export OTEL_EXPORTER_OTLP_HEADERS="api-key=secret123"
 
-# Multiple headers
-export OTEL_EXPORTER_OTLP_HEADERS="api-key=secret123,custom-header=value"
-
-# Headers with special characters
-export OTEL_EXPORTER_OTLP_HEADERS="authorization=Basic dXNlcjpwYXNzd29yZA=="
-
-# Set compression level (0 = no compression, 9 = maximum compression)
-export OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL="9"
-```
-
-## Output Format
-
-The exporter writes each batch of spans as a JSON object to stdout:
-
-```json
-{
-  "__otel_otlp_stdout": "0.1.0",
-  "source": "my-service",
-  "endpoint": "http://localhost:4318/v1/traces",
-  "method": "POST",
-  "content-type": "application/x-protobuf",
-  "content-encoding": "gzip",
-  "headers": {
-    "api-key": "secret123",
-    "custom-header": "value"
-  },
-  "payload": "<base64-encoded-gzipped-protobuf>",
-  "base64": true
-}
-```
 
 ## Configuration
 
 The exporter can be configured with different GZIP compression levels:
 
-```rust
+```rust ignore
 // Create exporter with custom GZIP level (0-9)
 let exporter = OtlpStdoutSpanExporter::with_gzip_level(9);
 ```

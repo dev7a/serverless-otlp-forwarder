@@ -58,11 +58,7 @@ Before publishing a new version of `otlp-stdout-span-exporter`, ensure all these
 7. Run doc tests: `cargo test --doc`
 8. Build in release mode: `cargo build --release`
 9. Verify documentation: `cargo doc --no-deps`
-10. Commit changes: `git commit -am "Release vX.Y.Z"`
-11. Create git tag: `git tag rust-vX.Y.Z`
-12. Push changes: `git push && git push --tags`
-13. Publish to crates.io: `cargo publish`
-14. Verify package on crates.io: https://crates.io/crates/otlp-stdout-span-exporter
+10. Tagging and publishing is done automatically by the CI pipeline
 
 ## Post-Publishing
 - [ ] Verify package installation works: `cargo add otlp-stdout-span-exporter`

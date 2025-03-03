@@ -15,7 +15,8 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use opentelemetry::trace::{Tracer, TracerProvider};
+//! use opentelemetry::global;
+//! use opentelemetry::trace::Tracer;
 //! use opentelemetry_sdk::{trace::SdkTracerProvider, Resource};
 //! use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 //!
@@ -27,11 +28,13 @@
 //!     // Create a new tracer provider with batch export
 //!     let provider = SdkTracerProvider::builder()
 //!         .with_batch_exporter(exporter)
-//!         .with_resource(Resource::builder().build())
 //!         .build();
 //!
+//!     // Register the provider with the OpenTelemetry global API
+//!     global::set_tracer_provider(provider.clone());
+//!
 //!     // Create a tracer
-//!     let tracer = provider.tracer("my-service");
+//!     let tracer = global::tracer("my-service");
 //!
 //!     // Create spans
 //!     tracer.in_span("parent-operation", |_cx| {
@@ -43,8 +46,10 @@
 //!         });
 //!     });
 //!     
-//!     // Shut down the provider
-//!     let _ = provider.shutdown();
+//!     // Flush the provider to ensure all spans are exported
+//!     if let Err(err) = provider.force_flush() {
+//!         println!("Error flushing provider: {:?}", err);
+//!     }
 //! }
 //! ```
 //!
@@ -55,7 +60,7 @@
 //! - `OTEL_SERVICE_NAME`: Service name to use in output
 //! - `AWS_LAMBDA_FUNCTION_NAME`: Fallback service name (if `OTEL_SERVICE_NAME` not set)
 //! - `OTEL_EXPORTER_OTLP_HEADERS`: Global headers for OTLP export
-//! - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence)
+//! - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 //! - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 //!
 //! # Output Format
@@ -95,7 +100,13 @@ use prost::Message;
 use serde::Serialize;
 #[cfg(test)]
 use std::sync::Mutex;
-use std::{collections::HashMap, env, io::Write, result::Result, sync::Arc};
+use std::{
+    collections::HashMap,
+    env,
+    io::{self, Write},
+    result::Result,
+    sync::Arc,
+};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const DEFAULT_ENDPOINT: &str = "http://localhost:4318/v1/traces";
@@ -125,7 +136,13 @@ struct StdOutput;
 
 impl Output for StdOutput {
     fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
-        println!("{}", line);
+        // Get a locked stdout handle once
+        let stdout = io::stdout();
+        let mut handle = stdout.lock();
+
+        // Write the line and a newline in one operation
+        writeln!(handle, "{}", line).map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
+
         Ok(())
     }
 }
@@ -458,6 +475,16 @@ impl SpanExporter for OtlpStdoutSpanExporter {
         ));
     }
 }
+
+#[cfg(doctest)]
+#[macro_use]
+extern crate doc_comment;
+
+#[cfg(doctest)]
+use doc_comment::doctest;
+
+#[cfg(doctest)]
+doctest!("../README.md", readme);
 
 #[cfg(test)]
 mod tests {
