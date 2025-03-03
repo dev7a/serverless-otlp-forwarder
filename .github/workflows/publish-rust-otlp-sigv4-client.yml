@@ -1,17 +1,17 @@
-name: Publish Rust Lambda OTel Lite
+name: Publish Rust OTLP SigV4 Client
 
 on:
   # Trigger on PRs that touch the Rust package
   pull_request:
     paths:
-      - 'packages/rust/lambda-otel-lite/**'
+      - 'packages/rust/otlp-sigv4-client/**'
     types: [opened, synchronize]
   # Trigger on merges to main that touch the Rust package
   push:
     branches:
       - main
     paths:
-      - 'packages/rust/lambda-otel-lite/**'
+      - 'packages/rust/otlp-sigv4-client/**'
 
 # Add permissions needed for the workflow
 permissions:
@@ -24,19 +24,18 @@ jobs:
       matrix:
         include:
           # x64 runner
-          - os: ubuntu-24.04
+          - os: ubuntu-latest
             arch: x64
             rust-version: stable
           # arm64 runner
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-22.04-arm
             arch: arm64
             rust-version: stable
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: packages/rust/lambda-otel-lite
+        working-directory: packages/rust/otlp-sigv4-client
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'approved')
-
     steps:
       - uses: actions/checkout@v4
 
@@ -65,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/rust/lambda-otel-lite
+        working-directory: packages/rust/otlp-sigv4-client
 
     steps:
       - uses: actions/checkout@v4
@@ -79,7 +78,7 @@ jobs:
       - name: Set up Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: packages/rust/lambda-otel-lite
+          workspaces: packages/rust/otlp-sigv4-client
 
       - name: Build package
         run: cargo build --release
@@ -87,8 +86,8 @@ jobs:
       - name: Verify package version
         id: version_check
         run: |
-          PACKAGE_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "lambda-otel-lite") | .version')
-          TAG_NAME="packages/rust/lambda-otel-lite-v$PACKAGE_VERSION"
+          PACKAGE_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "otlp-sigv4-client") | .version')
+          TAG_NAME="packages/rust/otlp-sigv4-client-v$PACKAGE_VERSION"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           
           if git tag -l | grep -q "$TAG_NAME"; then

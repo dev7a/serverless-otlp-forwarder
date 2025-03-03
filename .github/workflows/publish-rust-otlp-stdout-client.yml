@@ -86,7 +86,7 @@ jobs:
       - name: Verify package version
         id: version_check
         run: |
-          PACKAGE_VERSION=$(cargo metadata --format-version 1 | jq -r '.packages[] | select(.name == "otlp-stdout-client") | .version')
+          PACKAGE_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "otlp-stdout-client") | .version')
           TAG_NAME="packages/rust/otlp-stdout-client-v$PACKAGE_VERSION"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           
