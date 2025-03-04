@@ -8,8 +8,9 @@
 //!
 //! # Features
 //!
-//! - `reqwest` - Enables support for the reqwest HTTP client
-//! - `hyper` - Enables support for the hyper HTTP client
+//! - `reqwest` - Includes reqwest as a dependency (enabled by default)
+//!
+//! The client works with any HTTP client that implements the `opentelemetry_http::HttpClient` trait.
 //!
 //! # Example
 //!
@@ -47,14 +48,14 @@
 use async_trait::async_trait;
 use aws_credential_types::Credentials;
 use bytes::Bytes;
+use http::{HeaderMap, HeaderName, HeaderValue};
 use http::{Request, Response};
 use opentelemetry_http::{HttpClient, HttpError};
-use reqwest::header::HeaderMap;
 use std::fmt::Debug;
 use thiserror::Error;
 
 /// Type alias for the request signing predicate
-pub type SigningPredicate = Box<dyn Fn(&Request<Vec<u8>>) -> bool + Send + Sync>;
+pub type SigningPredicate = Box<dyn Fn(&Request<Bytes>) -> bool + Send + Sync>;
 
 mod builder;
 pub mod signing;
@@ -117,10 +118,7 @@ impl<T: HttpClient> SigV4Client<T> {
         }
     }
 
-    async fn sign_request(
-        &self,
-        request: Request<Vec<u8>>,
-    ) -> Result<Request<Vec<u8>>, SigV4Error> {
+    async fn sign_request(&self, request: Request<Bytes>) -> Result<Request<Bytes>, SigV4Error> {
         // Check if we should sign this request
         if let Some(predicate) = &self.should_sign_predicate {
             if !predicate(&request) {
@@ -140,17 +138,20 @@ impl<T: HttpClient> SigV4Client<T> {
         // Convert http::HeaderMap to reqwest::HeaderMap
         let mut reqwest_headers = HeaderMap::new();
         for (name, value) in parts.headers.iter() {
-            reqwest_headers.insert(
-                reqwest::header::HeaderName::from_bytes(name.as_ref()).unwrap(),
-                reqwest::header::HeaderValue::from_bytes(value.as_bytes()).unwrap(),
-            );
+            if let (Ok(header_name), Ok(header_value)) = (
+                HeaderName::from_bytes(name.as_ref()),
+                HeaderValue::from_bytes(value.as_bytes()),
+            ) {
+                reqwest_headers.insert(header_name, header_value);
+            }
         }
 
         let signed_headers = signing::sign_request(
             &self.credentials,
             &endpoint,
+            parts.method.as_str(),
             &reqwest_headers,
-            &body,
+            body.as_ref(),
             &self.region,
             &self.service,
         )
@@ -162,15 +163,25 @@ impl<T: HttpClient> SigV4Client<T> {
         // Convert reqwest::HeaderMap to http::HeaderMap and preserve original headers
         let mut http_headers = parts.headers;
         for (name, value) in signed_headers.iter() {
-            if let Ok(header_name) = http::header::HeaderName::from_bytes(name.as_ref()) {
-                if let Ok(header_value) = http::header::HeaderValue::from_bytes(value.as_bytes()) {
+            if let Ok(header_name) = HeaderName::from_bytes(name.as_ref()) {
+                if let Ok(header_value) = HeaderValue::from_bytes(value.as_bytes()) {
                     http_headers.insert(header_name, header_value);
                 }
             }
         }
 
         // Set the headers on the builder
-        *builder.headers_mut().unwrap() = http_headers;
+        match builder.headers_mut() {
+            Some(headers_mut) => {
+                *headers_mut = http_headers;
+            }
+            None => {
+                // If we can't get the headers, we create a minimal HTTP error
+                // Note: http::Error doesn't have public constructors in recent versions
+                let err = http::Response::builder().status(500).body(()).unwrap_err();
+                return Err(SigV4Error::HttpError(err));
+            }
+        }
 
         Ok(builder.body(body)?)
     }
@@ -178,13 +189,13 @@ impl<T: HttpClient> SigV4Client<T> {
 
 #[async_trait]
 impl<T: HttpClient> HttpClient for SigV4Client<T> {
-    async fn send(&self, request: Request<Vec<u8>>) -> Result<Response<Bytes>, HttpError> {
+    async fn send_bytes(&self, request: Request<Bytes>) -> Result<Response<Bytes>, HttpError> {
         let signed_request = self
             .sign_request(request)
             .await
             .map_err(|e| Box::new(e) as HttpError)?;
 
-        self.inner.send(signed_request).await
+        self.inner.send_bytes(signed_request).await
     }
 }
 
@@ -210,7 +221,7 @@ mod tests {
 
     #[async_trait]
     impl HttpClient for MockHttpClient {
-        async fn send(&self, _request: Request<Vec<u8>>) -> Result<Response<Bytes>, HttpError> {
+        async fn send_bytes(&self, _request: Request<Bytes>) -> Result<Response<Bytes>, HttpError> {
             Ok(Response::builder()
                 .status(self.response.status())
                 .body(self.response.body().clone())
@@ -239,11 +250,11 @@ mod tests {
         let request = Request::builder()
             .method("POST")
             .uri("https://xray.us-east-1.amazonaws.com/")
-            .body(Vec::new())
+            .body(Bytes::new())
             .unwrap();
 
         // Send the request
-        let response = sigv4_client.send(request).await.unwrap();
+        let response = sigv4_client.send_bytes(request).await.unwrap();
 
         // Verify the response
         assert_eq!(response.status(), StatusCode::OK);
@@ -272,7 +283,7 @@ mod tests {
             .method("POST")
             .uri("https://xray.us-east-1.amazonaws.com/")
             .header("X-Custom-Header", "test-value")
-            .body(Vec::new())
+            .body(Bytes::new())
             .unwrap();
 
         // Sign the request

@@ -4,14 +4,12 @@ use opentelemetry::{
     trace::{TraceContextExt, Tracer},
     KeyValue,
 };
-use opentelemetry_otlp::{HttpExporterBuilder, WithExportConfig, WithHttpConfig};
+use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
-    runtime::Tokio,
     trace::{RandomIdGenerator, Sampler},
     Resource,
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
-use reqwest::Client as ReqwestClient;
 use std::error::Error;
 
 #[tokio::main]
@@ -24,9 +22,20 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .provide_credentials()
         .await?;
 
-    // Create the SigV4 client
+    // this is required since the breaking changes in otel 0.28.0
+    // https://github.com/open-telemetry/opentelemetry-rust/blob/opentelemetry_sdk-0.28.0/opentelemetry-sdk/CHANGELOG.md
+    // the http client needs to be a blocking client and to be created in a thread outside of the tokio runtime
+    let http_client = std::thread::spawn(move || {
+        reqwest::blocking::Client::builder()
+            .build()
+            .unwrap_or_else(|_| reqwest::blocking::Client::new())
+    })
+    .join()
+    .unwrap();
+
+    // Create the SigV4 client wrapping the blocking http client
     let sigv4_client = SigV4ClientBuilder::new()
-        .with_client(ReqwestClient::new())
+        .with_client(http_client)
         .with_credentials(credentials)
         .with_region(
             config
@@ -46,24 +55,31 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .build()?;
 
     // Configure and build the OTLP exporter
-    let exporter = HttpExporterBuilder::default()
+    let exporter = SpanExporter::builder()
+        .with_http()
         .with_http_client(sigv4_client)
-        .with_endpoint("https://xray.us-east-1.amazonaws.com")
-        .build_span_exporter()?;
+        .with_protocol(Protocol::HttpBinary)
+        .with_endpoint("https://xray.us-east-1.amazonaws.com/v1/traces")
+        .build()
+        .expect("Failed to create trace exporter");
 
     // Initialize the tracer
-    let tracer = opentelemetry_sdk::trace::TracerProvider::builder()
+    let trace_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
         .with_sampler(Sampler::AlwaysOn)
         .with_id_generator(RandomIdGenerator::default())
-        .with_resource(Resource::new(vec![
-            KeyValue::new("service.name", "example-service"),
-            KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
-        ]))
-        .with_batch_exporter(exporter, Tokio)
+        .with_resource(
+            Resource::builder_empty()
+                .with_attributes(vec![
+                    KeyValue::new("service.name", "example-service"),
+                    KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+                ])
+                .build(),
+        )
+        .with_batch_exporter(exporter)
         .build();
 
     // Set the tracer as the global tracer
-    global::set_tracer_provider(tracer);
+    global::set_tracer_provider(trace_provider.clone());
 
     // Get a tracer from the provider
     let tracer = global::tracer("example");
@@ -74,13 +90,32 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         cx.span()
             .set_attribute(KeyValue::new("example.key", "example.value"));
 
-        // Do some work...
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        for i in 0..10 {
+            tracer.in_span(format!("child-{}", i), |cx| {
+                cx.span().add_event(
+                    "child event",
+                    vec![
+                        KeyValue::new("child.key", "child.value"),
+                        KeyValue::new("child.index", i),
+                    ],
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            });
+        }
     });
 
+    // Flush the traces
+    if let Err(e) = trace_provider.force_flush() {
+        println!("Error flushing traces: {}", e);
+    }
+
     // Shut down the tracer provider
-    global::shutdown_tracer_provider();
-    println!("Traces sent to AWS X-Ray successfully");
+    let result = trace_provider.shutdown();
+    if let Err(e) = result {
+        println!("Error shutting down tracer provider: {}", e);
+    } else {
+        println!("Traces sent to AWS X-Ray successfully");
+    }
 
     Ok(())
 }

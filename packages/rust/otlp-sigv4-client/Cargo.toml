@@ -1,6 +1,6 @@
 [package]
 name = "otlp-sigv4-client"
-version = "0.3.0"
+version = "0.10.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -13,6 +13,8 @@ categories = ["development-tools::debugging", "development-tools::profiling", "w
 homepage = "https://github.com/dev7a/serverless-otlp-forwarder"
 documentation = "https://docs.rs/otlp-sigv4-client"
 exclude = ["tests/*", "examples/*", "benches/*"]
+
+
 
 [dependencies]
 async-trait.workspace = true
@@ -28,17 +30,18 @@ bytes = "1.7"
 # Optional dependencies based on features
 reqwest = { workspace = true, optional = true }
 
+[features]
+default = ["reqwest"]
+reqwest = ["dep:reqwest", "opentelemetry-http/reqwest"]
+
 [dev-dependencies]
 aws-config.workspace = true
 tokio.workspace = true
 opentelemetry_sdk.workspace = true
-opentelemetry-otlp.workspace = true
+opentelemetry-otlp = { workspace = true, features = ["reqwest-blocking-client", "http-proto", "trace"] }
 doc-comment = "0.3"
+reqwest.workspace = true
 
-[features]
-default = ["reqwest"]
-reqwest = ["dep:reqwest", "opentelemetry-http/reqwest"]
-hyper = ["opentelemetry-http/hyper"]
 
 [[example]]
 name = "sigv4_auth"

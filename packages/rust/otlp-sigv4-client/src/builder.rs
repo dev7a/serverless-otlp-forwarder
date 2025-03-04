@@ -57,13 +57,24 @@ impl<T: HttpClient> SigV4ClientBuilder<T> {
         self
     }
 
-    /// Sets the AWS region (defaults to "us-east-1")
+    /// Sets the AWS region
+    ///
+    /// If not specified, region is determined in the following order:
+    /// 1. Environment variable `AWS_REGION`
+    /// 2. Default value "us-east-1"
     pub fn with_region(mut self, region: impl Into<String>) -> Self {
         self.region = Some(region.into());
         self
     }
 
-    /// Sets the AWS service name (e.g. "xray")
+    /// Sets the AWS service name for SigV4 signing
+    ///
+    /// The service name should match the AWS service you're sending telemetry to:
+    /// - "xray" for AWS X-Ray OTLP endpoint (default)
+    /// - "aps" for Amazon Managed Service for Prometheus
+    /// - Other service identifiers as needed
+    ///
+    /// If not specified, defaults to "xray"
     pub fn with_service(mut self, service: impl Into<String>) -> Self {
         self.service = Some(service.into());
         self
@@ -141,16 +152,14 @@ mod tests {
     use aws_credential_types::Credentials;
     use bytes::Bytes;
     use http::{Request, Response};
+    use opentelemetry_http::{HttpClient, HttpError};
 
     #[derive(Debug, Clone)]
     struct MockHttpClient;
 
     #[async_trait]
     impl HttpClient for MockHttpClient {
-        async fn send(
-            &self,
-            _request: Request<Vec<u8>>,
-        ) -> Result<Response<Bytes>, Box<dyn std::error::Error + Send + Sync>> {
+        async fn send_bytes(&self, _request: Request<Bytes>) -> Result<Response<Bytes>, HttpError> {
             Ok(Response::builder()
                 .status(200)
                 .body(Bytes::from_static(b"test"))
@@ -227,7 +236,7 @@ mod tests {
     #[test]
     fn test_builder_with_signing_predicate() {
         let credentials = Credentials::new("test", "test", None, None, "test");
-        let predicate = Box::new(|request: &Request<Vec<u8>>| {
+        let predicate = Box::new(|request: &Request<Bytes>| {
             request
                 .uri()
                 .host()
