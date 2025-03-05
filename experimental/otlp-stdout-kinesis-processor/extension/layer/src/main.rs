@@ -18,8 +18,12 @@ struct ExtensionConfig {
 impl ExtensionConfig {
     fn from_env() -> Result<Self, Error> {
         Ok(Self {
-            kinesis_stream_name: env::var("OTLP_STDOUT_KINESIS_STREAM_NAME")
-                .map_err(|e| Error::from(format!("Failed to get stream name: {}", e)))?,
+            kinesis_stream_name: env::var("OTLP_STDOUT_KINESIS_STREAM_NAME").map_err(|e| {
+                Error::from(format!(
+                    "Failed to get stream name: {}. Ensure that the OTLP_STDOUT_KINESIS_STREAM_NAME environment variable is set.",
+                    e
+                ))
+            })?,
         })
     }
 }
