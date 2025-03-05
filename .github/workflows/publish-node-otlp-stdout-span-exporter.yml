@@ -1,0 +1,120 @@
+name: Publish Node OTLP Stdout Span Exporter
+
+on:
+  # Trigger on PRs that touch the Node.js package
+  pull_request:
+    paths:
+      - 'packages/node/otlp-stdout-span-exporter/**'
+    types: [opened, synchronize, labeled]
+  # Trigger on merges to main that touch the Node.js package
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/node/otlp-stdout-span-exporter/**'
+
+# Add permissions needed for the workflow
+permissions:
+  contents: write  # Needed for pushing tags
+  id-token: write # Needed for publishing to npm
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        include:
+          # x64 runner
+          - os: ubuntu-latest
+            arch: x64
+            node-version: '18'
+          # arm64 runner
+          - os: ubuntu-22.04-arm
+            arch: arm64
+            node-version: '18'
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/node/otlp-stdout-span-exporter
+
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'approved')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          architecture: ${{ matrix.arch }}
+          cache: 'npm'
+          cache-dependency-path: packages/node/otlp-stdout-span-exporter/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run quality checks
+        run: |
+          npm run lint
+          npm test
+          npm run build
+
+  publish:
+    needs: test
+    # Only run on pushes to main, never on PRs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@dev7a/otlp-stdout-span-exporter
+    defaults:
+      run:
+        working-directory: packages/node/otlp-stdout-span-exporter
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          architecture: x64
+          cache: 'npm'
+          cache-dependency-path: packages/node/otlp-stdout-span-exporter/package-lock.json
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate version file
+        run: npm run generate:version
+
+      - name: Build package
+        run: npm run build
+
+      - name: Verify package version
+        id: version_check
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          VERSION_TS_VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' src/version.ts | tr -d '"')
+          TAG_NAME="packages/node/otlp-stdout-span-exporter-v$PACKAGE_VERSION"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          
+          if [ "$PACKAGE_VERSION" != "$VERSION_TS_VERSION" ]; then
+            echo "Version mismatch: package.json ($PACKAGE_VERSION) != version.ts ($VERSION_TS_VERSION)"
+            exit 1
+          fi
+          
+          if git tag -l | grep -q "$TAG_NAME"; then
+            echo "Version $PACKAGE_VERSION already published"
+            exit 1
+          fi
+          echo "Publishing version $PACKAGE_VERSION with tag $TAG_NAME"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+      - name: Create and push tag
+        run: |
+          git tag "${{ steps.version_check.outputs.tag_name }}"
+          git push origin "${{ steps.version_check.outputs.tag_name }}"

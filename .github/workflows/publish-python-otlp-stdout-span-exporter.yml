@@ -1,0 +1,120 @@
+name: Publish Python OTLP Stdout Span Exporter
+
+on:
+  # Trigger on PRs that touch the Python package
+  pull_request:
+    paths:
+      - 'packages/python/otlp-stdout-span-exporter/**'
+    types: [opened, synchronize, labeled]
+  # Trigger on merges to main that touch the Python package
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/python/otlp-stdout-span-exporter/**'
+
+# Add permissions needed for the workflow
+permissions:
+  contents: write  # Needed for pushing tags
+  id-token: write # Needed for publishing to PyPI
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        include:
+          # x64 runner
+          - os: ubuntu-latest
+            arch: x64
+            python-version: '3.12'
+          # arm64 runner
+          - os: ubuntu-22.04-arm
+            arch: arm64
+            python-version: '3.12'
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: packages/python/otlp-stdout-span-exporter
+
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'approved')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: ${{ matrix.arch }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine ruff mypy pytest pytest-cov
+          pip install -e ".[dev]"
+
+      - name: Run quality checks
+        run: |
+          ruff check --isolated src/otlp_stdout_span_exporter tests
+          ruff format --check --isolated src/otlp_stdout_span_exporter tests
+          mypy src/otlp_stdout_span_exporter
+          pytest
+
+  publish:
+    needs: test
+    # Only run on pushes to main, never on PRs
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-publish
+      url: https://pypi.org/project/otlp-stdout-span-exporter
+    defaults:
+      run:
+        working-directory: packages/python/otlp-stdout-span-exporter
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine ruff mypy pytest pytest-cov
+          pip install -e ".[dev]"
+
+      - name: Generate version file
+        run: |
+          python custom_hook.py
+
+      - name: Build package
+        run: python -m build
+
+      - name: Verify package version
+        id: version_check
+        run: |
+          PACKAGE_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from otlp_stdout_span_exporter.version import VERSION; print(VERSION)")
+          TAG_NAME="packages/python/otlp-stdout-span-exporter-v$PACKAGE_VERSION"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          
+          if git tag -l | grep -q "$TAG_NAME"; then
+            echo "Version $PACKAGE_VERSION already published"
+            exit 1
+          fi
+          echo "Publishing version $PACKAGE_VERSION with tag $TAG_NAME"
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/*
+
+      - name: Create and push tag
+        run: |
+          git tag "${{ steps.version_check.outputs.tag_name }}"
+          git push origin "${{ steps.version_check.outputs.tag_name }}"
