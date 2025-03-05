@@ -1,14 +1,18 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.0.0"]
 build-backend = "hatchling.build"
+
+# Use Hatch's built-in version hook to generate version.py
+[tool.hatch.build.hooks.version]
+path = "src/otlp_stdout_span_exporter/version.py"
 
 [project]
 name = "otlp-stdout-span-exporter"
-version = "0.1.2"
+version = "0.10.0"
 description = "OpenTelemetry span exporter that writes to stdout in OTLP format"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "Apache-2.0" }
+license = { text = "MIT" }
 authors = [
     { name = "Alessandro Bologna", email = "alessandro.bologna@gmail.com" }
 ]
@@ -16,14 +20,14 @@ keywords = ["opentelemetry", "tracing", "spans", "otlp", "stdout", "exporter"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: System :: Monitoring",
 ]
 dependencies = [
-    "opentelemetry-sdk>=1.29.0",
-    "opentelemetry-exporter-otlp-proto-common>=1.29.0",
+    "opentelemetry-sdk>=1.30.0",
+    "opentelemetry-exporter-otlp-proto-common>=1.30.0",
 ]
 
 [project.urls]
@@ -42,6 +46,13 @@ dev = [
 [tool.hatch.build]
 only-packages = true
 sources = ["src"]
+
+# Ensure artifacts are included in the packages
+[tool.hatch.build.targets.wheel]
+artifacts = ["src/otlp_stdout_span_exporter/version.py"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["src/otlp_stdout_span_exporter/version.py"]
 
 [tool.ruff]
 target-version = "py312"
@@ -73,4 +84,4 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
-disallow_incomplete_defs = true 
+disallow_incomplete_defs = true

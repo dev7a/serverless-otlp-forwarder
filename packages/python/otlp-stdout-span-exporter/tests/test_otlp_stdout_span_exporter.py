@@ -114,19 +114,24 @@ def test_export_success(
 
     # Verify output format
     output = json.loads(mock_print.call_args[0][0])
-    assert output == {
-        "__otel_otlp_stdout": VERSION,
-        "source": "unknown-service",
-        "endpoint": "http://localhost:4318/v1/traces",
-        "method": "POST",
-        "content-type": "application/x-protobuf",
-        "content-encoding": "gzip",
-        "payload": "bW9jay1jb21wcmVzc2VkLWRhdGE=",  # base64 encoded 'mock-compressed-data'
-        "base64": True,
-    }
+    assert (
+        output
+        == {
+            "__otel_otlp_stdout": VERSION,
+            "source": "unknown-service",
+            "endpoint": "http://localhost:4318/v1/traces",
+            "method": "POST",
+            "content-type": "application/x-protobuf",
+            "content-encoding": "gzip",
+            "payload": "bW9jay1jb21wcmVzc2VkLWRhdGE=",  # base64 encoded 'mock-compressed-data'
+            "base64": True,
+        }
+    )
 
 
-def test_export_failure(clean_env: None, mock_encode_spans: Mock, mock_print: Mock) -> None:
+def test_export_failure(
+    clean_env: None, mock_encode_spans: Mock, mock_print: Mock
+) -> None:
     """Test export failure handling."""
     mock_encode_spans.return_value.SerializeToString.return_value = None
     exporter = OTLPStdoutSpanExporter()
@@ -162,7 +167,9 @@ def test_header_precedence(
 ) -> None:
     """Test that trace-specific headers take precedence."""
     os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = "api-key=secret123,shared-key=general"
-    os.environ["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] = "shared-key=specific,trace-key=value123"
+    os.environ["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] = (
+        "shared-key=specific,trace-key=value123"
+    )
     exporter = OTLPStdoutSpanExporter()
     spans: list[ReadableSpan] = []
 
@@ -184,7 +191,9 @@ def test_header_whitespace_handling(
     mock_print: Mock,
 ) -> None:
     """Test header parsing with whitespace."""
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = " api-key = secret123 , custom-header = value "
+    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
+        " api-key = secret123 , custom-header = value "
+    )
     exporter = OTLPStdoutSpanExporter()
     spans: list[ReadableSpan] = []
 

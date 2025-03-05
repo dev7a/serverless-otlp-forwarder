@@ -33,6 +33,7 @@ class OTLPStdoutSpanExporter(SpanExporter):
     - AWS_LAMBDA_FUNCTION_NAME: Fallback service name (if OTEL_SERVICE_NAME not set)
     - OTEL_EXPORTER_OTLP_HEADERS: Global headers for OTLP export
     - OTEL_EXPORTER_OTLP_TRACES_HEADERS: Trace-specific headers (takes precedence)
+    - OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL: GZIP compression level (0-9). Defaults to 6.
 
     Output Format:
     ```json
@@ -53,7 +54,7 @@ class OTLPStdoutSpanExporter(SpanExporter):
     ```
     """
 
-    def __init__(self, *, gzip_level: int = 6) -> None:
+    def __init__(self, *, gzip_level: int | None = None) -> None:
         """
         Creates a new OTLPStdoutSpanExporter
 
@@ -61,7 +62,9 @@ class OTLPStdoutSpanExporter(SpanExporter):
             gzip_level: GZIP compression level (0-9). Defaults to 6.
         """
         super().__init__()
-        self._gzip_level = gzip_level
+        self._gzip_level = gzip_level or int(
+            os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6")
+        )
         self._endpoint = DEFAULT_ENDPOINT
         self._service_name = os.environ.get("OTEL_SERVICE_NAME") or os.environ.get(
             "AWS_LAMBDA_FUNCTION_NAME", "unknown-service"
@@ -82,7 +85,9 @@ class OTLPStdoutSpanExporter(SpanExporter):
         headers: dict[str, str] = {}
         header_vars = [
             os.environ.get("OTEL_EXPORTER_OTLP_HEADERS"),  # General headers first
-            os.environ.get("OTEL_EXPORTER_OTLP_TRACES_HEADERS"),  # Trace-specific headers override
+            os.environ.get(
+                "OTEL_EXPORTER_OTLP_TRACES_HEADERS"
+            ),  # Trace-specific headers override
         ]
 
         for header_str in header_vars:
@@ -129,7 +134,9 @@ class OTLPStdoutSpanExporter(SpanExporter):
                 return SpanExportResult.FAILURE
 
             # Compress the serialized data using GZIP
-            compressed_data = gzip.compress(serialized_data, compresslevel=self._gzip_level)
+            compressed_data = gzip.compress(
+                serialized_data, compresslevel=self._gzip_level
+            )
 
             # Create the output object with metadata and payload
             output: dict[str, Any] = {
