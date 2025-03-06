@@ -2,3 +2,6 @@ node_modules
 dist
 coverage
 *.tgz
+
+# Auto-generated version file
+src/version.ts
