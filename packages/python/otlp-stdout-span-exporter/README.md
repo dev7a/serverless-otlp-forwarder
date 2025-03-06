@@ -135,3 +135,4 @@ MIT
 - [GitHub](https://github.com/dev7a/serverless-otlp-forwarder) - The main project repository for the Serverless OTLP Forwarder project
 - [GitHub](https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/node/otlp-stdout-span-exporter) | [npm](https://www.npmjs.com/package/@dev7a/otlp-stdout-span-exporter) - The Node.js version of this exporter
 - [GitHub](https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/rust/otlp-stdout-span-exporter) | [crates.io](https://crates.io/crates/otlp-stdout-span-exporter) - The Rust version of this exporter
+
