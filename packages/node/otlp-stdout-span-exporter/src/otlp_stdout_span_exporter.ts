@@ -6,12 +6,17 @@ import * as zlib from 'zlib';
 import { VERSION } from './version';
 
 const DEFAULT_ENDPOINT = 'http://localhost:4318/v1/traces';
+const DEFAULT_COMPRESSION_LEVEL = 6;
+const COMPRESSION_LEVEL_ENV_VAR = 'OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL';
 
 /**
  * Configuration options for the OTLPStdoutSpanExporter
  */
 export interface OTLPStdoutSpanExporterConfig {
-  /** GZIP compression level (0-9). Defaults to 6. */
+  /** 
+   * GZIP compression level (0-9). 
+   * Defaults to 6 or the value from OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL environment variable.
+   */
   gzipLevel?: number;
 }
 
@@ -32,6 +37,7 @@ export interface OTLPStdoutSpanExporterConfig {
  * - AWS_LAMBDA_FUNCTION_NAME: Fallback service name (if OTEL_SERVICE_NAME not set)
  * - OTEL_EXPORTER_OTLP_HEADERS: Global headers for OTLP export
  * - OTEL_EXPORTER_OTLP_TRACES_HEADERS: Trace-specific headers (takes precedence)
+ * - OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL: GZIP compression level (0-9). Defaults to 6.
  * 
  * Output Format:
  * ```json
@@ -43,7 +49,7 @@ export interface OTLPStdoutSpanExporterConfig {
  *   "content-type": "application/x-protobuf",
  *   "content-encoding": "gzip",
  *   "headers": {
- *     "api-key": "secret123",
+ *     "tenant-id": "tenant-12345",
  *     "custom-header": "value"
  *   },
  *   "payload": "<base64-encoded-gzipped-protobuf>",
@@ -58,12 +64,11 @@ export interface OTLPStdoutSpanExporterConfig {
  * 
  * // Custom configuration
  * const exporter = new OTLPStdoutSpanExporter({
- *   endpoint: 'https://custom.endpoint/v1/traces',
  *   gzipLevel: zlib.constants.Z_BEST_COMPRESSION
  * });
  * 
  * // With custom headers via environment variables
- * process.env.OTEL_EXPORTER_OTLP_HEADERS = 'api-key=secret123,custom-header=value';
+ * process.env.OTEL_EXPORTER_OTLP_HEADERS = 'tenant-id=tenant-12345,custom-header=value';
  * const exporter = new OTLPStdoutSpanExporter();
  * ```
  */
@@ -74,6 +79,22 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
   private readonly headers: Record<string, string>;
 
   /**
+   * Get the compression level from environment variable or return the default
+   * @returns The GZIP compression level from environment or default
+   */
+  private static getCompressionLevelFromEnv(): number {
+    const envValue = process.env[COMPRESSION_LEVEL_ENV_VAR];
+    if (envValue !== undefined) {
+      const level = parseInt(envValue, 10);
+      if (!isNaN(level) && level >= 0 && level <= 9) {
+        return level;
+      }
+      diag.debug(`Invalid compression level in ${COMPRESSION_LEVEL_ENV_VAR}: ${envValue}, using default level ${DEFAULT_COMPRESSION_LEVEL}`);
+    }
+    return DEFAULT_COMPRESSION_LEVEL;
+  }
+
+  /**
    * Creates a new OTLPStdoutSpanExporter
    * @param config - Configuration options
    */
@@ -82,7 +103,9 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
     this.serviceName = process.env.OTEL_SERVICE_NAME || 
       process.env.AWS_LAMBDA_FUNCTION_NAME || 
       'unknown-service';
-    this.gzipLevel = config.gzipLevel || zlib.constants.Z_DEFAULT_COMPRESSION;
+    this.gzipLevel = config.gzipLevel !== undefined 
+      ? config.gzipLevel 
+      : OTLPStdoutSpanExporter.getCompressionLevelFromEnv();
     this.headers = this.parseHeaders();
   }
 

@@ -44,6 +44,7 @@ describe('OTLPStdoutSpanExporter', () => {
     delete process.env.AWS_LAMBDA_FUNCTION_NAME;
     delete process.env.OTEL_EXPORTER_OTLP_HEADERS;
     delete process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS;
+    delete process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL;
   });
 
   afterEach(() => {
@@ -79,7 +80,7 @@ describe('OTLPStdoutSpanExporter', () => {
     });
   });
 
-  it('should use custom gzip level', () => {
+  it('should use custom gzip level from config', () => {
     const _exporter = new OTLPStdoutSpanExporter({ gzipLevel: zlib.constants.Z_BEST_COMPRESSION });
     const spans: ReadableSpan[] = [];
     
@@ -87,6 +88,58 @@ describe('OTLPStdoutSpanExporter', () => {
       expect(zlib.gzipSync).toHaveBeenCalledWith(
         expect.any(Buffer),
         expect.objectContaining({ level: zlib.constants.Z_BEST_COMPRESSION })
+      );
+    });
+  });
+  
+  it('should use compression level from environment variable', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = '3';
+    const _exporter = new OTLPStdoutSpanExporter();
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(zlib.gzipSync).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({ level: 3 })
+      );
+    });
+  });
+
+  it('should use explicit config over environment variable for compression level', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = '3';
+    const _exporter = new OTLPStdoutSpanExporter({ gzipLevel: 8 });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(zlib.gzipSync).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({ level: 8 })
+      );
+    });
+  });
+
+  it('should handle invalid compression level in environment variable', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = 'invalid';
+    const _exporter = new OTLPStdoutSpanExporter();
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(zlib.gzipSync).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({ level: 6 }) // Default level
+      );
+    });
+  });
+
+  it('should handle out-of-range compression level in environment variable', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = '10'; // Out of range
+    const _exporter = new OTLPStdoutSpanExporter();
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(zlib.gzipSync).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        expect.objectContaining({ level: 6 }) // Default level
       );
     });
   });
