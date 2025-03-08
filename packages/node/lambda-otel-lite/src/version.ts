@@ -1,10 +1,2 @@
-/**
- * Package version information.
- * These values identify the library in telemetry data.
- */
-export const VERSION = {
-  /** Package name as it appears in package.json */
-  NAME: '@dev7a/lambda-otel-lite',
-  /** Current version of the package */
-  VERSION: '0.9.1',
-};
+// This file is auto-generated. Do not edit manually.
+export const VERSION = "0.10.0";

@@ -3,7 +3,7 @@
 Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these items are checked:
 
 ## Package.json Verification
-- [ ] `version` is correctly incremented (following semver) in package.json and in src/version.ts
+- [ ] `version` is correctly incremented (following semver)
 - [ ] `name` is correct
 - [ ] `description` is clear and up-to-date
 - [ ] `license` is specified
@@ -42,19 +42,22 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 - [ ] No unnecessary files in git
 - [ ] Git tags are ready to be created
 
+## Version Management
+- [ ] Update version in `package.json` only
+- [ ] Do NOT manually edit `version.ts` - it is auto-generated during build by the `generate:version` npm script
+
 ## Publishing Steps
-1. Update version in `package.json`
+1. Update version in `package.json` (this is the single source of truth for the version)
 2. Update `CHANGELOG.md`
 3. Format code: `npm run format`
 4. Run format check: `npm run format:check`
 5. Run linting: `npm run lint`
 6. Run tests: `npm test`
-7. Clean build: `npm run clean && npm run build`
-8. Commit changes: `git commit -am "Release vX.Y.Z"`
-9. Create git tag: `git tag vX.Y.Z`
-10. Push changes: `git push && git push --tags`
-11. Publish to npm: `npm publish`
-12. Verify package on npm: https://www.npmjs.com/package/@dev7a/lambda-otel-lite
+7. Build package: `npm run build` (this will automatically generate the version.ts file)
+8. Create a branch for the release following the pattern `release-node-<package-name>-v<version>`
+9. Commit changes to the release branch and push to GitHub
+10. Create a pull request from the release branch to main
+11. Once the PR is approved and merged, tagging and publishing is done automatically by the CI pipeline
 
 ## Post-Publishing
 - [ ] Verify package installation works: `npm install @dev7a/lambda-otel-lite`
@@ -62,6 +65,7 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 - [ ] Verify all package files are included
 - [ ] Test the package in a new project
 - [ ] Update any dependent packages
+- [ ] Verify examples run correctly
 
 ## Common Issues to Check
 - Missing files in the published package
@@ -73,7 +77,9 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 - Unintended breaking changes
 
 ## Notes
-- Always use `npm publish --dry-run` first to verify the package contents
-- Consider using `npm pack` to inspect the exact files that will be published
-- Test the package in a clean environment before publishing
-- Consider the impact on dependent packages 
+- Always run `npm run build` before publishing (which automatically generates the `version.ts` file)
+- Test the package with different Node.js versions
+- Consider cross-platform compatibility
+- Test with the minimum supported Node.js version
+- Consider running security checks
+- Remember to update any related documentation or examples in the main repository 

@@ -1,10 +1,22 @@
-import { jest, describe, it, expect } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { ProcessorMode } from '../../src/mode';
 import { VERSION } from '../../src/version';
+import { ProcessorMode } from '../../src/mode';
 import { TelemetryCompletionHandler } from '../../src/internal/telemetry/completion';
 
 describe('TelemetryCompletionHandler', () => {
+  let provider: NodeTracerProvider;
+  let handler: TelemetryCompletionHandler;
+
+  beforeEach(() => {
+    provider = new NodeTracerProvider();
+    const getTracerSpy = jest.spyOn(provider, 'getTracer');
+    handler = new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
+
+    // Verify tracer is initialized with correct package info
+    expect(getTracerSpy).toHaveBeenCalledWith('@dev7a/lambda-otel-lite', VERSION);
+  });
+
   describe('constructor', () => {
     it('should create tracer with package instrumentation scope', () => {
       const provider = new NodeTracerProvider();
@@ -12,7 +24,7 @@ describe('TelemetryCompletionHandler', () => {
 
       new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
 
-      expect(getTracerSpy).toHaveBeenCalledWith(VERSION.NAME, VERSION.VERSION);
+      expect(getTracerSpy).toHaveBeenCalledWith('@dev7a/lambda-otel-lite', VERSION);
     });
   });
 

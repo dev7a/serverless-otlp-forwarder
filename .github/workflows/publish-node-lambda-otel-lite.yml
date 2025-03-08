@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: npm-publish
-      url: https://www.npmjs.com/package/lambda-otel-lite
+      url: https://www.npmjs.com/package/@dev7a/lambda-otel-lite
     defaults:
       run:
         working-directory: packages/node/lambda-otel-lite
@@ -84,6 +84,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate version file
+        run: npm run generate:version
+
       - name: Build package
         run: npm run build
 
@@ -91,7 +94,7 @@ jobs:
         id: version_check
         run: |
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          VERSION_TS_VERSION=$(grep -o "'[0-9]\+\.[0-9]\+\.[0-9]\+'" src/version.ts | tr -d "'")
+          VERSION_TS_VERSION=$(grep -o '"[0-9]\+\.[0-9]\+\.[0-9]\+"' src/version.ts | tr -d '"')
           TAG_NAME="packages/node/lambda-otel-lite-v$PACKAGE_VERSION"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           

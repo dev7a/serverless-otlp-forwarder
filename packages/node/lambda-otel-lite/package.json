@@ -1,6 +1,6 @@
 {
   "name": "@dev7a/lambda-otel-lite",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Lightweight OpenTelemetry instrumentation for AWS Lambda",
   "license": "MIT",
   "keywords": [
@@ -46,10 +46,11 @@
     "node": ">=18.0.0"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "npm run clean && npm run generate:version && tsc",
     "clean": "rm -rf dist",
     "format": "prettier --write 'src/**/*.{js,ts}' '__tests__/**/*.{js,ts}'",
     "format:check": "prettier --check 'src/**/*.{js,ts}' '__tests__/**/*.{js,ts}'",
+    "generate:version": "echo '// This file is auto-generated. Do not edit manually.\\nexport const VERSION = \"'$(node -p \"require('./package.json').version\")'\";' > src/version.ts",
     "lint": "eslint 'src/**/*.{js,ts}' '__tests__/**/*.{js,ts}' --fix && npx npm-package-json-lint .",
     "lint:fix": "npm run lint -- --fix",
     "test": "jest -c jest.config.ts",

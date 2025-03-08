@@ -59,7 +59,7 @@ export class TelemetryCompletionHandler {
     private readonly mode: ProcessorMode
   ) {
     // Initialize tracer once at construction
-    this._tracer = this.provider.getTracer(VERSION.NAME, VERSION.VERSION);
+    this._tracer = this.provider.getTracer('@dev7a/lambda-otel-lite', VERSION);
   }
 
   /**

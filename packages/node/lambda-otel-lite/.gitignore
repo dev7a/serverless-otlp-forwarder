@@ -24,3 +24,6 @@ coverage/
 Thumbs.db
 
 *.tgz
+
+# Generated files
+src/version.ts
