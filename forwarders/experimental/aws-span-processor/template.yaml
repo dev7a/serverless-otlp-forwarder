@@ -29,7 +29,7 @@ Conditions:
   HasVpcConfig: !Not [!Equals [!Ref VpcId, '']]
 
 Resources:
-  SpanProcessorFunction:
+  SpansProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
@@ -87,24 +87,24 @@ Resources:
     Properties:
       LogGroupName: !Ref SpanLogGroupName
       FilterPattern: '' # Empty pattern to capture all logs
-      DestinationArn: !GetAtt SpanProcessorFunction.Arn
+      DestinationArn: !GetAtt SpansProcessorFunction.Arn
 
   SpanProcessorPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !Ref SpanProcessorFunction
+      FunctionName: !Ref SpansProcessorFunction
       Principal: logs.amazonaws.com
       SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${SpanLogGroupName}:*'
 
 Outputs:
-  SpanProcessorFunctionName:
+  SpansProcessorFunctionName:
     Description: Name of the Span processor Lambda function
-    Value: !Ref SpanProcessorFunction
+    Value: !Ref SpansProcessorFunction
 
-  SpanProcessorFunctionArn:
+  SpansProcessorFunctionArn:
     Description: ARN of the Span processor Lambda function
-    Value: !GetAtt SpanProcessorFunction.Arn
+    Value: !GetAtt SpansProcessorFunction.Arn
 
   SpanProcessorSecurityGroupId:
     Description: ID of the security group for the Span processor Lambda function

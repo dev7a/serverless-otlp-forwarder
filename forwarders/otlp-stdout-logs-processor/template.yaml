@@ -29,7 +29,7 @@ Conditions:
   HasVpcConfig: !Not [!Equals [!Ref VpcId, '']]
 
 Resources:
-  OtlpStdoutProcessor:
+  LogsProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
@@ -76,14 +76,14 @@ Resources:
       VpcConfig: !If 
         - HasVpcConfig
         - SecurityGroupIds: 
-            - !Ref OtlpProcessorSecurityGroup
+            - !Ref LogsProcessorSecurityGroup
           SubnetIds: !Ref SubnetIds
         - !Ref AWS::NoValue
 
-  OtlpStdoutProcessorPermission:
+  LogsProcessorFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
-      FunctionName: !Ref OtlpStdoutProcessor
+      FunctionName: !Ref LogsProcessorFunction
       Action: lambda:InvokeFunction
       Principal: logs.amazonaws.com
       SourceAccount: !Ref AWS::AccountId
@@ -92,31 +92,31 @@ Resources:
     Type: AWS::Logs::AccountPolicy
     Condition: RouteAllLogs
     DependsOn:
-      - OtlpStdoutProcessorPermission
+      - LogsProcessorFunctionPermission
     Properties:
       PolicyName: "LambdaSubscriptionPolicy"
       PolicyDocument: 
         Fn::Sub: |
           {
-            "DestinationArn": "${OtlpStdoutProcessor.Arn}",
-            "FilterPattern": "{ $.__otel_otlp_stdout = * }",
+            "DestinationArn": "${LogsProcessorFunction.Arn}",
+            "FilterPattern": "{ $.__otel_otlp_stdout = * }"
           }
       PolicyType: "SUBSCRIPTION_FILTER_POLICY"
       Scope: "ALL"
-      SelectionCriteria: !Sub "LogGroupName NOT IN [\"/aws/${OtlpStdoutProcessor}\"]"
+      SelectionCriteria: !Sub "LogGroupName NOT IN [\"/aws/${LogsProcessorFunction}\"]"
 
-  OtlpProcessorSecurityGroup:
+  LogsProcessorSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Condition: HasVpcConfig
     Properties:
-      GroupDescription: Security group for OTLP Processor Lambda
+      GroupDescription: Security group for OTLP Logs Processor Lambda
       VpcId: !Ref VpcId
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
 
 Outputs:
-  OtlpStdoutProcessorArn:
+  LogsProcessorFunctionArn:
     Description: ARN of the OTLP stdout processor Lambda function
-    Value: !GetAtt OtlpStdoutProcessor.Arn
+    Value: !GetAtt LogsProcessorFunction.Arn
   

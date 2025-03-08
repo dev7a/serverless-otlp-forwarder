@@ -11,20 +11,15 @@ lambda-otlp-forwarder = { path = "../../../otlp-stdout-logs-processor/processor"
 tokio.workspace = true
 anyhow.workspace = true
 lambda_runtime.workspace = true
-aws-sdk-secretsmanager.workspace = true
 reqwest.workspace = true
 tracing.workspace = true
 lambda-otel-lite.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
-opentelemetry.workspace = true
 otlp-sigv4-client.workspace = true
 aws-config.workspace = true
 aws-credential-types.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-opentelemetry-proto = "0.28.0"
-prost = "0.13.5"
 aws_lambda_events = { workspace = true, features = ["kinesis"] }
 
 [dev-dependencies]
