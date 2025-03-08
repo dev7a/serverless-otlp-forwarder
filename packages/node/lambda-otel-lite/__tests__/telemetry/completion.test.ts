@@ -6,12 +6,12 @@ import { TelemetryCompletionHandler } from '../../src/internal/telemetry/complet
 
 describe('TelemetryCompletionHandler', () => {
   let provider: NodeTracerProvider;
-  let handler: TelemetryCompletionHandler;
+  let _handler: TelemetryCompletionHandler;
 
   beforeEach(() => {
     provider = new NodeTracerProvider();
     const getTracerSpy = jest.spyOn(provider, 'getTracer');
-    handler = new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
+    _handler = new TelemetryCompletionHandler(provider, ProcessorMode.Sync);
 
     // Verify tracer is initialized with correct package info
     expect(getTracerSpy).toHaveBeenCalledWith('@dev7a/lambda-otel-lite', VERSION);
