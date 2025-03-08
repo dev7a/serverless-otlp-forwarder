@@ -4,14 +4,14 @@ on:
   # Trigger on PRs that touch the Python package
   pull_request:
     paths:
-      - 'packages/python/lambda_otel_lite/**'
+      - 'packages/python/lambda-otel-lite/**'
     types: [opened, synchronize, labeled]
   # Trigger on merges to main that touch the Python package
   push:
     branches:
       - main
     paths:
-      - 'packages/python/lambda_otel_lite/**'
+      - 'packages/python/lambda-otel-lite/**'
 
 # Add permissions needed for the workflow
 permissions:
@@ -34,7 +34,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     defaults:
       run:
-        working-directory: packages/python/lambda_otel_lite
+        working-directory: packages/python/lambda-otel-lite
 
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'approved')
     steps:
@@ -70,7 +70,7 @@ jobs:
       url: https://pypi.org/project/lambda-otel-lite
     defaults:
       run:
-        working-directory: packages/python/lambda_otel_lite
+        working-directory: packages/python/lambda-otel-lite
 
     steps:
       - uses: actions/checkout@v4
@@ -95,7 +95,7 @@ jobs:
         id: version_check
         run: |
           PACKAGE_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite.version import VERSION; print(VERSION)")
-          TAG_NAME="packages/python/lambda_otel_lite-v$PACKAGE_VERSION"
+          TAG_NAME="packages/python/lambda-otel-lite-v$PACKAGE_VERSION"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           
           if git tag -l | grep -q "$TAG_NAME"; then
