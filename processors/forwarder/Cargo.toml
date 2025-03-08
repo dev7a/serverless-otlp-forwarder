@@ -23,7 +23,10 @@ serde.workspace = true
 lambda_runtime.workspace = true
 otlp-stdout-client.workspace = true
 otlp-sigv4-client.workspace = true
-lambda-otel-utils.workspace = true
+lambda-otel-lite.workspace = true
+opentelemetry_sdk.workspace = true
+
+opentelemetry-otlp.workspace = true
 aws-sdk-secretsmanager = { version = "1.48.0", features = ["behavior-version-latest"] }
 aws-credential-types = "1.1.4"
 url = "2.5.3"
@@ -31,6 +34,8 @@ base64 = "0.22.1"
 flate2 = "1.0"
 aws_lambda_events = { version = "0.16.0", features = ["cloudwatch_logs", "kinesis"], default-features = false }
 regex = "1.11.1"
+opentelemetry-proto = "0.28.0"
+prost = "0.13.5"
 
 [dev-dependencies]
 wiremock = "0.6"

@@ -62,6 +62,7 @@ impl LogRecordHeaders {
                     let signed_headers = sign_request(
                         credentials,
                         &collector.endpoint,
+                        "POST",
                         &headers_to_sign,
                         payload,
                         region,

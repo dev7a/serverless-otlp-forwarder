@@ -13,12 +13,12 @@ use aws_sdk_secretsmanager::Client as SecretsManagerClient;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
 use std::env;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tracing::instrument;
 use url::Url;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Global storage for cached collectors configuration
 static COLLECTORS: OnceLock<Arc<CollectorsCache>> = OnceLock::new();
@@ -205,7 +205,8 @@ impl Collector {
     fn should_emit_warning() -> bool {
         let now = Instant::now().elapsed().as_secs();
         let last = LAST_WARNING.load(Ordering::Relaxed);
-        if now - last > 600 {  // Warn once every 10 minutes
+        if now - last > 600 {
+            // Warn once every 10 minutes
             LAST_WARNING.store(now, Ordering::Relaxed);
             true
         } else {
@@ -224,7 +225,10 @@ impl Collector {
         // Prevent infinite loops: exclude aws/spans when endpoint is AWS
         if log_group == "aws/spans" {
             if let Ok(base) = Url::parse(&self.endpoint) {
-                if base.host_str().map_or(false, |h| h.ends_with(".amazonaws.com")) {
+                if base
+                    .host_str()
+                    .map_or(false, |h| h.ends_with(".amazonaws.com"))
+                {
                     if Self::should_emit_warning() {
                         tracing::warn!(
                             "Collector endpoint {} is an AWS OTLP endpoint and aws/spans log group is not excluded. \
