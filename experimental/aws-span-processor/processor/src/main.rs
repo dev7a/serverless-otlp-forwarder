@@ -28,9 +28,7 @@ use tracing::instrument;
 
 use aws_credential_types::{provider::ProvideCredentials, Credentials};
 use lambda_otlp_forwarder::{
-    collectors::Collectors,
-    processing::process_telemetry_batch,
-    telemetry::TelemetryData,
+    collectors::Collectors, processing::process_telemetry_batch, telemetry::TelemetryData,
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
 use serde_json::Value;
@@ -65,13 +63,31 @@ impl AppState {
 /// Convert a CloudWatch log event containing a raw span into TelemetryData
 fn convert_span_event(event: &LogEntry, log_group: &str) -> Option<TelemetryData> {
     // Parse the raw span
-    let span: Value = serde_json::from_str(&event.message).ok()?;
+    let span: Value = match serde_json::from_str(&event.message) {
+        Ok(span) => span,
+        Err(e) => {
+            tracing::warn!("Failed to parse span JSON: {}", e);
+            return None;
+        }
+    };
 
-    // Convert to OTLP format
-    let otlp_span = otlp::convert_span_to_otlp(span)?;
+    // Convert directly to OTLP protobuf
+    let protobuf_bytes = match otlp::convert_span_to_otlp_protobuf(span) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::warn!("Failed to convert span to OTLP protobuf: {}", e);
+            return None;
+        }
+    };
 
-    // Convert to TelemetryData
-    TelemetryData::from_raw_span(otlp_span, log_group).ok()
+    // Create TelemetryData with the protobuf payload
+    Some(TelemetryData {
+        source: log_group.to_string(),
+        endpoint: "https://localhost:4318/v1/traces".to_string(),
+        payload: protobuf_bytes,
+        content_type: "application/x-protobuf".to_string(),
+        content_encoding: None, // No compression at this stage
+    })
 }
 
 #[instrument(skip_all, fields(otel.kind="consumer", forwarder.log_group, forwarder.events.count))]
@@ -172,11 +188,29 @@ mod tests {
 
     #[test]
     fn test_convert_span_event() {
-        // Create a test span
+        // Create a test span with all required fields
         let span_record = json!({
             "name": "test-span",
-            "traceId": "test-trace-id",
-            "endTimeUnixNano": 1234567890,
+            "traceId": "0123456789abcdef0123456789abcdef",
+            "spanId": "0123456789abcdef",
+            "kind": "SERVER",
+            "startTimeUnixNano": 1619712000000000000_u64,
+            "endTimeUnixNano": 1619712001000000000_u64,
+            "attributes": {
+                "service.name": "test-service"
+            },
+            "status": {
+                "code": "OK"
+            },
+            "resource": {
+                "attributes": {
+                    "service.name": "test-service"
+                }
+            },
+            "scope": {
+                "name": "test-scope",
+                "version": "1.0.0"
+            }
         });
 
         let event = LogEntry {
@@ -189,8 +223,8 @@ mod tests {
         assert!(result.is_some());
         let telemetry = result.unwrap();
         assert_eq!(telemetry.source, "aws/spans");
-        assert_eq!(telemetry.content_type, "application/json");
-        assert_eq!(telemetry.content_encoding, Some("gzip".to_string()));
+        assert_eq!(telemetry.content_type, "application/x-protobuf");
+        assert_eq!(telemetry.content_encoding, None);
     }
 
     #[test]
@@ -209,7 +243,8 @@ mod tests {
     fn test_convert_span_event_missing_endtime() {
         let span_record = json!({
             "name": "test-span",
-            "traceId": "test-trace-id",
+            "traceId": "0123456789abcdef0123456789abcdef",
+            "spanId": "0123456789abcdef",
             // endTimeUnixNano is missing
         });
 
@@ -227,7 +262,8 @@ mod tests {
     fn test_convert_span_event_null_endtime() {
         let span_record = json!({
             "name": "test-span",
-            "traceId": "test-trace-id",
+            "traceId": "0123456789abcdef0123456789abcdef",
+            "spanId": "0123456789abcdef",
             "endTimeUnixNano": null
         });
 
@@ -243,18 +279,20 @@ mod tests {
 
     #[test]
     fn test_convert_span_event_complete() {
+        // Create a complete test span with all fields
         let span_record = json!({
             "name": "test-span",
-            "traceId": "test-trace-id",
-            "spanId": "test-span-id",
-            "parentSpanId": "test-parent-span-id",
+            "traceId": "0123456789abcdef0123456789abcdef",
+            "spanId": "0123456789abcdef",
+            "parentSpanId": "fedcba9876543210",
             "kind": "SERVER",
-            "startTimeUnixNano": 1733931461640310404_u64,
-            "endTimeUnixNano": 1733931461640310404_u64,
+            "startTimeUnixNano": 1619712000000000000_u64,
+            "endTimeUnixNano": 1619712001000000000_u64,
             "attributes": {
                 "service.name": "test-service",
                 "http.method": "GET",
-                "http.url": "https://example.com"
+                "http.url": "https://example.com",
+                "http.status_code": 200
             },
             "status": {
                 "code": "OK"
@@ -262,12 +300,12 @@ mod tests {
             "resource": {
                 "attributes": {
                     "service.name": "test-service",
-                    "cloud.provider": "aws"
+                    "service.version": "1.0.0"
                 }
             },
             "scope": {
-                "name": "test-instrumentation",
-                "version": "1.0"
+                "name": "test-scope",
+                "version": "1.0.0"
             }
         });
 
@@ -281,7 +319,10 @@ mod tests {
         assert!(result.is_some());
         let telemetry = result.unwrap();
         assert_eq!(telemetry.source, "aws/spans");
-        assert_eq!(telemetry.content_type, "application/json");
-        assert_eq!(telemetry.content_encoding, Some("gzip".to_string()));
+        assert_eq!(telemetry.content_type, "application/x-protobuf");
+        assert_eq!(telemetry.content_encoding, None);
+        
+        // Verify the payload is not empty
+        assert!(!telemetry.payload.is_empty());
     }
-} 
+}

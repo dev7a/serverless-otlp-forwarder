@@ -3,8 +3,9 @@
 //! This Lambda function:
 //! 1. Receives Kinesis events containing otlp-stdout format records
 //! 2. Decodes and decompresses the data
-//! 3. Converts records to TelemetryData
-//! 4. Forwards the data to collectors in parallel
+//! 3. Converts records to TelemetryData with binary protobuf format
+//! 4. Compacts multiple records into a single payload
+//! 5. Forwards the data to collectors
 //!
 //! The function supports:
 //! - Multiple collectors with different endpoints
@@ -26,10 +27,13 @@ use std::sync::Arc;
 use tracing::instrument;
 
 use aws_credential_types::{provider::ProvideCredentials, Credentials};
-use otlp_sigv4_client::SigV4ClientBuilder;
 use lambda_otlp_forwarder::{
-    collectors::Collectors, processing::process_telemetry_batch, telemetry::TelemetryData,
+    collectors::Collectors, 
+    processing::process_telemetry_batch, 
+    telemetry::TelemetryData,
+    span_compactor::{compact_telemetry_payloads, SpanCompactionConfig},
 };
+use otlp_sigv4_client::SigV4ClientBuilder;
 
 /// Shared application state across Lambda invocations
 struct AppState {
@@ -59,7 +63,9 @@ impl AppState {
 }
 
 /// Convert a Kinesis record into TelemetryData
-fn convert_kinesis_record(record: &aws_lambda_events::event::kinesis::KinesisEventRecord) -> Result<TelemetryData> {
+fn convert_kinesis_record(
+    record: &aws_lambda_events::event::kinesis::KinesisEventRecord,
+) -> Result<TelemetryData> {
     let data = String::from_utf8(record.kinesis.data.0.clone())
         .context("Failed to decode Kinesis record data as UTF-8")?;
 
@@ -67,7 +73,7 @@ fn convert_kinesis_record(record: &aws_lambda_events::event::kinesis::KinesisEve
     let log_record = serde_json::from_str(&data)
         .with_context(|| format!("Failed to parse Kinesis record: {}", data))?;
 
-    // Convert to TelemetryData
+    // Convert to TelemetryData (will be in uncompressed protobuf format)
     TelemetryData::from_log_record(log_record)
 }
 
@@ -89,7 +95,7 @@ async fn function_handler(
     }
 
     // Convert all records to TelemetryData (sequentially)
-    let telemetry_records = records
+    let telemetry_batch: Vec<TelemetryData> = records
         .iter()
         .filter_map(|record| match convert_kinesis_record(record) {
             Ok(telemetry) => Some(telemetry),
@@ -100,14 +106,31 @@ async fn function_handler(
         })
         .collect();
 
-    // Process all records in parallel
-    process_telemetry_batch(
-        telemetry_records,
-        &state.http_client,
-        &state.credentials,
-        &state.region,
-    )
-    .await?;
+    // If we have telemetry data, process it
+    if !telemetry_batch.is_empty() {
+        tracing::info!("Processing {} telemetry records", telemetry_batch.len());
+        
+        // Compact multiple payloads into a single one
+        // This will also apply compression to the final result
+        let compacted_telemetry = match compact_telemetry_payloads(telemetry_batch, &SpanCompactionConfig::default()) {
+            Ok(telemetry) => vec![telemetry],
+            Err(e) => {
+                tracing::error!("Failed to compact telemetry payloads: {}", e);
+                return Err(e);
+            }
+        };
+        
+        // Process the compacted telemetry (single POST request)
+        process_telemetry_batch(
+            compacted_telemetry,
+            &state.http_client,
+            &state.credentials,
+            &state.region,
+        )
+        .await?;
+    } else {
+        tracing::info!("No valid telemetry records to process");
+    }
 
     Ok(())
 }
@@ -162,7 +185,7 @@ async fn main() -> Result<(), LambdaError> {
     }))
     .layer(
         OtelLayer::new(|| {
-            tracer_provider.force_flush();
+            let _ = tracer_provider.force_flush();
         })
         .with_trigger(OpenTelemetryFaasTrigger::PubSub),
     )
@@ -182,16 +205,16 @@ mod tests {
         use chrono::{TimeZone, Utc};
         // This is the raw string that the extension sends to Kinesis
         let record_str = r#"{
-            "__otel_otlp_stdout": "otlp-stdout-client@0.2.2",
+            "__otel_otlp_stdout": "0.2.2",
             "source": "test-service",
             "endpoint": "http://example.com",
             "method": "POST",
-            "payload": {"test": "data"},
+            "payload": {"resourceSpans": []},
             "headers": {
                 "content-type": "application/json"
             },
             "content-type": "application/json",
-            "content-encoding": "gzip",
+            "content-encoding": null,
             "base64": false
         }"#;
 
@@ -202,13 +225,17 @@ mod tests {
                 sequence_number: "test-sequence".to_string(),
                 kinesis_schema_version: Some("1.0".to_string()),
                 encryption_type: KinesisEncryptionType::None,
-                approximate_arrival_timestamp: SecondTimestamp(Utc.timestamp_opt(1234567890, 0).unwrap()),
+                approximate_arrival_timestamp: SecondTimestamp(
+                    Utc.timestamp_opt(1234567890, 0).unwrap(),
+                ),
             },
             aws_region: Some("us-east-1".to_string()),
             event_id: Some("test-event-id".to_string()),
             event_name: Some("aws:kinesis:record".to_string()),
             event_source: Some("aws:kinesis".to_string()),
-            event_source_arn: Some("arn:aws:kinesis:us-east-1:123456789012:stream/test-stream".to_string()),
+            event_source_arn: Some(
+                "arn:aws:kinesis:us-east-1:123456789012:stream/test-stream".to_string(),
+            ),
             event_version: Some("1.0".to_string()),
             invoke_identity_arn: Some("arn:aws:iam::123456789012:role/test-role".to_string()),
         };
@@ -220,7 +247,40 @@ mod tests {
         assert!(result.is_ok());
         let telemetry = result.unwrap();
         assert_eq!(telemetry.source, "test-service");
-        assert_eq!(telemetry.content_type, "application/json");
-        assert_eq!(telemetry.content_encoding, Some("gzip".to_string()));
+        assert_eq!(telemetry.content_type, "application/x-protobuf");
+        assert_eq!(telemetry.content_encoding, None); // No compression at this stage
     }
-} 
+    
+    #[test]
+    fn test_convert_kinesis_record_invalid_json() {
+        use aws_lambda_events::encodings::SecondTimestamp;
+        use chrono::{TimeZone, Utc};
+        
+        let invalid_record_str = "invalid json";
+
+        let record = KinesisEventRecord {
+            kinesis: KinesisRecord {
+                data: aws_lambda_events::encodings::Base64Data(invalid_record_str.as_bytes().to_vec()),
+                partition_key: "test-key".to_string(),
+                sequence_number: "test-sequence".to_string(),
+                kinesis_schema_version: Some("1.0".to_string()),
+                encryption_type: KinesisEncryptionType::None,
+                approximate_arrival_timestamp: SecondTimestamp(
+                    Utc.timestamp_opt(1234567890, 0).unwrap(),
+                ),
+            },
+            aws_region: Some("us-east-1".to_string()),
+            event_id: Some("test-event-id".to_string()),
+            event_name: Some("aws:kinesis:record".to_string()),
+            event_source: Some("aws:kinesis".to_string()),
+            event_source_arn: Some(
+                "arn:aws:kinesis:us-east-1:123456789012:stream/test-stream".to_string(),
+            ),
+            event_version: Some("1.0".to_string()),
+            invoke_identity_arn: Some("arn:aws:iam::123456789012:role/test-role".to_string()),
+        };
+
+        let result = convert_kinesis_record(&record);
+        assert!(result.is_err());
+    }
+}
