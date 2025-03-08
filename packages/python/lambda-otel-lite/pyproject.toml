@@ -1,10 +1,14 @@
 [build-system]
-requires = ["setuptools>=45"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.0.0"]
+build-backend = "hatchling.build"
+
+# Use Hatch's built-in version hook to generate version.py
+[tool.hatch.build.hooks.version]
+path = "src/lambda_otel_lite/version.py"
 
 [project]
 name = "lambda_otel_lite"
-version = "0.9.0"
+version = "0.10.0"
 description = "Lightweight OpenTelemetry instrumentation for AWS Lambda"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -29,7 +33,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/dev7a/serverless-otlp-forwarder"
-Repository = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/python/lambda_otel_lite"
+Repository = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/python/lambda-otel-lite"
 
 [project.optional-dependencies]
 dev = [
@@ -73,4 +77,15 @@ warn_return_any = true
 warn_unused_configs = true
 warn_unused_ignores = false
 disallow_untyped_defs = true
-disallow_incomplete_defs = true 
+disallow_incomplete_defs = true
+
+[tool.hatch.build]
+only-packages = true
+sources = ["src"]
+
+# Ensure artifacts are included in the packages
+[tool.hatch.build.targets.wheel]
+artifacts = ["src/lambda_otel_lite/version.py"]
+
+[tool.hatch.build.targets.sdist]
+artifacts = ["src/lambda_otel_lite/version.py"] 

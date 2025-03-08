@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2025-03-08
+
+### Changed
+- Updated build system to use Hatch instead of setuptools
+- Implemented automatic version management using Hatch's version hook
+- Version is now managed in a single place (pyproject.toml)
+- Removed hardcoded version from __init__.py
+
 ## [0.9.0] - 2025-02-23
 
 ### Changed

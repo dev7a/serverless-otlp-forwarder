@@ -9,7 +9,9 @@ import os
 from enum import Enum
 from typing import Final
 
-__version__ = "0.9.0"
+from .version import VERSION
+
+__version__ = VERSION
 
 
 class ProcessorMode(str, Enum):

@@ -4,7 +4,6 @@ Before publishing a new version of `lambda_otel_lite`, ensure all these items ar
 
 ## pyproject.toml Verification
 - [ ] `version` is correctly incremented (following semver)
-- [ ] Version number matches `__version__` in `src/lambda_otel_lite/__init__.py`
 - [ ] Version number matches latest version in CHANGELOG.md
 - [ ] `description` is clear and up-to-date
 - [ ] `license` is specified correctly
@@ -43,23 +42,41 @@ Before publishing a new version of `lambda_otel_lite`, ensure all these items ar
 - [ ] Git tags are ready to be created
 - [ ] `.gitignore` is up-to-date
 
+## Version Management
+- [ ] Update version in `pyproject.toml` only
+- [ ] Do NOT manually edit `version.py` - it is auto-generated during build
+
+## How Version Management Works
+
+The package uses Hatch's built-in version hook to automatically generate the `version.py` file during build time:
+
+1. The single source of truth for the version is in `pyproject.toml`
+2. During the build process, Hatch reads the version from `pyproject.toml`
+3. Hatch generates the `version.py` file with both `VERSION` and `__version__` variables
+4. The `artifacts` configuration in `pyproject.toml` ensures this file is included in both sdist and wheel distributions
+5. The `.gitignore` file in the package directory excludes the generated `version.py` from version control
+
+This approach ensures that:
+- We have a single source of truth for version information
+- Version information is always correct and in sync
+- The version is accessible via `from lambda_otel_lite import __version__`
+
 ## Publishing Steps
-1. Update version in `pyproject.toml`
-2. Update version in `src/lambda_otel_lite/__init__.py`
-3. Update `CHANGELOG.md`
-4. Run quality checks:
+1. Update version in `pyproject.toml` (this is the single source of truth for the version)
+2. Update `CHANGELOG.md`
+3. Run quality checks:
    ```bash
    pytest
    mypy src/lambda_otel_lite
-   ruff check
-   ruff format
+   ruff check --isolated src/lambda_otel_lite tests
+   ruff format --check --isolated src/lambda_otel_lite tests
    ```
-5. Clean build:
+4. Clean build:
    ```bash
    rm -rf dist/ build/ *.egg-info/
    python -m build
    ```
-6. Test the build:
+5. Test the build:
    ```bash
    python -m venv test_venv
    source test_venv/bin/activate
@@ -68,17 +85,10 @@ Before publishing a new version of `lambda_otel_lite`, ensure all these items ar
    deactivate
    rm -rf test_venv
    ```
-7. Commit changes:
-   ```bash
-   git commit -am "Release vX.Y.Z"
-   git tag vX.Y.Z
-   git push && git push --tags
-   ```
-8. Publish to PyPI:
-   ```bash
-   python -m twine upload dist/*
-   ```
-9. Verify package on PyPI: https://pypi.org/project/lambda-otel-lite/
+6. Create a branch for the release following the pattern `release-python-lambda-otel-lite-v<version>`
+7. Commit changes to the release branch and push to GitHub
+8. Create a pull request from the release branch to main
+9. Once the PR is approved and merged, tagging and publishing is done automatically by the CI pipeline
 
 ## Post-Publishing
 - [ ] Verify package installation works: `pip install lambda_otel_lite`
@@ -99,7 +109,7 @@ Before publishing a new version of `lambda_otel_lite`, ensure all these items ar
 - Incomplete or incorrect package metadata
 
 ## Notes
-- Always use `python -m build` to build both wheel and sdist
+- Always use `python -m build` to build both wheel and sdist (which automatically generates the `version.py` file)
 - Use `twine check dist/*` to verify package metadata before uploading
 - Test the package in a clean virtual environment before publishing
 - Consider the impact on dependent packages

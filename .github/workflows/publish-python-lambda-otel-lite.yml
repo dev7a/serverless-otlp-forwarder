@@ -94,7 +94,7 @@ jobs:
       - name: Verify package version
         id: version_check
         run: |
-          PACKAGE_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite import __version__; print(__version__)")
+          PACKAGE_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from lambda_otel_lite.version import VERSION; print(VERSION)")
           TAG_NAME="packages/python/lambda_otel_lite-v$PACKAGE_VERSION"
           echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
           
