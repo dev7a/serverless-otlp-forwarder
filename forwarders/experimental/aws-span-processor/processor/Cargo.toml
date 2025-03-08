@@ -7,7 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-lambda-otlp-forwarder = { path = "../../../processors/forwarder" }
+lambda-otlp-forwarder = { path = "../../../otlp-stdout-logs-processor/processor" }
 tokio.workspace = true
 anyhow.workspace = true
 aws_lambda_events = { workspace = true, features = ["cloudwatch_logs"] }

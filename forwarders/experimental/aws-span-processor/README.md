@@ -1,14 +1,14 @@
 # AWS Span Processor
 
-AWS Lambda function that forwards CloudWatch logs containing OTLP spans to OpenTelemetry collectors. 
+AWS Lambda function and supporting resources that forward CloudWatch logs containing OTLP spans to OpenTelemetry collectors. 
 
 > [!NOTE]
 > This is an experimental implementation that is not recommended for production use.
 
 ## Overview
 
-This Lambda function:
-1. Receives span events from the CloudWatch Application Signals log group `aws/spans` 
+This stack deploys:
+1. A Lambda function that receives span events from the CloudWatch Application Signals log group `aws/spans` 
 2. Converts them to OTLP json format spans
 3. Forwards the data to the configured OTLP collectors in parallel
 
@@ -30,6 +30,9 @@ Currently, span events from Application Signals are logged individually rather t
 ## Building
 
 ```bash
+# Navigate to the forwarder directory
+cd forwarders/experimental/aws-span-processor
+
 # Run tests
 cargo test --package aws-span-processor
 
@@ -41,10 +44,10 @@ sam build
 
 1. First time deployment:
 ```bash
-sam deploy --guided
+sam deploy --guided --stack-name aws-span-processor
 ```
 
 2. Subsequent deployments:
 ```bash
-sam build && sam deploy
+sam build && sam deploy --stack-name aws-span-processor
 ```

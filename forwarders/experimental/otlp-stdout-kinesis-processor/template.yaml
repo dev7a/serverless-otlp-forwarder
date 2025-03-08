@@ -1,21 +1,17 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 
-Description: AWS Lambda function that processes CloudWatch Logs containing spans and forwards them to OpenTelemetry collectors
+Description: AWS Lambda function that forwards Kinesis wrapped OTLP records to OpenTelemetry collectors
 
 Parameters:
   CollectorsSecretsKeyPrefix:
     Type: String
-    Default: otlp-forwarder
+    Default: serverless-otlp-forwarder/keys
     Description: Prefix for the collectors configuration secrets in AWS Secrets Manager 
   CollectorsCacheTtlSeconds:
     Type: Number
     Default: 300
     Description: TTL in seconds for the collectors configuration cache
-  SpanLogGroupName:
-    Type: String
-    Description: Log group name for spans
-    Default: 'aws/spans'
   VpcId:
     Type: String
     Description: (Optional) VPC ID for VPC deployment
@@ -24,18 +20,42 @@ Parameters:
     Type: CommaDelimitedList
     Description: (Optional) List of subnet IDs for VPC deployment
     Default: ''
+  KinesisStreamMode:
+    Type: String
+    Default: PROVISIONED
+    AllowedValues:
+      - PROVISIONED
+      - ON_DEMAND
+    Description: The capacity mode of the Kinesis stream (PROVISIONED or ON_DEMAND)
+  ShardCount:
+    Type: Number
+    Default: 1
+    Description: Number of shards when using PROVISIONED mode
+    MinValue: 1
 
 Conditions:
+  IsProvisionedMode: !Equals [!Ref KinesisStreamMode, 'PROVISIONED']
   HasVpcConfig: !Not [!Equals [!Ref VpcId, '']]
 
 Resources:
-  SpanProcessorFunction:
+  OtlpKinesisStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub '${AWS::StackName}-otlp-stream'
+      RetentionPeriodHours: 24
+      ShardCount: !If [IsProvisionedMode, !Ref ShardCount, !Ref 'AWS::NoValue']
+      StreamModeDetails: !If
+        - IsProvisionedMode
+        - !Ref 'AWS::NoValue'
+        - StreamMode: !Ref KinesisStreamMode
+
+  KinesisProcessorFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
     Properties:
-      FunctionName: !Ref AWS::StackName
-      Description: !Sub 'Processes aws/spans from AWS Account ${AWS::AccountId}'
+      FunctionName: !Ref 'AWS::StackName'
+      Description: !Sub 'Processes OTLP data from Kinesis stream in AWS Account ${AWS::AccountId}'
       CodeUri: processor/
       Handler: bootstrap
       Runtime: provided.al2023
@@ -45,7 +65,6 @@ Resources:
       Environment:
         Variables:
           RUST_LOG: info
-          OTEL_SERVICE_NAME: !Ref AWS::StackName
           OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
           OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
@@ -66,48 +85,51 @@ Resources:
               Action:
                 - 'secretsmanager:GetSecretValue'
               Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CollectorsSecretsKeyPrefix}/*'
+            - Effect: Allow
+              Action:
+                - 'kinesis:GetRecords'
+                - 'kinesis:GetShardIterator'
+                - 'kinesis:DescribeStream'
+                - 'kinesis:ListShards'
+              Resource: !GetAtt 'OtlpKinesisStream.Arn'
       VpcConfig: !If 
         - HasVpcConfig
         - SecurityGroupIds: 
-            - !Ref SpanProcessorSecurityGroup
+            - !Ref KinesisProcessorSecurityGroup
           SubnetIds: !Ref SubnetIds
         - !Ref AWS::NoValue
+      Events:
+        Stream:
+          Type: Kinesis
+          Properties:
+            Stream: !GetAtt 'OtlpKinesisStream.Arn'
+            StartingPosition: LATEST
+            BatchSize: 100
+            MaximumBatchingWindowInSeconds: 5
+            FunctionResponseTypes:
+              - ReportBatchItemFailures
 
-  SpanProcessorSecurityGroup:
+  KinesisProcessorSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Condition: HasVpcConfig
     Properties:
-      GroupDescription: Security group for OTLP Span Processor Lambda
+      GroupDescription: Security group for OTLP Kinesis Processor Lambda
       VpcId: !Ref VpcId
       SecurityGroupEgress:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
 
-  SpanProcessorSubscription:
-    Type: AWS::Logs::SubscriptionFilter
-    Properties:
-      LogGroupName: !Ref SpanLogGroupName
-      FilterPattern: '' # Empty pattern to capture all logs
-      DestinationArn: !GetAtt SpanProcessorFunction.Arn
-
-  SpanProcessorPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref SpanProcessorFunction
-      Principal: logs.amazonaws.com
-      SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${SpanLogGroupName}:*'
-
 Outputs:
-  SpanProcessorFunctionName:
-    Description: Name of the Span processor Lambda function
-    Value: !Ref SpanProcessorFunction
+  KinesisProcessorFunctionName:
+    Description: Name of the Kinesis processor Lambda function
+    Value: !Ref KinesisProcessorFunction
 
-  SpanProcessorFunctionArn:
-    Description: ARN of the Span processor Lambda function
-    Value: !GetAtt SpanProcessorFunction.Arn
+  KinesisProcessorFunctionArn:
+    Description: ARN of the Kinesis processor Lambda function
+    Value: !GetAtt KinesisProcessorFunction.Arn
 
-  SpanProcessorSecurityGroupId:
-    Description: ID of the security group for the Span processor Lambda function
+  KinesisProcessorSecurityGroupId:
+    Description: ID of the security group for the Kinesis processor Lambda function
     Condition: HasVpcConfig
-    Value: !Ref SpanProcessorSecurityGroup
+    Value: !Ref KinesisProcessorSecurityGroup
+

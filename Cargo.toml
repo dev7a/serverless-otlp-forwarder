@@ -1,10 +1,10 @@
 [workspace]
 members = [
     "packages/rust/*",
-    "processors/forwarder",
-    "experimental/aws-span-processor/processor",
-    "experimental/otlp-stdout-kinesis-processor/processor",
-    "experimental/otlp-stdout-kinesis-processor/extension/layer",
+    "forwarders/otlp-stdout-logs-processor/processor",
+    "forwarders/experimental/aws-span-processor/processor",
+    "forwarders/experimental/otlp-stdout-kinesis-processor/processor",
+    "forwarders/experimental/otlp-stdout-kinesis-processor/extension/layer",
     "demo/rust",
     "benchmark",
     "benchmark/proxy", 

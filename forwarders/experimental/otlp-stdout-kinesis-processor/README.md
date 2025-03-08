@@ -1,11 +1,11 @@
 # OTLP Stdout Kinesis Processor
 
-AWS Lambda function that forwards Kinesis wrapped OTLP records to OpenTelemetry collectors.
+AWS Lambda function and supporting resources that forward Kinesis wrapped OTLP records to OpenTelemetry collectors.
 
 ## Overview
 
-This Lambda function:
-1. Receives Kinesis events containing otlp-stdout format records
+This stack deploys:
+1. A Lambda function that receives Kinesis events containing otlp-stdout format records
 2. Decodes and decompresses the data
 3. Converts records to TelemetryData
 4. Forwards the data to collectors in parallel
@@ -28,7 +28,10 @@ This Lambda function:
 ## Building
 
 ```bash
-# Build the Lambda function
+# Navigate to the forwarder directory
+cd forwarders/experimental/otlp-stdout-kinesis-processor
+
+# Build the stack
 sam build
 
 # Run tests
@@ -39,11 +42,11 @@ cargo test
 
 1. First time deployment:
 ```bash
-sam deploy --guided
+sam deploy --guided --stack-name otlp-stdout-kinesis-processor
 ```
 
 2. Subsequent deployments:
 ```bash
-sam deploy
+sam build && sam deploy --stack-name otlp-stdout-kinesis-processor
 ```
 
