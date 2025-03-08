@@ -15,52 +15,28 @@
 //! - OpenTelemetry instrumentation
 
 use anyhow::{Context, Result};
-use aws_lambda_events::event::kinesis::KinesisEvent;
-use aws_sdk_secretsmanager::Client as SecretsManagerClient;
-use lambda_otel_utils::{HttpTracerProviderBuilder, OpenTelemetrySubscriberBuilder};
 use lambda_runtime::{
-    layers::{OpenTelemetryFaasTrigger, OpenTelemetryLayer as OtelLayer},
+    tower::ServiceBuilder,
     Error as LambdaError, LambdaEvent, Runtime,
 };
-use reqwest::Client as ReqwestClient;
 use std::sync::Arc;
-use tracing::instrument;
 
-use aws_credential_types::{provider::ProvideCredentials, Credentials};
+use aws_credential_types::provider::ProvideCredentials;
 use lambda_otlp_forwarder::{
     collectors::Collectors, 
     processing::process_telemetry_batch, 
     telemetry::TelemetryData,
     span_compactor::{compact_telemetry_payloads, SpanCompactionConfig},
+    KinesisEventWrapper, AppState,
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
 
-/// Shared application state across Lambda invocations
-struct AppState {
-    http_client: ReqwestClient,
-    credentials: Credentials,
-    secrets_client: SecretsManagerClient,
-    region: String,
-}
+use lambda_otel_lite::{
+    init_telemetry, OtelTracingLayer, TelemetryConfig,
+};
 
-impl AppState {
-    async fn new() -> Result<Self, LambdaError> {
-        let config = aws_config::load_from_env().await;
-        let credentials = config
-            .credentials_provider()
-            .expect("No credentials provider found")
-            .provide_credentials()
-            .await?;
-        let region = config.region().expect("No region found").to_string();
-
-        Ok(Self {
-            http_client: ReqwestClient::new(),
-            credentials,
-            secrets_client: SecretsManagerClient::new(&config),
-            region,
-        })
-    }
-}
+use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
+use opentelemetry_sdk::trace::BatchSpanProcessor;
 
 /// Convert a Kinesis record into TelemetryData
 fn convert_kinesis_record(
@@ -77,9 +53,8 @@ fn convert_kinesis_record(
     TelemetryData::from_log_record(log_record)
 }
 
-#[instrument(skip_all, fields(otel.kind="consumer", forwarder.stream.name, forwarder.events.count))]
 async fn function_handler(
-    event: LambdaEvent<KinesisEvent>,
+    event: LambdaEvent<KinesisEventWrapper>,
     state: Arc<AppState>,
 ) -> Result<(), LambdaError> {
     tracing::debug!("Function handler started");
@@ -87,13 +62,8 @@ async fn function_handler(
     // Check and refresh collectors cache if stale
     Collectors::init(&state.secrets_client).await?;
 
-    let records = event.payload.records;
-    let current_span = tracing::Span::current();
-    current_span.record("forwarder.events.count", records.len());
-    if let Some(first_record) = records.first() {
-        current_span.record("forwarder.stream.name", &first_record.event_source);
-    }
-
+    let records = &event.payload.0.records;
+    
     // Convert all records to TelemetryData (sequentially)
     let telemetry_batch: Vec<TelemetryData> = records
         .iter()
@@ -145,33 +115,39 @@ async fn main() -> Result<(), LambdaError> {
         .provide_credentials()
         .await?;
 
-    // Initialize OpenTelemetry
-    let tracer_provider = HttpTracerProviderBuilder::default()
-        .with_http_client(
-            SigV4ClientBuilder::new()
-                .with_client(ReqwestClient::new())
-                .with_credentials(credentials)
-                .with_region(region.to_string())
-                .with_service("xray")
-                .with_signing_predicate(Box::new(|request| {
-                    // Only sign requests to AWS endpoints
-                    request
-                        .uri()
-                        .host()
-                        .map_or(false, |host| host.ends_with(".amazonaws.com"))
-                }))
-                .build()?,
+    let sigv4_client = SigV4ClientBuilder::new()
+        .with_client(
+            reqwest::blocking::Client::builder()
+                .build()
+                .map_err(|e| LambdaError::from(format!("Failed to build HTTP client: {}", e)))?,
         )
-        .with_batch_exporter()
-        .enable_global(true)
+        .with_credentials(credentials)
+        .with_region(region.to_string())
+        .with_service("xray")
+        .with_signing_predicate(Box::new(|request| {
+            // Only sign requests to AWS endpoints
+            request
+                .uri()
+                .host()
+                .map_or(false, |host| host.ends_with(".amazonaws.com"))
+        }))
         .build()?;
 
-    // Initialize the OpenTelemetry subscriber
-    OpenTelemetrySubscriberBuilder::new()
-        .with_env_filter(true)
-        .with_tracer_provider(tracer_provider.clone())
-        .with_service_name("serverless-otlp-forwarder-kinesis")
-        .init()?;
+    // Create a new exporter for BatchSpanProcessor
+    let batch_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .with_http_client(sigv4_client)
+        .with_protocol(Protocol::HttpBinary)
+        .with_timeout(std::time::Duration::from_secs(3))
+        .build()?;
+
+    let (_, completion_handler) = init_telemetry(
+        TelemetryConfig::builder()
+            .with_span_processor(BatchSpanProcessor::builder(batch_exporter).build())
+            // .enable_fmt_layer(true)
+            .build(),
+    )
+    .await?;
 
     // Initialize shared application state
     let state = Arc::new(AppState::new().await?);
@@ -179,18 +155,16 @@ async fn main() -> Result<(), LambdaError> {
     // Initialize collectors using state's secrets client
     Collectors::init(&state.secrets_client).await?;
 
-    Runtime::new(lambda_runtime::service_fn(|event| {
-        let state = Arc::clone(&state);
-        async move { function_handler(event, state).await }
-    }))
-    .layer(
-        OtelLayer::new(|| {
-            let _ = tracer_provider.force_flush();
-        })
-        .with_trigger(OpenTelemetryFaasTrigger::PubSub),
-    )
-    .run()
-    .await
+    let service = ServiceBuilder::new()
+        .layer(OtelTracingLayer::new(completion_handler))
+        .service_fn(|event| {
+            let state = Arc::clone(&state);
+            async move { function_handler(event, state).await }
+        });
+
+    // Create and run the Lambda runtime
+    let runtime = Runtime::new(service);
+    runtime.run().await
 }
 
 #[cfg(test)]

@@ -14,59 +14,27 @@
 //! - OpenTelemetry instrumentation
 
 use anyhow::{Context, Result};
-use aws_lambda_events::event::cloudwatch_logs::{LogEntry, LogsEvent};
-use aws_sdk_secretsmanager::Client as SecretsManagerClient;
-use opentelemetry::Value;
-use reqwest::Client as ReqwestClient;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tracing;
-
-use aws_credential_types::{provider::ProvideCredentials, Credentials};
+use aws_lambda_events::event::cloudwatch_logs::LogEntry;
+use aws_credential_types::provider::ProvideCredentials;
 use lambda_otlp_forwarder::{
     collectors::Collectors,
     processing::process_telemetry_batch,
     span_compactor::{compact_telemetry_payloads, SpanCompactionConfig},
     telemetry::TelemetryData,
+    LogsEventWrapper,
+    AppState,
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
 
 use lambda_otel_lite::{
-    init_telemetry, OtelTracingLayer, SpanAttributes, SpanAttributesExtractor, TelemetryConfig,
+    init_telemetry, OtelTracingLayer, TelemetryConfig,
 };
 
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::trace::BatchSpanProcessor;
 
 use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
-use serde::{Deserialize, Serialize};
-/// Shared application state across Lambda invocations
-struct AppState {
-    http_client: ReqwestClient,
-    credentials: Credentials,
-    secrets_client: SecretsManagerClient,
-    region: String,
-}
-
-impl AppState {
-    async fn new() -> Result<Self, LambdaError> {
-        let config = aws_config::load_from_env().await;
-        let credentials = config
-            .credentials_provider()
-            .expect("No credentials provider found")
-            .provide_credentials()
-            .await?;
-        let region = config.region().expect("No region found").to_string();
-
-        Ok(Self {
-            http_client: ReqwestClient::new(),
-            credentials,
-            secrets_client: SecretsManagerClient::new(&config),
-            region,
-        })
-    }
-}
-
+use std::sync::Arc;
 /// Convert a CloudWatch log event into TelemetryData
 fn convert_log_event(event: &LogEntry) -> Result<TelemetryData> {
     let record = &event.message;
@@ -125,32 +93,6 @@ async fn function_handler(
     }
     
     Ok(())
-}
-
-// Wrapper type for LogsEvent to implement SpanAttributesExtractor
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct LogsEventWrapper(LogsEvent);
-
-impl SpanAttributesExtractor for LogsEventWrapper {
-    fn extract_span_attributes(&self) -> SpanAttributes {
-        let mut attributes: HashMap<String, Value> = HashMap::new();
-        let log_data = self.0.aws_logs.data.clone();
-        // Add any attributes you want to extract from LogsEvent
-        attributes.insert(
-            "forwarder.log_group".to_string(),
-            Value::String(log_data.log_group.clone().into()),
-        );
-        attributes.insert(
-            "forwarder.events.count".to_string(),
-            Value::I64(log_data.log_events.len() as i64),
-        );
-
-        SpanAttributes::builder()
-            .span_name(log_data.log_group)
-            .kind("consumer".to_string())
-            .attributes(attributes)
-            .build()
-    }
 }
 
 #[tokio::main]
