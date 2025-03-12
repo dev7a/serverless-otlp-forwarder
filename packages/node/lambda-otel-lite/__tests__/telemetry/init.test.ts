@@ -1,5 +1,12 @@
 import { jest, describe, it, beforeEach, afterEach, expect } from '@jest/globals';
-import { trace, propagation, TextMapPropagator, TextMapGetter, TextMapSetter, Context, context } from '@opentelemetry/api';
+import {
+  trace,
+  propagation,
+  TextMapPropagator,
+  TextMapGetter,
+  TextMapSetter,
+  Context,
+} from '@opentelemetry/api';
 import { Resource } from '@opentelemetry/resources';
 import { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { initTelemetry, isColdStart, setColdStart } from '../../src/internal/telemetry/init';
@@ -91,12 +98,12 @@ describe('telemetry/init', () => {
         extractCalled = false;
         injectCalled = false;
 
-        extract(context: Context, carrier: unknown, getter?: TextMapGetter): Context {
+        extract(_context: Context, _carrier: unknown, _getter?: TextMapGetter): Context {
           this.extractCalled = true;
-          return context;
+          return _context;
         }
 
-        inject(context: Context, carrier: unknown, setter?: TextMapSetter): void {
+        inject(_context: Context, _carrier: unknown, _setter?: TextMapSetter): void {
           this.injectCalled = true;
         }
 
@@ -121,7 +128,7 @@ describe('telemetry/init', () => {
 
       // Verify setGlobalPropagator was called
       expect(setGlobalPropagatorSpy).toHaveBeenCalled();
-      
+
       // Clean up spy
       setGlobalPropagatorSpy.mockRestore();
     });

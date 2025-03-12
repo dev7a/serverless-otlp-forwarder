@@ -177,7 +177,7 @@ export function getLambdaResource(): Resource {
  * ```typescript
  * import { W3CTraceContextPropagator } from '@opentelemetry/core';
  * import { B3Propagator } from '@opentelemetry/propagator-b3';
- * 
+ *
  * const { tracer, completionHandler } = initTelemetry({
  *   propagators: [
  *     new W3CTraceContextPropagator(),
@@ -215,7 +215,9 @@ export function initTelemetry(options?: {
       propagators: options.propagators,
     });
     propagation.setGlobalPropagator(compositePropagator);
-    logger.debug(`Set custom propagators: ${options.propagators.map(p => p.constructor.name).join(', ')}`);
+    logger.debug(
+      `Set custom propagators: ${options.propagators.map((p) => p.constructor.name).join(', ')}`
+    );
   }
 
   // Setup processors with compression level support
