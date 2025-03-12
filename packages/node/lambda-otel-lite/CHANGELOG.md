@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2025-03-11
+
+### Added
+- Support for custom context propagators via the `propagators` option in `initTelemetry`
+- Added documentation and examples for using custom propagators
+
+### Changed
+- Updated dependencies:
+  - `@dev7a/otlp-stdout-span-exporter` from ^0.1.0 to ^0.10.1
+  - `@opentelemetry/core` from ^1.19.0 to ^1.30.1
+  - `@opentelemetry/resources` from ^1.19.0 to ^1.30.1
+
 ## [0.10.0] - 2025-03-08
 
 ### Changed

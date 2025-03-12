@@ -1,5 +1,5 @@
 import { jest, describe, it, beforeEach, afterEach, expect } from '@jest/globals';
-import { trace } from '@opentelemetry/api';
+import { trace, propagation, TextMapPropagator, TextMapGetter, TextMapSetter, Context, context } from '@opentelemetry/api';
 import { Resource } from '@opentelemetry/resources';
 import { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { initTelemetry, isColdStart, setColdStart } from '../../src/internal/telemetry/init';
@@ -83,6 +83,47 @@ describe('telemetry/init', () => {
       const testSpan = tracer.startSpan('test');
       expect(testSpan).toBeDefined();
       testSpan.end();
+    });
+
+    it('should initialize telemetry with custom propagators', () => {
+      // Create a mock propagator for testing
+      class MockPropagator implements TextMapPropagator {
+        extractCalled = false;
+        injectCalled = false;
+
+        extract(context: Context, carrier: unknown, getter?: TextMapGetter): Context {
+          this.extractCalled = true;
+          return context;
+        }
+
+        inject(context: Context, carrier: unknown, setter?: TextMapSetter): void {
+          this.injectCalled = true;
+        }
+
+        fields(): string[] {
+          return ['mock-header'];
+        }
+      }
+
+      // Create a custom propagator
+      const mockPropagator = new MockPropagator();
+
+      // Spy on setGlobalPropagator
+      const setGlobalPropagatorSpy = jest.spyOn(propagation, 'setGlobalPropagator');
+
+      // Initialize telemetry with the custom propagator
+      const { tracer, completionHandler } = initTelemetry({
+        propagators: [mockPropagator],
+      });
+
+      expect(completionHandler).toBeDefined();
+      expect(tracer).toBeDefined();
+
+      // Verify setGlobalPropagator was called
+      expect(setGlobalPropagatorSpy).toHaveBeenCalled();
+      
+      // Clean up spy
+      setGlobalPropagatorSpy.mockRestore();
     });
 
     it('should initialize telemetry with custom exporter', () => {

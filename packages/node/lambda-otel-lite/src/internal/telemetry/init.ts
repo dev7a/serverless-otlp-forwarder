@@ -2,6 +2,8 @@ import { Resource } from '@opentelemetry/resources';
 import { SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter';
+import { propagation, TextMapPropagator } from '@opentelemetry/api';
+import { CompositePropagator } from '@opentelemetry/core';
 import { state } from '../state';
 import { LambdaSpanProcessor } from './processor';
 import { TelemetryCompletionHandler } from './completion';
@@ -141,6 +143,9 @@ export function getLambdaResource(): Resource {
  * @param options.spanProcessors - Array of SpanProcessor implementations to use.
  *                                If not provided, defaults to LambdaSpanProcessor
  *                                with OTLPStdoutSpanExporter.
+ * @param options.propagators - Array of TextMapPropagator implementations to use.
+ *                             If not provided, the default propagators from the SDK will be used
+ *                             (W3C Trace Context and W3C Baggage).
  *
  * @returns Object containing:
  *   - tracer: Tracer instance for manual instrumentation
@@ -168,30 +173,16 @@ export function getLambdaResource(): Resource {
  * });
  * ```
  *
- * Custom configuration:
+ * Custom configuration with propagators:
  * ```typescript
- * const resource = new Resource({
- *   'service.version': '1.0.0',
- *   'deployment.environment': 'production'
- * });
- *
- * const processor = new BatchSpanProcessor(
- *   new OTLPTraceExporter({
- *     url: 'https://your-collector:4318/v1/traces'
- *   })
- * );
- *
+ * import { W3CTraceContextPropagator } from '@opentelemetry/core';
+ * import { B3Propagator } from '@opentelemetry/propagator-b3';
+ * 
  * const { tracer, completionHandler } = initTelemetry({
- *   resource,
- *   spanProcessors: [processor]
- * });
- *
- * // Then create the traced handler
- * export const handler = createTracedHandler(completionHandler, {
- *   name: 'my-handler'
- * }, async (event, context, span) => {
- *   // Add attributes to the handler's span
- *   span.setAttribute('request.id', context.awsRequestId);
+ *   propagators: [
+ *     new W3CTraceContextPropagator(),
+ *     new B3Propagator(),
+ *   ]
  * });
  * ```
  *
@@ -212,9 +203,20 @@ export function getLambdaResource(): Resource {
 export function initTelemetry(options?: {
   resource?: Resource;
   spanProcessors?: SpanProcessor[];
+  propagators?: TextMapPropagator[];
 }): { tracer: Tracer; completionHandler: TelemetryCompletionHandler } {
   // Setup resource
   const baseResource = options?.resource || getLambdaResource();
+
+  // Setup propagators if provided
+  if (options?.propagators) {
+    // Create a composite propagator and set it as the global propagator
+    const compositePropagator = new CompositePropagator({
+      propagators: options.propagators,
+    });
+    propagation.setGlobalPropagator(compositePropagator);
+    logger.debug(`Set custom propagators: ${options.propagators.map(p => p.constructor.name).join(', ')}`);
+  }
 
   // Setup processors with compression level support
   const processors = options?.spanProcessors || [
