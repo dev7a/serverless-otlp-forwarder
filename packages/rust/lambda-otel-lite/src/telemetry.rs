@@ -171,7 +171,6 @@ impl TelemetryCompletionHandler {
     /// In Async mode, this will send a completion signal to the extension.
     /// In Finalize mode, this will do nothing (handled by drop).
     pub fn complete(&self) {
-        println!("Completing telemetry");
         match self.mode {
             ProcessorMode::Sync => {
                 if let Err(e) = self.provider.force_flush() {

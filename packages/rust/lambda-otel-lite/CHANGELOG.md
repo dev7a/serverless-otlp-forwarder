@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.10.1] - 2025-03-11
+### Fixed
+- Removed debug `println!` statement from `TelemetryCompletionHandler::complete` method
+- Fixed documentation examples in README.md:
+  - Updated Quick Start example to use proper span access with `tracing::Span::current()`
+  - Fixed API Gateway response body type to use `Body::Text` or `.into()`
+  - Added feature flag note for Kinesis event example
+  - Improved code examples with proper return types
+
+### Documentation
+- Enhanced README.md with more detailed examples and explanations
+- Added Table of Contents for better navigation
+- Improved formatting and structure of code examples
+- Updated PUBLISHING.md with correct release branch naming pattern
+
 ## [0.10.0] - 2025-03-03
 ### Changed
 - Updated `otlp-stdout-span-exporter` dependency to version 0.10.0

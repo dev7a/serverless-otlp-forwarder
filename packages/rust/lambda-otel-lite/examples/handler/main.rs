@@ -1,9 +1,8 @@
-use aws_lambda_events::event::apigw::ApiGatewayV2httpRequest;
+use aws_lambda_events::event::apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse};
 use lambda_otel_lite::{create_traced_handler, init_telemetry, TelemetryConfig};
 use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
 use opentelemetry::trace::Status;
 use rand::Rng;
-use serde_json::Value;
 use std::borrow::Cow;
 use std::fmt::{self, Display};
 use tracing::{error, info, instrument};
@@ -43,7 +42,9 @@ async fn nested_function(event: &ApiGatewayV2httpRequest) -> Result<String, Erro
 ///
 /// This example demonstrates basic OpenTelemetry setup with lambda-otel-lite.
 /// It creates spans for each invocation and logs the event payload using span events.
-async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<Value, Error> {
+async fn handler(
+    event: LambdaEvent<ApiGatewayV2httpRequest>,
+) -> Result<ApiGatewayV2httpResponse, Error> {
     // Extract request ID from the event for correlation
     let request_id = &event.context.request_id;
     let current_span = tracing::Span::current();
@@ -61,20 +62,22 @@ async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<Value, E
     match nested_function(&event.payload).await {
         Ok(_) => {
             // Return a successful response
-            Ok(serde_json::json!({
-                "statusCode": 200,
-                "body": format!("Hello from request {}", request_id)
-            }))
+            Ok(ApiGatewayV2httpResponse {
+                status_code: 200,
+                body: Some(format!("Hello from request {}", request_id).into()),
+                ..Default::default()
+            })
         }
         Err(ErrorType::Expected) => {
             // Log the error and return a 400 Bad Request
             error!("Expected error occurred");
 
             // Return a 400 Bad Request for expected errors
-            Ok(serde_json::json!({
-                "statusCode": 400,
-                "body": format!("{{\"message\": \"This is an expected error\"}}")
-            }))
+            Ok(ApiGatewayV2httpResponse {
+                status_code: 400,
+                body: Some("{{\"message\": \"This is an expected error\"}}".into()),
+                ..Default::default()
+            })
         }
         Err(ErrorType::Unexpected) => {
             // For other errors, propagate them up

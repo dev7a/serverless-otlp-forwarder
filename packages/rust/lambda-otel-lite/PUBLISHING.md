@@ -57,8 +57,9 @@ Before publishing a new version of `lambda-otel-lite`, ensure all these items ar
 7. Run doc tests: `cargo test --doc`
 8. Build in release mode: `cargo build --release`
 9. Verify documentation: `cargo doc --no-deps`
-10. Commit changes: `git commit -am "Release vX.Y.Z"`
-11. Create a Pull Request to merge your changes to the main branch
+10. Create a branch for the release following the pattern `release-rust-lambda-otel-lite-v<version>`
+11. Commit changes: `git commit -am "Release rust-lambda-otel-lite v<version>"`
+12. Create a Pull Request to merge your changes to the main branch
 
 ## Automated Publishing
 The package is automatically published to crates.io by the GitHub Action workflow `.github/workflows/publish-rust-lambda-otel-lite.yml` when changes are merged to the main branch. The workflow:
