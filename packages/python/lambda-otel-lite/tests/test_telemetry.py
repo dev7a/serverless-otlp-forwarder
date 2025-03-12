@@ -283,3 +283,48 @@ def test_init_telemetry_resource_attributes(mock_env):
     assert attrs["service.name"] == "custom-service"
     assert attrs["team"] == "platform"
     assert attrs["env"] == "dev"
+
+
+def test_init_telemetry_with_custom_propagators(mock_env):
+    """Test telemetry initialization with custom propagators."""
+    from opentelemetry.propagate import get_global_textmap
+    from opentelemetry.propagators.composite import CompositePropagator
+    from opentelemetry.trace.propagation.tracecontext import (
+        TraceContextTextMapPropagator,
+    )
+
+    # Create a mock propagator for testing
+    class MockPropagator(TraceContextTextMapPropagator):
+        def __init__(self):
+            super().__init__()
+            self.extract_called = False
+            self.inject_called = False
+
+        def extract(self, carrier, context=None, getter=None):
+            self.extract_called = True
+            return super().extract(carrier, context, getter)
+
+        def inject(self, carrier, context=None, setter=None):
+            self.inject_called = True
+            super().inject(carrier, context, setter)
+
+    # Create a custom propagator
+    mock_propagator = MockPropagator()
+
+    # Initialize telemetry with the custom propagator
+    tracer, handler = init_telemetry(propagators=[mock_propagator])
+
+    # Verify the global propagator was set
+    global_propagator = get_global_textmap()
+
+    # The global propagator should be a CompositePropagator containing our mock
+    assert isinstance(global_propagator, CompositePropagator)
+
+    # Test that our propagator is used for extraction/injection
+    carrier = {}
+    global_propagator.inject(carrier)
+    global_propagator.extract(carrier)
+
+    # Verify our mock propagator was called
+    assert mock_propagator.inject_called
+    assert mock_propagator.extract_called

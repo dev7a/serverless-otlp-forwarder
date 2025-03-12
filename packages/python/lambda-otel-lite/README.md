@@ -1,5 +1,7 @@
 # Lambda OTel Lite
 
+[![PyPI](https://img.shields.io/pypi/v/lambda-otel-lite.svg)](https://pypi.org/project/lambda-otel-lite/)
+
 The `lambda-otel-lite` library provides a lightweight, efficient OpenTelemetry implementation specifically designed for AWS Lambda environments. It features a custom span processor and internal extension mechanism that optimizes telemetry collection for Lambda's unique execution model.
 
 By leveraging Lambda's execution lifecycle and providing multiple processing modes, this library enables efficient telemetry collection with minimal impact on function latency. By default, it uses the [otlp-stdout-span-exporter](https://pypi.org/project/otlp-stdout-span-exporter) to export spans to stdout for the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp-forwarder) project.
@@ -7,30 +9,49 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
 >[!IMPORTANT]
 >This package is highly experimental and should not be used in production. Contributions are welcome.
 
+## Table of Contents
+
+- [Requirements](#requirements)
+- [Features](#features)
+- [Architecture and Modules](#architecture-and-modules)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Processing Modes](#processing-modes)
+  - [Async Processing Mode Architecture](#async-processing-mode-architecture)
+- [Telemetry Configuration](#telemetry-configuration)
+  - [Custom configuration with custom resource attributes](#custom-configuration-with-custom-resource-attributes)
+  - [Custom configuration with custom span processors](#custom-configuration-with-custom-span-processors)
+  - [Custom configuration with context propagators](#custom-configuration-with-context-propagators)
+  - [Library specific Resource Attributes](#library-specific-resource-attributes)
+- [Event Extractors](#event-extractors)
+  - [Automatic Attributes extraction](#automatic-attributes-extraction)
+  - [Built-in Extractors](#built-in-extractors)
+  - [Custom Extractors](#custom-extractors)
+- [Environment Variables](#environment-variables)
+  - [Processing Configuration](#processing-configuration)
+  - [Resource Configuration](#resource-configuration)
+  - [Export Configuration](#export-configuration)
+  - [Logging](#logging)
+  - [AWS Lambda Environment](#aws-lambda-environment)
+- [License](#license)
+- [See Also](#see-also)
+
+## Requirements
+
+- Python 3.12+
+- OpenTelemetry packages (automatically installed as dependencies)
+- For OTLP HTTP export: Additional dependencies available via `pip install "lambda_otel_lite[otlp-http]"`
+
 ## Features
 
 - **Flexible Processing Modes**: Support for synchronous, asynchronous, and custom export strategies
 - **Automatic Resource Detection**: Automatic extraction of Lambda environment attributes
 - **Lambda Extension Integration**: Built-in extension for efficient telemetry export
-- **Efficient Memory Usage**: Queue-based buffering to prevent memory growth
+- **Efficient Memory Usage**: Fixed-size queue to prevent memory growth
 - **AWS Event Support**: Automatic extraction of attributes from common AWS event types
 - **Flexible Context Propagation**: Support for W3C Trace Context and custom propagators
 
 ## Architecture and Modules
-
-The library follows a modular architecture where each component has a specific responsibility while working together efficiently:
-
-```mermaid
-graph TD
-    A[telemetry] --> B[processor]
-    A --> C[extension]
-    B --> C
-    E[extractors] --> F[handler]
-    F --> B
-    A --> F
-    H[resource attributes] --> B
-    A --> H
-```
 
 - `telemetry`: Core initialization and configuration
   - Main entry point via `init_telemetry`
@@ -38,7 +59,7 @@ graph TD
   - Returns a `TelemetryCompletionHandler` for span lifecycle management
 
 - `processor`: Lambda-optimized span processor
-  - Queue-based implementation
+  - Fixed-size queue implementation
   - Multiple processing modes
   - Coordinates with extension for async export
 
@@ -51,6 +72,14 @@ graph TD
   - Built-in support for API Gateway and ALB events
   - Extensible interface for custom events
   - W3C Trace Context propagation
+
+- `handler`: Handler decorator
+  - Provides `create_traced_handler` function to create tracing decorators
+  - Automatically tracks cold starts using the `faas.cold_start` attribute
+  - Extracts and propagates context from request headers
+  - Manages span lifecycle with automatic status handling for HTTP responses
+  - Records exceptions in spans with appropriate status codes
+  - Properly completes telemetry processing on handler completion
 
 ## Installation
 
@@ -65,36 +94,57 @@ pip install "lambda_otel_lite[otlp-http]"
 ## Quick Start
 
 ```python
+from opentelemetry import trace
 from lambda_otel_lite import init_telemetry, create_traced_handler
 from lambda_otel_lite.extractors import api_gateway_v2_extractor
-from opentelemetry import trace
+import json
 
 # Initialize telemetry once, outside the handler
 tracer, completion_handler = init_telemetry()
 
-# Create traced handler with configuration
-traced = create_traced_handler(
-    name="my-handler",
-    completion_handler=completion_handler,
-    attributes_extractor=api_gateway_v2_extractor,  # Optional: Use event-specific extractor
-)
-
-def process_event(event):
+# Define business logic separately
+def process_user(user_id):
     # Your business logic here
-    return {
-        "statusCode": 200,
-        "body": "Success"
-    }
+    return {"name": "User Name", "id": user_id}
+
+# Create traced handler with specific extractor
+traced = create_traced_handler(
+    name="my-api-handler",
+    completion_handler=completion_handler,
+    attributes_extractor=api_gateway_v2_extractor
+)
 
 @traced
 def handler(event, context):
-    # Access current span via OpenTelemetry API
-    current_span = trace.get_current_span()
-    current_span.set_attribute("custom", "value")
-    
-    # Your handler code here
-    result = process_event(event)
-    return result
+    try:
+        # Get current span to add custom attributes
+        current_span = trace.get_current_span()
+        current_span.set_attribute("handler.version", "1.0")
+        
+        # Extract userId from event path parameters
+        path_parameters = event.get("pathParameters", {}) or {}
+        user_id = path_parameters.get("userId", "unknown")
+        current_span.set_attribute("user.id", user_id)
+        
+        # Process business logic
+        user = process_user(user_id)
+        
+        # Return formatted HTTP response
+        return {
+            "statusCode": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({"success": True, "data": user})
+        }
+    except Exception as error:
+        # Simple error handling (see Error Handling section for more details)
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.dumps({
+                "success": False,
+                "error": "Internal server error"
+            })
+        }
 ```
 
 ## Processing Modes
@@ -103,7 +153,10 @@ The library supports three processing modes for span export:
 
 1. **Sync Mode** (default):
    - Direct, synchronous export in handler thread
-   - Recommended for low-volume telemetry or when latency is not critical
+   - Recommended for:
+     - low-volume telemetry
+     - limited resources (memory, cpu)
+     - when latency is not critical
    - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=sync`
 
 2. **Async Mode**:
@@ -128,7 +181,6 @@ The library supports three processing modes for span export:
    - Set via `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE=finalize`
 
 ### Async Processing Mode Architecture
-
 
 ```mermaid
 sequenceDiagram
@@ -169,9 +221,121 @@ The async mode leverages Lambda's extension API to optimize perceived latency by
 5. Extension returns to waiting for next event
 6. On shutdown, remaining spans are flushed and exported
 
+## Telemetry Configuration
+
+The library provides several ways to configure the OpenTelemetry tracing pipeline, which is a required first step to instrument your Lambda function:
+
+### Custom configuration with custom resource attributes
+
+```python
+from opentelemetry.sdk.resources import Resource
+from lambda_otel_lite import init_telemetry
+
+# Create a custom resource with additional attributes
+resource = Resource.create({
+    "service.version": "1.0.0",
+    "deployment.environment": "production",
+    "custom.attribute": "value"
+})
+
+# Initialize with custom resource
+tracer, completion_handler = init_telemetry(resource=resource)
+
+# Use the tracer and completion handler as usual
+```
+
+### Custom configuration with custom span processors
+
+```python
+from opentelemetry.sdk.trace import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from lambda_otel_lite import init_telemetry
+
+# First install the optional dependency:
+# pip install "lambda_otel_lite[otlp-http]"
+
+# Create a custom processor with OTLP HTTP exporter
+processor = BatchSpanProcessor(
+    OTLPSpanExporter(
+        endpoint="https://your-otlp-endpoint/v1/traces"
+    )
+)
+
+# Initialize with custom processor
+tracer, completion_handler = init_telemetry(span_processors=[processor])
+```
+
+You can provide multiple span processors, and they will all be used to process spans. This allows you to send telemetry to multiple destinations or use different processing strategies for different types of spans.
+
+### Custom configuration with context propagators
+
+```python
+from opentelemetry.propagate import set_global_textmap
+from opentelemetry.propagators.b3 import B3Format
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from lambda_otel_lite import init_telemetry
+
+# Create a custom configuration with specific propagators
+tracer, completion_handler = init_telemetry(
+    propagators=[
+        TraceContextTextMapPropagator(),  # W3C Trace Context
+        B3Format(),  # B3 format for Zipkin compatibility
+    ]
+)
+```
+
+By default, OpenTelemetry Python uses W3C Trace Context and W3C Baggage propagators. The `propagators` parameter allows you to customize which propagators are used for context extraction and injection. This is useful when you need to integrate with systems that use different context propagation formats.
+
+You can provide multiple propagators, and they will be combined into a composite propagator. The order matters - propagators are applied in the order they are provided.
+
+> **Note:** The OpenTelemetry SDK also supports configuring propagators via the `OTEL_PROPAGATORS` environment variable. If set, this environment variable takes precedence over programmatic configuration. See the [OpenTelemetry Python documentation](https://opentelemetry.io/docs/languages/python/instrumentation/) for more details.
+
+### Library specific Resource Attributes
+
+The library adds several resource attributes under the `lambda_otel_lite` namespace to provide configuration visibility:
+
+- `lambda_otel_lite.extension.span_processor_mode`: Current processing mode (`sync`, `async`, or `finalize`)
+- `lambda_otel_lite.lambda_span_processor.queue_size`: Maximum number of spans that can be queued
+- `lambda_otel_lite.lambda_span_processor.batch_size`: Maximum batch size for span export
+- `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`: GZIP compression level used for span export
+
+These attributes are automatically added to the resource and can be used to understand the telemetry configuration in your observability backend.
+
 ## Event Extractors
 
-Built-in extractors for common Lambda triggers:
+Event extractors are responsible for extracting span attributes and context from Lambda event and context objects. The library provides built-in extractors for common Lambda triggers.
+
+### Automatic Attributes extraction
+
+The library automatically sets relevant FAAS attributes based on the Lambda context and event. Both `event` and `context` parameters must be passed to `tracedHandler` to enable all automatic attributes:
+
+- Resource Attributes (set at initialization):
+  - `cloud.provider`: "aws"
+  - `cloud.region`: from AWS_REGION
+  - `faas.name`: from AWS_LAMBDA_FUNCTION_NAME
+  - `faas.version`: from AWS_LAMBDA_FUNCTION_VERSION
+  - `faas.instance`: from AWS_LAMBDA_LOG_STREAM_NAME
+  - `faas.max_memory`: from AWS_LAMBDA_FUNCTION_MEMORY_SIZE
+  - `service.name`: from OTEL_SERVICE_NAME (defaults to function name)
+  - Additional attributes from OTEL_RESOURCE_ATTRIBUTES (URL-decoded)
+
+- Span Attributes (set per invocation when passing context):
+  - `faas.cold_start`: true on first invocation
+  - `cloud.account.id`: extracted from context's invokedFunctionArn
+  - `faas.invocation_id`: from awsRequestId
+  - `cloud.resource_id`: from context's invokedFunctionArn
+
+- HTTP Attributes (set for API Gateway events):
+  - `faas.trigger`: "http"
+  - `http.status_code`: from handler response
+  - `http.route`: from routeKey (v2) or resource (v1)
+  - `http.method`: from requestContext (v2) or httpMethod (v1)
+  - `http.target`: from path
+  - `http.scheme`: from protocol
+
+The library automatically detects API Gateway v1 and v2 events and sets the appropriate HTTP attributes. For HTTP responses, the status code is automatically extracted from the handler's response and set as `http.status_code`. For 5xx responses, the span status is set to ERROR.
+
+### Built-in Extractors
 
 ```python
 from lambda_otel_lite.extractors import (
@@ -182,92 +346,75 @@ from lambda_otel_lite.extractors import (
 )
 ```
 
-Custom extractors can be created by implementing the extractor interface:
+Each extractor is designed to handle a specific event type and extract relevant attributes:
+
+- `api_gateway_v1_extractor`: Extracts HTTP attributes from API Gateway REST API events
+- `api_gateway_v2_extractor`: Extracts HTTP attributes from API Gateway HTTP API events
+- `alb_extractor`: Extracts HTTP attributes from Application Load Balancer events
+- `default_extractor`: Extracts basic Lambda attributes from any event type
+
+```python
+from lambda_otel_lite.extractors import api_gateway_v1_extractor
+import json
+# Initialize telemetry with default configuration
+tracer, completion_handler = init_telemetry()
+
+traced = create_traced_handler(
+    name="api-v1-handler",
+    completion_handler=completion_handler,
+    attributes_extractor=api_gateway_v1_extractor
+)
+
+@traced
+def handler(event, context):
+    # Your handler code
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"message": "Hello, world!"})
+    }
+```
+
+### Custom Extractors
+
+You can create custom extractors for event types not directly supported by the library by implementing the extractor interface:
 
 ```python
 from lambda_otel_lite.extractors import SpanAttributes, TriggerType
+from lambda_otel_lite import create_traced_handler, init_telemetry
 
 def custom_extractor(event, context) -> SpanAttributes:
     return SpanAttributes(
         trigger=TriggerType.OTHER,  # Or any custom string
         attributes={
-            "custom.attribute": "value",
+            'custom.attribute': 'value',
             # ... other attributes
         },
-        span_name="custom-operation",  # Optional
-        carrier=event.get("headers"),  # Optional: For context propagation
+        span_name='custom-operation',  # Optional
+        carrier=event.get('headers')   # Optional: For context propagation
     )
+
+# Initialize telemetry
+tracer, completion_handler = init_telemetry()
+
+# Create traced handler with custom extractor
+traced = create_traced_handler(
+    name="custom-handler",
+    completion_handler=completion_handler,
+    attributes_extractor=custom_extractor
+)
+
+@traced
+def handler(event, context):
+    # Your handler code
+    return {"statusCode": 200}
 ```
 
-## Advanced Usage
+The `SpanAttributes` object returned by the extractor contains:
 
-### Custom Resource
-
-```python
-from opentelemetry.sdk.resources import Resource
-
-# Add custom resource attributes
-resource = Resource.create({
-    "custom.attribute": "value",
-})
-
-# Initialize with custom resource
-completion_handler = init_telemetry(resource=resource)
-```
-
-### Custom Span Processors
-
-For advanced use cases, you can use custom span processors. For example, to use the OTLP HTTP exporter:
-
-```bash
-# First install the optional dependency:
-pip install "lambda_otel_lite[otlp-http]"
-```
-
-```python
-from opentelemetry.sdk.trace import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-
-# Configure custom processors
-processors = [
-    BatchSpanProcessor(OTLPSpanExporter()),
-]
-
-# Initialize with custom processors
-tracer, completion_handler = init_telemetry(span_processors=processors)
-```
-
-## Automatic FAAS Attributes
-
-The library automatically sets relevant FAAS attributes based on the Lambda context and event:
-
-| Attribute Type | Attribute Name | Source | Description |
-|----------------|----------------|---------|-------------|
-| Resource Attributes | `cloud.provider` | "aws" | Cloud provider identifier |
-| | `cloud.region` | AWS_REGION | AWS region where function runs |
-| | `faas.name` | AWS_LAMBDA_FUNCTION_NAME | Lambda function name |
-| | `faas.version` | AWS_LAMBDA_FUNCTION_VERSION | Function version ($LATEST or version number) |
-| | `faas.instance` | AWS_LAMBDA_LOG_STREAM_NAME | Unique instance identifier |
-| | `faas.max_memory` | AWS_LAMBDA_FUNCTION_MEMORY_SIZE | Maximum memory in bytes |
-| | `service.name` | OTEL_SERVICE_NAME or function name | Service identifier |
-| | Additional attributes | OTEL_RESOURCE_ATTRIBUTES | Custom key-value pairs |
-| Span Attributes | `faas.coldstart` | Runtime detection | Boolean flag set to true only on first invocation |
-| | `faas.invocation_id` | Lambda request ID | Unique invocation identifier |
-| | `cloud.account.id` | Function ARN | AWS account ID |
-| | `cloud.resource_id` | Function ARN | Complete function ARN |
-| HTTP Attributes | `faas.trigger` | Event type detection | "http" for API/ALB events |
-| | `http.method` | Event source | HTTP method (GET, POST, etc.) |
-| | `http.target` | Event source | Request path |
-| | `http.route` | Event source | Route pattern or resource path |
-| | `http.status_code` | Response | HTTP status code if present |
-| | `url.path` | Event source | Request path |
-| | `url.query` | Event source | Query string parameters |
-| | `url.scheme` | Event source | Protocol (https for API Gateway, http for ALB) |
-| | `network.protocol.version` | Event source | HTTP version (e.g., "1.1") |
-| | `client.address` | Event source | Client IP address |
-| | `user_agent.original` | Event source | User agent string |
-| | `server.address` | Event source | Server hostname |
-| | `alb.target_group_arn` | Event source | ALB target group ARN (ALB only) |
+- `trigger`: The type of trigger (HTTP, SQS, etc.) - affects how spans are named
+- `attributes`: A dictionary of attributes to add to the span
+- `span_name`: Optional custom name for the span (defaults to handler name)
+- `carrier`: Optional dictionary containing trace context headers for propagation
 
 ## Environment Variables
 
@@ -303,120 +450,12 @@ The following AWS Lambda environment variables are automatically used for resour
 - `AWS_LAMBDA_LOG_STREAM_NAME`: Log stream name
 - `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`: Function memory size
 
-## Error Handling
-
-The library provides automatic error tracking and span status updates based on handler behavior:
-
-### HTTP Response Status
-If your handler returns a standard HTTP response object, the status code is automatically recorded:
-```python
-@traced
-def handler(event, context):
-    try:
-        result = process_event(event)
-        return {
-            "statusCode": 200,
-            "body": "Success"
-        }
-    except ValueError as e:
-        # Return a 4xx response - this won't set the span status to ERROR
-        return {
-            "statusCode": 400,
-            "body": str(e)
-        }
-    except Exception as e:
-        # Return a 5xx response - this will set the span status to ERROR
-        return {
-            "statusCode": 500,
-            "body": "Internal error"
-        }
-```
-
-Any response with status code >= 500 will automatically set the span status to ERROR.
-
-### Exception Handling
-While the library will automatically record uncaught exceptions, it's recommended to handle exceptions explicitly in your handler:
-
-```python
-@traced
-def handler(event, context):
-    try:
-        # Your code here
-        raise ValueError("invalid input")
-    except ValueError as e:
-        # Record the error and set appropriate status
-        current_span = trace.get_current_span()
-        current_span.record_exception(e)
-        current_span.set_status(StatusCode.ERROR, str(e))
-        return {
-            "statusCode": 400,
-            "body": str(e)
-        }
-```
-
-This gives you more control over:
-- Which exceptions to record
-- What status code to return
-- What error message to include
-- Whether to set the span status to ERROR
-
-Uncaught exceptions will still be recorded as a fallback, but this should be considered a last resort.
-
-## Local Development
-
-### Building the Package
-
-The package uses static versioning with version numbers defined in both `pyproject.toml` and `__init__.py`. Version tags follow the format `python/lambda-otel-lite/vX.Y.Z` (e.g., `python/lambda-otel-lite/v0.8.0`).
-
-When building locally:
-
-```bash
-# Install build dependencies
-pip install build
-
-# Build the package
-python -m build
-```
-
-### Installing for Development
-
-For development, install in editable mode with dev dependencies:
-
-```bash
-# Create and activate a virtual environment
-python -m venv .venv
-source .venv/bin/activate  # or `.venv\Scripts\activate` on Windows
-
-# Install in editable mode with dev dependencies
-pip install -e ".[dev]"
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov
-
-# Run specific test file
-pytest tests/test_handler.py
-```
-
-### Code Quality
-
-```bash
-# Format code
-ruff format .
-
-# Run linter
-ruff check .
-
-# Run type checker
-mypy src/lambda_otel_lite
-```
-
 ## License
 
 MIT 
+
+## See Also
+
+- [GitHub](https://github.com/dev7a/serverless-otlp-forwarder) - The main project repository for the Serverless OTLP Forwarder project
+- [GitHub](https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/node/lambda-otel-lite) | [npm](https://www.npmjs.com/package/@dev7a/lambda-otel-lite) - The Node.js version of this library
+- [GitHub](https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/rust/lambda-otel-lite) | [crates.io](https://crates.io/crates/lambda-otel-lite) - The Rust version of this library

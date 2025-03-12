@@ -8,6 +8,9 @@ import os
 from collections.abc import Sequence
 
 from opentelemetry import trace
+from opentelemetry.propagate import set_global_textmap
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
@@ -199,6 +202,7 @@ def init_telemetry(
     *,
     resource: Resource | None = None,
     span_processors: Sequence[SpanProcessor] | None = None,
+    propagators: Sequence[TextMapPropagator] | None = None,
 ) -> tuple[trace.Tracer, TelemetryCompletionHandler]:
     """Initialize OpenTelemetry with manual OTLP stdout configuration.
 
@@ -211,6 +215,10 @@ def init_telemetry(
         span_processors: Optional sequence of SpanProcessors. If None, a default LambdaSpanProcessor
             with OTLPStdoutSpanExporter will be used. If provided, these processors will be
             the only ones used, in the order provided.
+        propagators: Optional sequence of TextMapPropagators. If None, the default
+            global propagators (W3C TraceContext and Baggage) will be used. If provided,
+            these propagators will be combined into a composite propagator and set as the
+            global propagator.
 
     Returns:
         Tuple containing:
@@ -219,6 +227,15 @@ def init_telemetry(
     """
     # Setup resource
     resource = resource or get_lambda_resource()
+
+    # Setup propagators if provided
+    if propagators is not None:
+        # Create a composite propagator and set it as the global propagator
+        composite_propagator = CompositePropagator(propagators)
+        set_global_textmap(composite_propagator)
+        logger.debug(
+            f"Set custom propagators: {[type(p).__name__ for p in propagators]}"
+        )
 
     # Create tracer provider
     tracer_provider = TracerProvider(resource=resource)
