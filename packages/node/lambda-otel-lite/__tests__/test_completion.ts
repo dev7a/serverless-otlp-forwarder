@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { VERSION } from '../../src/version';
-import { ProcessorMode } from '../../src/mode';
-import { TelemetryCompletionHandler } from '../../src/internal/telemetry/completion';
+import { VERSION } from '../src/version';
+import { ProcessorMode } from '../src/mode';
+import { TelemetryCompletionHandler } from '../src/internal/telemetry/completion';
 
 describe('TelemetryCompletionHandler', () => {
   let provider: NodeTracerProvider;

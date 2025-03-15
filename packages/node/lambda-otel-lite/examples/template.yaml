@@ -56,15 +56,9 @@ Resources:
           NODE_OPTIONS: --require /var/task/init.js # required for async mode
 
 Outputs:
-  HelloWorldLambdaFunctionArn:
-    Description: 'ARN of the Demo Hello World Lambda function'
-    Value: !GetAtt HelloWorld.Arn
   HelloWorldFunctionUrl:
     Description: 'URL of the Demo Hello World Lambda function'
     Value: !GetAtt HelloWorldUrl.FunctionUrl
-  HelloWorldESBuildLambdaFunctionArn:
-    Description: 'ARN of the Demo Hello World Lambda function'
-    Value: !GetAtt HelloWorldESBuild.Arn
   HelloWorldESBuildFunctionUrl:
     Description: 'URL of the Demo Hello World Lambda function'
     Value: !GetAtt HelloWorldESBuildUrl.FunctionUrl

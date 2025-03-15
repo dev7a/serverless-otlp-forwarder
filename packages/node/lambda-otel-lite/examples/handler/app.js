@@ -59,8 +59,10 @@ exports.handler = traced(async (event, context) => {
   const currentSpan = trace.getActiveSpan();
   const requestId = context.awsRequestId;
   
-  currentSpan?.addEvent('handling request', event);
   currentSpan?.setAttribute('request.id', requestId);
+  currentSpan?.addEvent('handling request', {
+    event: JSON.stringify(event)
+  });
 
   try {
     await nestedFunction(event);

@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach, expect } from '@jest/globals';
-import { EnvVarManager } from '../utils';
-import { getLambdaResource } from '../../src/internal/telemetry/init';
+import { EnvVarManager } from './utils';
+import { getLambdaResource } from '../src/internal/telemetry/init';
 
 describe('getLambdaResource', () => {
   const envManager = new EnvVarManager();

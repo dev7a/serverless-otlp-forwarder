@@ -136,9 +136,16 @@ export function defaultExtractor(event: unknown, context: unknown): SpanAttribut
     }
   }
 
+  // Extract carrier headers if present
+  let carrier: Record<string, string> | undefined;
+  if (event && typeof event === 'object' && 'headers' in event && event.headers) {
+    carrier = normalizeHeaders(event.headers as Record<string, string>);
+  }
+
   return {
     kind: SpanKind.SERVER,
     attributes,
+    carrier,
     trigger: TriggerType.Other,
   };
 }

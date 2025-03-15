@@ -1,6 +1,6 @@
 {
   "name": "@dev7a/lambda-otel-lite",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "description": "Lightweight OpenTelemetry instrumentation for AWS Lambda",
   "license": "MIT",
   "keywords": [

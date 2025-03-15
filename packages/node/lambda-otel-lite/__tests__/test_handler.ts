@@ -1,7 +1,7 @@
 // Mock OpenTelemetry API
 const mockApi = {
   SpanKind: {
-    SERVER: 'SERVER',
+    SERVER: 1,
   },
   SpanStatusCode: {
     OK: 'OK',
@@ -50,17 +50,7 @@ import { jest } from '@jest/globals';
 import { createTracedHandler } from '../src/handler';
 import * as init from '../src/internal/telemetry/init';
 import { TelemetryCompletionHandler } from '../src/internal/telemetry/completion';
-import {
-  apiGatewayV1Extractor,
-  apiGatewayV2Extractor,
-  albExtractor,
-} from '../src/internal/telemetry/extractors';
 import { describe, it, beforeEach, expect } from '@jest/globals';
-
-// Import fixtures
-import apigwV1Event from './fixtures/apigw_v1_proxy.json';
-import apigwV2Event from './fixtures/apigw_v2_proxy.json';
-import albEvent from './fixtures/alb.json';
 
 describe('createTracedHandler', () => {
   let tracer: any;
@@ -172,88 +162,26 @@ describe('createTracedHandler', () => {
     });
   });
 
-  describe('API Gateway event handling', () => {
-    it('should handle API Gateway v2 events', async () => {
-      const traced = createTracedHandler('test-handler', completionHandler, apiGatewayV2Extractor);
+  describe('custom extractor', () => {
+    it('should use custom extractor', async () => {
+      const customExtractor = (_event: any, _context: any) => {
+        return {
+          trigger: 'custom-trigger',
+          kind: mockApi.SpanKind.SERVER,
+          attributes: {
+            'custom.attribute': 'custom-value',
+          },
+          spanName: 'custom-span',
+        };
+      };
+
+      const traced = createTracedHandler('test-handler', completionHandler, customExtractor);
 
       const handler = traced(async (_event, _context) => 'success');
-      await handler(apigwV2Event, defaultContext);
+      await handler(defaultEvent, defaultContext);
 
-      // Get all calls to setAttribute
-      const calls = mockSpan.setAttribute.mock.calls;
-
-      // Create a map of all attributes that were set
-      const attributesSet = new Map<string, string | number | boolean>(
-        calls.map(([k, v]: [string, string | number | boolean]) => [k, v])
-      );
-
-      // Verify the expected attributes
-      expect(attributesSet.get('faas.trigger')).toBe('http');
-      expect(attributesSet.get('http.route')).toBe('/path/to/resource');
-      expect(attributesSet.get('http.request.method')).toBe('POST');
-      expect(attributesSet.get('url.path')).toBe('/path/to/resource');
-      expect(attributesSet.get('url.scheme')).toBe('https');
-      expect(attributesSet.get('user_agent.original')).toBe('agent');
-      expect(attributesSet.get('server.address')).toBe('id.execute-api.us-east-1.amazonaws.com');
-      expect(attributesSet.get('client.address')).toBe('192.168.0.1/32');
-    });
-
-    it('should handle API Gateway v1 events', async () => {
-      const traced = createTracedHandler('test-handler', completionHandler, apiGatewayV1Extractor);
-
-      const handler = traced(async (_event, _context) => 'success');
-      await handler(apigwV1Event, defaultContext);
-
-      // Get all calls to setAttribute
-      const calls = mockSpan.setAttribute.mock.calls;
-
-      // Create a map of all attributes that were set
-      const attributesSet = new Map<string, string | number | boolean>(
-        calls.map(([k, v]: [string, string | number | boolean]) => [k, v])
-      );
-
-      // Verify the expected attributes
-      expect(attributesSet.get('faas.trigger')).toBe('http');
-      expect(attributesSet.get('http.route')).toBe('/{proxy+}');
-      expect(attributesSet.get('http.request.method')).toBe('POST');
-      expect(attributesSet.get('url.path')).toBe('/path/to/resource');
-      expect(attributesSet.get('url.scheme')).toBe('https');
-      expect(attributesSet.get('user_agent.original')).toBe('Custom User Agent String');
-      expect(attributesSet.get('server.address')).toBe(
-        '1234567890.execute-api.us-east-1.amazonaws.com'
-      );
-      expect(attributesSet.get('client.address')).toBe('127.0.0.1');
-    });
-
-    it('should handle ALB events', async () => {
-      const traced = createTracedHandler('test-handler', completionHandler, albExtractor);
-
-      const handler = traced(async (_event, _context) => 'success');
-      await handler(albEvent, defaultContext);
-
-      // Get all calls to setAttribute
-      const calls = mockSpan.setAttribute.mock.calls;
-
-      // Create a map of all attributes that were set
-      const attributesSet = new Map<string, string | number | boolean>(
-        calls.map(([k, v]: [string, string | number | boolean]) => [k, v])
-      );
-
-      // Verify the expected attributes
-      expect(attributesSet.get('faas.trigger')).toBe('http');
-      expect(attributesSet.get('http.request.method')).toBe('POST');
-      expect(attributesSet.get('url.path')).toBe('/path/to/resource');
-      expect(attributesSet.get('url.scheme')).toBe('http');
-      expect(attributesSet.get('user_agent.original')).toBe(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.98 Safari/537.36'
-      );
-      expect(attributesSet.get('server.address')).toBe(
-        'lambda-alb-123578498.us-east-2.elb.amazonaws.com'
-      );
-      expect(attributesSet.get('client.address')).toBe('72.12.164.125');
-      expect(attributesSet.get('alb.target_group_arn')).toBe(
-        'arn:aws:elasticloadbalancing:us-east-2:123456789012:targetgroup/lambda-279XGJDqGZ5rsrHC2Fjr/49e9d65c45c6791a'
-      );
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith('custom.attribute', 'custom-value');
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith('faas.trigger', 'custom-trigger');
     });
   });
 

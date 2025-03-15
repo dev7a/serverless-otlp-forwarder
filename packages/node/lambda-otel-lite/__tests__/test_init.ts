@@ -9,12 +9,12 @@ import {
 } from '@opentelemetry/api';
 import { Resource } from '@opentelemetry/resources';
 import { SpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { initTelemetry, isColdStart, setColdStart } from '../../src/internal/telemetry/init';
-import { state } from '../../src/internal/state';
-import { EnvVarManager } from '../utils';
+import { initTelemetry, isColdStart, setColdStart } from '../src/internal/telemetry/init';
+import { state } from '../src/internal/state';
+import { EnvVarManager } from './utils';
 
 // Mock the logger module
-jest.mock('../../src/internal/logger', () => {
+jest.mock('../src/internal/logger', () => {
   const mockLogger = {
     debug: jest.fn(),
     info: jest.fn(),
