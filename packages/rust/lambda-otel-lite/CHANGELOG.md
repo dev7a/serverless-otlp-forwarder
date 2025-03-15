@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2025-03-15
+### Added
+- Support for controlling the fmt layer through the `LAMBDA_TRACING_ENABLE_FMT_LAYER` environment variable
+- Added tests to verify environment variable handling for the fmt layer configuration
+
+### Changed
+- Updated the `TelemetryConfig::default()` implementation to read from environment variables
+- Changed the `ApplicationLogLevel` from DEBUG to INFO in the example template.yaml
+- Enhanced documentation with more detailed examples and explanations
+- Improved example template configuration with better descriptions and properties
 
 ## [0.10.1] - 2025-03-11
 ### Fixed

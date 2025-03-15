@@ -290,7 +290,11 @@ pub struct TelemetryConfig {
 
 impl Default for TelemetryConfig {
     fn default() -> Self {
-        Self::builder().build()
+        let enable_fmt_layer = env::var("LAMBDA_TRACING_ENABLE_FMT_LAYER")
+            .map(|val| val.to_lowercase() == "true" || val == "1")
+            .unwrap_or(false);
+
+        Self::builder().enable_fmt_layer(enable_fmt_layer).build()
     }
 }
 
@@ -532,6 +536,7 @@ pub async fn init_telemetry(
 
     // Always initialize the subscriber, with or without fmt layer
     if config.enable_fmt_layer {
+        // Determine if the lambda logging configuration is set to output json logs
         let is_json = env::var("AWS_LAMBDA_LOG_FORMAT")
             .unwrap_or_default()
             .to_uppercase()
@@ -593,10 +598,34 @@ mod tests {
 
     #[test]
     fn test_telemetry_config_defaults() {
+        // Ensure environment variable is not set for this test
+        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
+
         let config = TelemetryConfig::builder().build();
         assert!(config.set_global_provider); // Should be true by default
         assert!(!config.has_processor);
         assert!(!config.enable_fmt_layer);
+    }
+
+    #[test]
+    fn test_telemetry_config_env_fmt_layer() {
+        // Test with environment variable set to true
+        env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "true");
+        let config = TelemetryConfig::default();
+        assert!(config.enable_fmt_layer);
+
+        // Test with environment variable set to 1
+        env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "1");
+        let config = TelemetryConfig::default();
+        assert!(config.enable_fmt_layer);
+
+        // Test with environment variable set to false
+        env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "false");
+        let config = TelemetryConfig::default();
+        assert!(!config.enable_fmt_layer);
+
+        // Clean up
+        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
     }
 
     #[test]

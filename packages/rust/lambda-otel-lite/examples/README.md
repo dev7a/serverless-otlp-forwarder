@@ -1,7 +1,17 @@
 # Examples
 
-This directory contains examples demonstrating how to use `lambda-otel-lite` in AWS Lambda functions. The examples showcase different instrumentation approaches:
+This directory contains examples demonstrating how to use `lambda-otel-lite` in AWS Lambda functions. The examples showcase:
 
+1. Basic setup and initialization
+2. Using the traced handler wrapper for automatic span creation
+3. Creating child spans for nested operations
+4. Adding custom attributes and events
+5. Error handling and propagation
+6. Different instrumentation approaches (handler wrapper and Tower middleware)
+
+## Example Overview
+
+The examples demonstrate:
 - `handler/`: Basic function using the `create_traced_handler` wrapper
 - `tower/`: Function using the Tower middleware layer
 
@@ -14,9 +24,15 @@ HandlerExample:
   Type: AWS::Serverless::Function
   Metadata:
     BuildMethod: rust-cargolambda
+    BuildProperties:
+      Binary: handler-example
   Properties:
-    CodeUri: .
-    Handler: handler
+    FunctionName: !Sub '${AWS::StackName}-lambda-handler-example'
+    CodeUri: ./
+    Handler: bootstrap
+    Description: 'Demo Handler Example Lambda function to showcase OpenTelemetry integration'
+    FunctionUrlConfig:
+      AuthType: NONE
     Environment:
       Variables:
         LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
@@ -33,9 +49,16 @@ TowerExample:
   Type: AWS::Serverless::Function
   Metadata:
     BuildMethod: rust-cargolambda
+    BuildProperties:
+      Binary: tower-example
   Properties:
-    CodeUri: .
-    Handler: tower
+    FunctionName: !Sub '${AWS::StackName}-lambda-tower-example'
+    CodeUri: ./
+    Handler: bootstrap
+    Runtime: provided.al2023
+    Description: 'Demo Tower Example Lambda function to showcase OpenTelemetry integration'
+    FunctionUrlConfig:
+      AuthType: NONE
     Environment:
       Variables:
         LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
@@ -55,6 +78,8 @@ Globals:
     Runtime: provided.al2023
     LoggingConfig:
       LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: INFO
 ```
 
 These settings:
@@ -62,6 +87,107 @@ These settings:
 - Configure JSON logging for better integration with log processors
 - Set appropriate memory and timeout values
 - Use the provided.al2023 runtime for Rust functions
+
+## Function Structure
+
+The examples demonstrate different integration approaches:
+
+### Basic Setup
+
+#### Handler Approach
+```rust
+// Initialize telemetry with default config
+let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
+
+// Create the traced handler
+let handler = create_traced_handler("simple-handler", completion_handler, handler);
+
+// Use it directly with the runtime
+Runtime::new(service_fn(handler)).run().await
+```
+
+#### Tower Approach
+```rust
+// Initialize telemetry with default configuration
+let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
+
+// Build service with OpenTelemetry tracing middleware
+let service = ServiceBuilder::new()
+    .layer(OtelTracingLayer::new(completion_handler).with_name("tower-handler"))
+    .service_fn(handler);
+
+// Create and run the Lambda runtime
+let runtime = Runtime::new(service);
+runtime.run().await
+```
+
+### Handler Implementation
+
+1. **Automatic Context Extraction**:
+   - Automatically extracts HTTP context from API Gateway events
+   - Captures HTTP method, path, headers, and other API Gateway attributes
+
+2. **Custom Attributes and Events**:
+   - Adds request ID as a custom attribute
+   - Records the entire event payload as a span event
+   ```rust
+   // Set request ID as span attribute
+   current_span.set_attribute("request.id", request_id.to_string());
+
+   // Log the full event payload
+   info!(
+       event = serde_json::to_string(&event.payload).unwrap_or_default(),
+       "handling request"
+   );
+   ```
+
+3. **Nested Operations**:
+   - Creates child spans for nested function calls using the `#[instrument]` attribute
+   - Demonstrates proper span hierarchy and context propagation
+   ```rust
+   #[instrument(skip(event), level = "info", err)]
+   async fn nested_function(event: &ApiGatewayV2httpRequest) -> Result<String, ErrorType> {
+       info!("Nested function called");
+       // ... operation logic ...
+   }
+   ```
+
+4. **Error Handling**:
+   - Demonstrates different error scenarios:
+     - Expected errors (ErrorType::Expected) -> 400 response
+     - Unexpected errors (ErrorType::Unexpected) -> 500 response
+   - Shows proper error recording in spans
+   - Simulates errors when accessing `/error` path:
+     - 25% chance of expected error
+     - 25% chance of unexpected error
+     - 50% chance of success
+
+### Response Types
+
+1. **Success Response** (Default Path):
+   ```json
+   {
+       "statusCode": 200,
+       "body": "Hello from request {request_id}"
+   }
+   ```
+
+2. **Client Error** (`/error` path, 25% chance):
+   ```json
+   {
+       "statusCode": 400,
+       "body": {"message": "This is an expected error"}
+   }
+   ```
+
+3. **Server Error** (`/error` path, 25% chance):
+   - Uncaught Error propagates to Lambda runtime
+   - Results in 500 response from API Gateway
+
+Key files:
+- `handler/main.rs` - Handler wrapper implementation
+- `tower/main.rs` - Tower middleware implementation
+- `Cargo.toml` - Dependencies and binary configurations
 
 ## Deployment
 
@@ -106,41 +232,10 @@ curl <HandlerExampleFunctionUrl>
 curl <TowerExampleFunctionUrl>
 ```
 
-Or via the SAM CLI:
-
-```bash
-# Handler example
-sam remote invoke HandlerExample --stack-name lol-rust-example
-
-# Tower example
-sam remote invoke TowerExample --stack-name lol-rust-example
-```
-
 Both functions will:
 1. Generate OpenTelemetry traces
 2. Output OTLP-formatted spans to CloudWatch logs
 3. Be compatible with the serverless-otlp-forwarder
-
-## Function Structure
-
-The examples demonstrate different integration approaches:
-
-1. **Handler Wrapper** (`handler/main.rs`):
-   - Uses the `create_traced_handler` function to wrap a Lambda handler
-   - Simpler approach for basic Lambda functions
-   - Automatically extracts context and creates spans
-
-2. **Tower Middleware** (`tower/main.rs`):
-   - Uses the Tower service model with `OtelTracingLayer`
-   - Suitable for complex Lambda applications with middleware chains
-   - More flexible for advanced use cases
-   - Integrates with other Tower middleware
-
-Both examples include:
-- OpenTelemetry initialization
-- Span creation and attribute extraction
-- Response status tracking
-- Proper span export handling
 
 ## Environment Variables
 
