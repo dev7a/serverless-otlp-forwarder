@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2025-03-15
+
+### Added
+- Enhanced context propagation by extracting carrier headers from event headers in the `default_extractor` function
+
+### Changed
+- Updated example application to properly serialize event objects in span events using JSON
+- Updated requirements.txt in examples to use a more standard format
+- Enhanced documentation with more detailed examples and explanations
+
 ## [0.10.1] - 2025-03-11
 
 ### Added

@@ -62,7 +62,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     request_id = context.aws_request_id
     current_span.add_event(
         "handling request",
-        event,
+        {
+            "event": json.dumps(event)
+        },
     )
     current_span.set_attribute("request.id", request_id)
 

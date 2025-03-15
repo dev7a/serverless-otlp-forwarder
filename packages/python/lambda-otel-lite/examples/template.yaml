@@ -28,7 +28,6 @@ Resources:
       Environment:
         Variables:
           LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
-          PYTHONPROFILEIMPORTTIME: 1
 Outputs:
   HelloWorldLambdaFunctionArn:
     Description: 'ARN of the Demo Hello World Lambda function'

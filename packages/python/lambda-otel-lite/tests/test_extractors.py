@@ -150,6 +150,39 @@ class TestExtractors:
             "cloud.resource_id": lambda_context.invoked_function_arn,
             "cloud.account.id": "123456789012",
         }
+        assert result.carrier is None
+
+    def test_default_extractor_with_headers(self, lambda_context) -> None:
+        """Test default extractor with headers in the event."""
+        event = {
+            "headers": {
+                "X-Amzn-Trace-Id": "Root=1-5759e988-bd862e3fe1be46a994272793",
+                "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+                "Content-Type": "application/json",
+            }
+        }
+
+        result = default_extractor(event, lambda_context)
+
+        assert result.trigger == TriggerType.OTHER
+        assert result.kind == SpanKind.SERVER
+        assert result.attributes == {
+            "faas.invocation_id": lambda_context.aws_request_id,
+            "cloud.resource_id": lambda_context.invoked_function_arn,
+            "cloud.account.id": "123456789012",
+        }
+
+        # Check that headers were extracted as carrier
+        assert result.carrier is not None
+        assert (
+            result.carrier["x-amzn-trace-id"]
+            == "Root=1-5759e988-bd862e3fe1be46a994272793"
+        )
+        assert (
+            result.carrier["traceparent"]
+            == "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
+        )
+        assert result.carrier["content-type"] == "application/json"
 
     def test_missing_data(self) -> None:
         """Test extractors handle missing data gracefully."""

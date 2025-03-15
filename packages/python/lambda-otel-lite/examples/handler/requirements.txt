@@ -1,1 +1,1 @@
-../../lambda_otel_lite
+lambda_otel_lite @ file://../../

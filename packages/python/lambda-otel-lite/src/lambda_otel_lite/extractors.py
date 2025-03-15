@@ -102,7 +102,14 @@ def default_extractor(event: Any, context: Any) -> SpanAttributes:
         if len(arn_parts) >= 5:
             attributes["cloud.account.id"] = arn_parts[4]
 
-    return SpanAttributes(trigger=TriggerType.OTHER, attributes=attributes)
+    # Extract carrier headers if present
+    carrier = None
+    if isinstance(event, dict) and "headers" in event and event["headers"]:
+        carrier = _normalize_headers(event["headers"])
+
+    return SpanAttributes(
+        trigger=TriggerType.OTHER, attributes=attributes, carrier=carrier
+    )
 
 
 def api_gateway_v1_extractor(event: dict[str, Any], context: Any) -> SpanAttributes:
