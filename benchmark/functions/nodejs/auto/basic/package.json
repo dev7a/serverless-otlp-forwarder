@@ -1,0 +1,6 @@
+{
+  "name": "otel-benchmark-function",
+  "version": "1.0.0",
+  "description": "OpenTelemetry Lambda Benchmark Function",
+  "main": "index.js"
+} 

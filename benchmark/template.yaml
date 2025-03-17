@@ -16,13 +16,15 @@ Mappings:
   # Note: This list of layer arns is for us-east-1 only.
   LayerArns:
     python:
-      adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-arm64-ver-1-25-0:1'
+      adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-arm64-ver-1-29-0:1'
       otel: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-python-0_11_0:1'
-      appsignals: 'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:5'
+      collector: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-0_13_0:1'
+      appsignals: 'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroPython:12'
     nodejs:
-      adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-arm64-ver-1-17-1:1'
+      adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-arm64-ver-1-30-1:1'
       otel: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-nodejs-0_10_0:1'
-      appsignals: 'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJs:5'
+      collector: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-0_13_0:1'
+      appsignals: 'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJs:6'
 
 Globals:
   Function:
@@ -34,6 +36,7 @@ Globals:
       LogFormat: JSON
       ApplicationLogLevel: INFO
       SystemLogLevel: INFO
+    Tracing: Active
     Environment:
       Variables:
         OTEL_EXPORTER_OTLP_COMPRESSION: gzip
@@ -66,6 +69,7 @@ Resources:
       Runtime: provided.al2023
       MemorySize: 512
       Timeout: 10
+      Tracing: Disabled
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -103,29 +107,30 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-basic-node-otel'
-      CodeUri: functions/nodejs/auto/
-      Handler: basic/index.handler
+      CodeUri: functions/nodejs/auto/basic/
+      Handler: index.handler
       Runtime: nodejs22.x
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-basic-node-otel'
-          OTEL_EXPORTER_OTLP_ENDPOINT: !Ref OtelExporterOtlpEndpoint
-          OTEL_EXPORTER_OTLP_HEADERS: !Ref OtelExporterOtlpHeaders
+          OPENTELEMETRY_COLLECTOR_CONFIG_URI: "/opt/collector.yaml"
           AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-handler
       Layers:
         - !FindInMap [LayerArns, nodejs, otel]
+        - !FindInMap [LayerArns, nodejs, collector]
+        - !Ref CollectorConfiglLayer
 
   BasicNodeAdotFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-basic-node-adot'
-      CodeUri: functions/nodejs/auto/
-      Handler: basic/index.handler
+      CodeUri: functions/nodejs/auto/basic/
+      Handler: index.handler
       Runtime: nodejs22.x
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-basic-node-adot'
-          OPENTELEMETRY_COLLECTOR_CONFIG_FILE: "/opt/collector.yaml"
+          OPENTELEMETRY_COLLECTOR_CONFIG_URI: "/opt/collector.yaml"
           AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-handler
       Layers:
         - !FindInMap [LayerArns, nodejs, adot]
@@ -135,10 +140,9 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-basic-node-appsignals'
-      CodeUri: functions/nodejs/auto/
-      Handler: basic/index.handler
+      CodeUri: functions/nodejs/auto/basic/
+      Handler: index.handler
       Runtime: nodejs22.x
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-basic-node-appsignals'
@@ -201,7 +205,6 @@ Resources:
       CodeUri: functions/python/auto/basic/
       Handler: main.handler
       Runtime: python3.13
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-basic-python-appsignals'
@@ -275,7 +278,6 @@ Resources:
       CodeUri: functions/nodejs/auto/
       Handler: http/index.handler
       Runtime: nodejs22.x
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-http-node-appsignals'
@@ -338,7 +340,6 @@ Resources:
       CodeUri: functions/python/auto/http/
       Handler: main.handler
       Runtime: python3.13
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-http-python-appsignals'
@@ -439,7 +440,6 @@ Resources:
       CodeUri: functions/nodejs/auto/
       Handler: aws/index.handler
       Runtime: nodejs22.x
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-aws-node-appsignals'
@@ -533,7 +533,6 @@ Resources:
       CodeUri: functions/python/auto/aws/
       Handler: main.handler
       Runtime: python3.13
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-aws-python-appsignals'
@@ -614,7 +613,6 @@ Resources:
       CodeUri: functions/nodejs/auto/
       Handler: stream/index.handler
       Runtime: nodejs22.x
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-stream-node-appsignals'
@@ -677,7 +675,6 @@ Resources:
       CodeUri: functions/python/auto/stream/
       Handler: main.handler
       Runtime: python3.13
-      Tracing: Active
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-stream-python-appsignals'

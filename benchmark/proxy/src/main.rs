@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Instant;
 use aws_sdk_lambda::primitives::Blob;
+
 /// Request payload for the proxy function
 #[derive(Deserialize)]
 struct ProxyRequest {
@@ -32,15 +33,42 @@ async fn function_handler(
     // Start timing
     let start = Instant::now();
     
-    // Invoke target function
-    let invoke_result = lambda_client
+    // Extract X-Ray header from payload if it exists
+    let xray_header_value = if let Some(headers) = request.payload.get("headers") {
+        if let Some(xray) = headers.get("X-Amzn-Trace-Id") {
+            xray.as_str().map(|s| s.to_string())
+        } else {
+            None
+        }
+    } else {
+        // Also check root level
+        request.payload.get("X-Amzn-Trace-Id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+    };
+    
+    // Prepare the request builder
+    let req_builder = lambda_client
         .invoke()
         .function_name(&request.target)
         .payload(Blob::new(
             serde_json::to_vec(&request.payload)?
-        ))
-        .send()
-        .await?;
+        ));
+    
+    // Invoke target function with X-Ray header if available
+    let invoke_result = if let Some(header_value) = xray_header_value {
+        req_builder.customize()
+            .mutate_request(move |http_req| {
+                http_req.headers_mut().insert(
+                    "X-Amzn-Trace-Id",
+                    header_value.clone(),
+                );
+            })
+            .send()
+            .await?
+    } else {
+        req_builder.send().await?
+    };
     
     // Calculate elapsed time
     let elapsed = start.elapsed();

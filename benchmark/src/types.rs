@@ -176,7 +176,7 @@ pub struct StackBenchmarkConfig {
     pub payload: Option<String>,
     pub parallel: bool,
     pub environment: Vec<EnvVar>,
-    pub client_metrics: bool,
+    pub client_metrics_mode: bool,
     pub proxy_function: Option<String>,
 }
 

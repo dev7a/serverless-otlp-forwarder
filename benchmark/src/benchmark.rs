@@ -72,13 +72,11 @@ impl FunctionBenchmarkConfig {
 }
 
 #[tracing::instrument(
-    name = "invoke_function",
+    skip_all,
     fields(
-        function.name = %function_name,
-        function.memory = memory_size.unwrap_or(128),
-        otel.kind = ?SpanKind::Client
+        otel.name = %format!("invoke {}", function_name),
+        otel.kind = ?SpanKind::Client,
     ),
-    skip(client, _environment)
 )]
 pub async fn invoke_function(
     client: &LambdaClient,
@@ -86,15 +84,24 @@ pub async fn invoke_function(
     memory_size: Option<i32>,
     payload: Option<&str>,
     _environment: &[(String, String)],
-    skip_logs: bool,
+    client_metrics_mode: bool,
     proxy_function: Option<&str>,
 ) -> Result<InvocationMetrics> {
     let span = Span::current();
-    
+
+    // Set initial span attributes
+    span.set_attribute("function.name", function_name.to_string());
+    span.set_attribute("function.memory_size", memory_size.unwrap_or(128) as i64);
+    if let Some(proxy) = proxy_function {
+        span.set_attribute("function.proxy", proxy.to_string());
+    }
+    if let Some(payload) = payload {
+        span.set_attribute("function.payload", payload.to_string());
+    }
     let mut req = client.invoke();
 
     // Only request logs if not skipping
-    if !skip_logs {
+    if !client_metrics_mode {
         req = req.log_type(aws_sdk_lambda::types::LogType::Tail);
     }
 
@@ -110,44 +117,57 @@ pub async fn invoke_function(
     // Create a map for trace headers
     let mut trace_headers = HeaderMap::new();
     let mut injector = HeaderInjector(&mut trace_headers);
-    let current_span: Span = Span::current();
-    let cx = current_span.context();
+    let cx = span.context();
     opentelemetry::global::get_text_map_propagator(|propagator| {
         propagator.inject_context(&cx, &mut injector);
     });
         
-    // Create headers object with trace context
     let mut otel_context = serde_json::Map::new();
     let mut has_trace_context = false;
-    
-    if let Some(traceparent) = trace_headers.get("traceparent") {
-        has_trace_context = true;
-        otel_context.insert(
-            "traceparent".to_string(),
-            Value::String(traceparent.to_str().unwrap().to_string())
-        );
-    }
-    if let Some(tracestate) = trace_headers.get("tracestate") {
-        otel_context.insert(
-            "tracestate".to_string(),
-            Value::String(tracestate.to_str().unwrap().to_string())
-        );
+
+    // Extract headers into context map
+    for (header_name, header_types) in [
+        ("traceparent", true),
+        ("tracestate", false),
+        ("X-Amzn-Trace-Id", true)
+    ] {
+        if let Some(header_value) = trace_headers.get(header_name) {
+            if header_types {  // If this header type indicates trace context presence
+                has_trace_context = true;
+            }
+            
+            if let Ok(value_str) = header_value.to_str() {
+                otel_context.insert(
+                    header_name.to_string(),
+                    Value::String(value_str.to_string())
+                );
+            }
+        }
     }
 
-    // Add headers object to payload only if we have trace context
-    if has_trace_context {
-        if let Value::Object(ref mut map) = final_payload {
-            map.insert(
-                "headers".to_string(),
-                Value::Object(otel_context)
-            );
+    // Add to payload if we have trace context
+    if has_trace_context && !otel_context.is_empty() {
+        if let Value::Object(ref mut payload_map) = final_payload {
+            // Use entry API to simplify
+            let headers = payload_map
+                .entry("headers")
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+                
+            if let Value::Object(ref mut headers_map) = headers {
+                headers_map.extend(otel_context);
+            }
         }
     }
 
     // Start client-side timing only if we're measuring client metrics
-    let start = if skip_logs { Some(std::time::Instant::now()) } else { None };
+    let start = if client_metrics_mode { Some(std::time::Instant::now()) } else { None };
 
-    let result = if skip_logs && proxy_function.is_some() {
+    // Get X-Ray header as a string if it exists
+    let xray_header_value = trace_headers.get("X-Amzn-Trace-Id")
+        .and_then(|value| value.to_str().ok())
+        .map(|s| s.to_string());
+
+    let result = if client_metrics_mode && proxy_function.is_some() {
         // When doing client measurements and proxy is available, use it
         let proxy = proxy_function.unwrap();
         let proxy_request = ProxyRequest {
@@ -155,18 +175,44 @@ pub async fn invoke_function(
             payload: final_payload,
         };
 
-        req.function_name(proxy)
-            .payload(Blob::new(serde_json::to_vec(&proxy_request)?))
-            .send()
-            .await
+        let req_builder = req.function_name(proxy)
+            .payload(Blob::new(serde_json::to_vec(&proxy_request)?));
+        
+        // Add X-Ray header to the HTTP request if available
+        if let Some(header_value) = xray_header_value.clone() {
+            req_builder.customize()
+                .mutate_request(move |http_req| {
+                    http_req.headers_mut().insert(
+                        "X-Amzn-Trace-Id",
+                        http::header::HeaderValue::from_str(&header_value).unwrap(),
+                    );
+                })
+                .send()
+                .await
+        } else {
+            req_builder.send().await
+        }
     } else {
         // Direct invocation for:
         // 1. Server metrics (skip_logs = false)
         // 2. Client measurements without proxy
-        req.function_name(function_name)
-            .payload(Blob::new(final_payload.to_string()))
-            .send()
-            .await
+        let req_builder = req.function_name(function_name)
+            .payload(Blob::new(final_payload.to_string()));
+        
+        // Add X-Ray header to the HTTP request if available
+        if let Some(header_value) = xray_header_value {
+            req_builder.customize()
+                .mutate_request(move |http_req| {
+                    http_req.headers_mut().insert(
+                        "X-Amzn-Trace-Id",
+                        http::header::HeaderValue::from_str(&header_value).unwrap(),
+                    );
+                })
+                .send()
+                .await
+        } else {
+            req_builder.send().await
+        }
     };
 
     match result {
@@ -177,7 +223,7 @@ pub async fn invoke_function(
             // Record duration in span
             span.set_attribute("client.duration_ms", client_duration);
 
-            if skip_logs {
+            if client_metrics_mode {
                 // When skipping logs, just return client duration with current timestamp
                 Ok(InvocationMetrics {
                     timestamp: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
@@ -327,7 +373,7 @@ pub struct BenchmarkResults {
 async fn run_benchmark_pass(
     client: &LambdaClient,
     config: &FunctionBenchmarkConfig,
-    client_measurement: bool,
+    client_metrics_mode: bool,
 ) -> Result<BenchmarkResults> {
     use tokio::signal;
 
@@ -354,7 +400,7 @@ async fn run_benchmark_pass(
                 memory_size,
                 payload.as_deref(),
                 &environment,
-                client_measurement,
+                client_metrics_mode,
                 proxy_function.as_deref(),
             )
             .await
@@ -414,7 +460,7 @@ async fn run_benchmark_pass(
                     memory_size,
                     payload.as_deref(),
                     &environment,
-                    client_measurement,
+                    client_metrics_mode,
                     proxy_function.as_deref(),
                 )
                 .await
@@ -600,7 +646,7 @@ pub async fn run_function_benchmark(
     payload: Option<&str>,
     output_dir: &str,
     environment: &[(&str, &str)],
-    client_metrics: bool,
+    client_metrics_mode: bool,
     proxy_function: Option<&str>,
 ) -> Result<()> {
 
@@ -710,7 +756,7 @@ pub async fn run_function_benchmark(
         println!("✓ Server metrics collected");
 
         // If client metrics requested, do a second pass for warm starts only
-        if client_metrics {
+        if client_metrics_mode {
             println!("\nCollecting client metrics...");
             // Run without logs to get accurate client metrics
             let client_results = run_benchmark_pass(client, &config, true).await?;
@@ -961,7 +1007,7 @@ pub async fn run_stack_benchmark(
                 let rounds = config.rounds as u32;
                 let payload = config.payload.as_deref();
                 let output_dir = config.output_dir.clone();
-                let client_metrics = config.client_metrics;
+                let client_metrics_mode = config.client_metrics_mode;
                 let proxy_function = config.proxy_function.as_deref();
                 async move {
                     if is_interrupted() {
@@ -977,7 +1023,7 @@ pub async fn run_stack_benchmark(
                         payload,
                         &output_dir,
                         &env.iter().map(|e| (e.key.as_str(), e.value.as_str())).collect::<Vec<_>>(),
-                        client_metrics,
+                        client_metrics_mode,
                         proxy_function,
                     )
                     .await
@@ -1002,7 +1048,7 @@ pub async fn run_stack_benchmark(
                 config.payload.as_deref(),
                 &config.output_dir,
                 &config.environment.iter().map(|e| (e.key.as_str(), e.value.as_str())).collect::<Vec<_>>(),
-                config.client_metrics,
+                config.client_metrics_mode,
                 config.proxy_function.as_deref(),
             )
             .await?;

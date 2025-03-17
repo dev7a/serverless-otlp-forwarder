@@ -1,4 +1,4 @@
-const { trace } = require('@opentelemetry/api');
+const { trace, context, propagation } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('benchmark-test');
 
@@ -14,19 +14,26 @@ async function processLevel(depth, iterations) {
     }
     
     for (let i = 0; i < iterations; i++) {
-        await tracer.startActiveSpan(`operation_depth_${depth}_iter_${i}`, {
-            attributes: {
-                depth,
-                iteration: i
-            }
-        }, async (span) => {
-            try {
-                await processLevel(depth - 1, iterations);
-                span.addEvent('process-level-complete');
-            } finally {
-                span.end();
-            }
+        // Create and wait for each span (and its children) to complete before moving to next iteration
+        const spanPromise = new Promise(resolve => {
+            tracer.startActiveSpan(`operation_depth_${depth}_iter_${i}`, {
+                attributes: {
+                    depth,
+                    iteration: i
+                }
+            }, async (span) => {
+                try {
+                    await processLevel(depth - 1, iterations);
+                    span.addEvent('process-level-complete');
+                } finally {
+                    span.end();
+                    resolve();
+                }
+            });
         });
+        
+        // Wait for this span and all its children to complete before continuing to next iteration
+        await spanPromise;
     }
 }
 
@@ -37,9 +44,22 @@ async function processLevel(depth, iterations) {
  * @returns {Object} Response containing the benchmark parameters
  */
 exports.handler = async (event) => {
-    const depth = event.depth ?? 2;
-    const iterations = event.iterations ?? 2;
-    
+    const depth = event.depth ?? 3;
+    const iterations = event.iterations ?? 4;
+
+    // Log only the _X_AMZN_TRACE_ID environment variable
+    console.log('Lambda XRAY Trace ID from env:', process.env._X_AMZN_TRACE_ID || 'Not defined');
+    // Log X-Amzn-Trace-Id from the event headers if it exists
+    if (event.headers && event.headers['X-Amzn-Trace-Id']) {
+        console.log('Lambda XRAY Trace ID from headers:', event.headers['X-Amzn-Trace-Id']);
+    }
+
+    // Get the current active span from the tracer
+    const currentSpan = trace.getActiveSpan();
+    currentSpan.addEvent('Event payload', {
+        event: JSON.stringify(event)
+    });
+
     try {
         await processLevel(depth, iterations);
         return {
