@@ -80,12 +80,17 @@ tracer.startActiveSpan('my-operation', span => {
 ```typescript
 interface OTLPStdoutSpanExporterConfig {
   // GZIP compression level (0-9, where 0 is no compression and 9 is maximum compression)
-  // Defaults to 6 or value from OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL
+  // Defaults to 6 if not specified
   gzipLevel?: number;
 }
 ```
 
-The explicit configuration via code will override any environment variable setting.
+The exporter follows a strict configuration precedence:
+1. Environment variables (highest precedence)
+2. Constructor parameters in config object
+3. Default values (lowest precedence)
+
+This means that if the `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable is set, it will always take precedence over the configuration in the constructor.
 
 ### Environment Variables
 
@@ -95,11 +100,10 @@ The exporter respects the following environment variables:
 - `AWS_LAMBDA_FUNCTION_NAME`: Fallback service name (if `OTEL_SERVICE_NAME` not set)
 - `OTEL_EXPORTER_OTLP_HEADERS`: Headers for OTLP export, used in the `headers` field
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (which take precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
-- `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9). Defaults to 6.
+- `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9). Defaults to 6. Takes precedence over the constructor parameter if set.
 
 >[!NOTE]
 >For security best practices, avoid including authentication credentials or sensitive information in headers. The serverless-otlp-forwarder infrastructure is designed to handle authentication at the destination, rather than embedding credentials in your telemetry data.
-
 
 ## Output Format
 

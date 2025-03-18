@@ -49,6 +49,7 @@ Before publishing a new version of `@dev7a/otlp-stdout-span-exporter`, ensure al
 4. Run tests: `npm test`
 5. Build package: `npm run build` (this will automatically generate the version.ts file)
 6. Create a branch for the release following the pattern `release-<rust|node|python|>-<package-name>-v<version>`
+7. Commit changes to the release branch and push to GitHub, with a commit message of `release <rust|node|python|> <package-name> v<version>`
 7. Tagging and publishing is done automatically by the CI pipeline
 
 ## Post-Publishing

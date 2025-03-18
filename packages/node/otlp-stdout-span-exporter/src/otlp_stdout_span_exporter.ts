@@ -10,12 +10,13 @@ const DEFAULT_COMPRESSION_LEVEL = 6;
 const COMPRESSION_LEVEL_ENV_VAR = 'OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL';
 
 /**
- * Configuration options for the OTLPStdoutSpanExporter
+ * Configuration options for OTLPStdoutSpanExporter
  */
 export interface OTLPStdoutSpanExporterConfig {
-  /** 
-   * GZIP compression level (0-9). 
-   * Defaults to 6 or the value from OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL environment variable.
+  /**
+   * GZIP compression level (0-9, where 0 is no compression and 9 is maximum compression).
+   * Environment variable OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL takes precedence if set.
+   * Defaults to 6 if neither environment variable nor parameter is provided.
    */
   gzipLevel?: number;
 }
@@ -31,6 +32,11 @@ export interface OTLPStdoutSpanExporterConfig {
  * - Applies GZIP compression with configurable levels
  * - Detects service name from environment variables
  * - Supports custom headers via environment variables
+ * 
+ * Configuration Precedence:
+ * 1. Environment variables (highest precedence)
+ * 2. Constructor parameters in config object
+ * 3. Default values (lowest precedence)
  * 
  * Environment Variables:
  * - OTEL_SERVICE_NAME: Service name to use in output
@@ -62,10 +68,8 @@ export interface OTLPStdoutSpanExporterConfig {
  * // Basic usage with defaults
  * const exporter = new OTLPStdoutSpanExporter();
  * 
- * // Custom configuration
- * const exporter = new OTLPStdoutSpanExporter({
- *   gzipLevel: zlib.constants.Z_BEST_COMPRESSION
- * });
+ * // Custom compression level (environment variable takes precedence if set)
+ * const exporter = new OTLPStdoutSpanExporter({ gzipLevel: 9 }); // Use maximum compression
  * 
  * // With custom headers via environment variables
  * process.env.OTEL_EXPORTER_OTLP_HEADERS = 'tenant-id=tenant-12345,custom-header=value';
@@ -79,33 +83,42 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
   private readonly headers: Record<string, string>;
 
   /**
-   * Get the compression level from environment variable or return the default
-   * @returns The GZIP compression level from environment or default
-   */
-  private static getCompressionLevelFromEnv(): number {
-    const envValue = process.env[COMPRESSION_LEVEL_ENV_VAR];
-    if (envValue !== undefined) {
-      const level = parseInt(envValue, 10);
-      if (!isNaN(level) && level >= 0 && level <= 9) {
-        return level;
-      }
-      diag.debug(`Invalid compression level in ${COMPRESSION_LEVEL_ENV_VAR}: ${envValue}, using default level ${DEFAULT_COMPRESSION_LEVEL}`);
-    }
-    return DEFAULT_COMPRESSION_LEVEL;
-  }
-
-  /**
    * Creates a new OTLPStdoutSpanExporter
-   * @param config - Configuration options
+   * @param config - Optional configuration options for the exporter
+   * @param config.gzipLevel - Optional GZIP compression level (0-9).
+   *                    Environment variable OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL takes precedence if set.
+   *                    Defaults to 6 if neither environment variable nor parameter is provided.
    */
-  constructor(config: OTLPStdoutSpanExporterConfig = {}) {
+  constructor(config?: OTLPStdoutSpanExporterConfig) {
     this.endpoint = DEFAULT_ENDPOINT;
     this.serviceName = process.env.OTEL_SERVICE_NAME || 
       process.env.AWS_LAMBDA_FUNCTION_NAME || 
       'unknown-service';
-    this.gzipLevel = config.gzipLevel !== undefined 
-      ? config.gzipLevel 
-      : OTLPStdoutSpanExporter.getCompressionLevelFromEnv();
+    
+    // Set compression level with proper precedence:
+    // 1. Environment variable (highest precedence)
+    // 2. Constructor parameter from config object
+    // 3. Default value (lowest precedence)
+    const gzipLevel = config?.gzipLevel;
+    const envValue = process.env[COMPRESSION_LEVEL_ENV_VAR];
+    if (envValue !== undefined) {
+      try {
+        const level = parseInt(envValue, 10);
+        if (!isNaN(level) && level >= 0 && level <= 9) {
+          this.gzipLevel = level;
+        } else {
+          diag.warn(`Invalid compression level in ${COMPRESSION_LEVEL_ENV_VAR}: ${envValue}, using default level ${DEFAULT_COMPRESSION_LEVEL}`);
+          this.gzipLevel = gzipLevel !== undefined ? gzipLevel : DEFAULT_COMPRESSION_LEVEL;
+        }
+      } catch {
+        diag.warn(`Failed to parse ${COMPRESSION_LEVEL_ENV_VAR}: ${envValue}, using default level ${DEFAULT_COMPRESSION_LEVEL}`);
+        this.gzipLevel = gzipLevel !== undefined ? gzipLevel : DEFAULT_COMPRESSION_LEVEL;
+      }
+    } else {
+      // No environment variable, use parameter from config or default
+      this.gzipLevel = gzipLevel !== undefined ? gzipLevel : DEFAULT_COMPRESSION_LEVEL;
+    }
+    
     this.headers = this.parseHeaders();
   }
 
