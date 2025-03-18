@@ -54,9 +54,12 @@ class ProcessorMode(str, Enum):
             ) from err
 
 
+# Import this first to avoid circular imports
+from .constants import Defaults, EnvVars, ResourceAttributes  # noqa: E402
+
 # Global processor mode - single source of truth for the package
 processor_mode: Final[ProcessorMode] = ProcessorMode.from_env(
-    "LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", ProcessorMode.SYNC
+    EnvVars.PROCESSOR_MODE, ProcessorMode.SYNC
 )
 
 # Package exports
@@ -72,6 +75,12 @@ __all__ = [
     "api_gateway_v1_extractor",
     "api_gateway_v2_extractor",
     "alb_extractor",
+    # Constants
+    "EnvVars",
+    "Defaults",
+    "ResourceAttributes",
+    # Resource utilities
+    "get_lambda_resource",  # Will be imported from resource.py
 ]
 
 # Import public API
@@ -84,4 +93,5 @@ from .extractors import (  # noqa: E402 - Ignore flake8 error about imports not 
     default_extractor,
 )
 from .handler import create_traced_handler  # noqa: E402
+from .resource import get_lambda_resource  # noqa: E402
 from .telemetry import init_telemetry  # noqa: E402

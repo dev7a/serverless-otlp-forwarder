@@ -11,6 +11,7 @@ from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor
 from opentelemetry.sdk.trace.export import SpanExporter
 from opentelemetry.trace import Span
 
+from .constants import Defaults
 from .logger import create_logger
 
 # Setup logging
@@ -28,8 +29,8 @@ class LambdaSpanProcessor(SpanProcessor):
     def __init__(
         self,
         span_exporter: SpanExporter,
-        max_queue_size: int = 2048,
-        max_export_batch_size: int = 512,
+        max_queue_size: int = Defaults.QUEUE_SIZE,
+        max_export_batch_size: int = Defaults.BATCH_SIZE,
     ):
         """Initialize the LambdaSpanProcessor.
 

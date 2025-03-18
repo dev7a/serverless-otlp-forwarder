@@ -16,9 +16,11 @@ from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
 
 from . import ProcessorMode, __version__, processor_mode
+from .constants import Defaults, EnvVars
 from .extension import handler_complete_event, init_extension
 from .logger import create_logger
 from .processor import LambdaSpanProcessor
+from .resource import get_lambda_resource
 
 # Setup logging
 logger = create_logger("telemetry")
@@ -112,92 +114,6 @@ class TelemetryCompletionHandler:
         # In finalize mode, do nothing - handled by processor
 
 
-def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
-    """Create a Resource instance with AWS Lambda attributes and OTEL environment variables.
-
-    This function combines AWS Lambda environment attributes with any OTEL resource attributes
-    specified via environment variables (OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME).
-
-    Returns:
-        Resource instance with AWS Lambda and OTEL environment attributes
-    """
-    # Start with Lambda attributes
-    attributes: dict[str, str | int | float | bool] = {"cloud.provider": "aws"}
-
-    def parse_numeric_env(key: str, env_var: str, default: str) -> None:
-        """Parse numeric environment variable with default."""
-        try:
-            attributes[key] = int(os.environ.get(env_var, default))
-        except ValueError:
-            logger.warn(
-                "Invalid numeric value for %s: %s", key, os.environ.get(env_var)
-            )
-
-    def parse_memory_value(key: str, value: str | None, default: str) -> None:
-        """Parse memory value from MB to bytes."""
-        try:
-            attributes[key] = int(value or default) * 1024 * 1024  # Convert MB to bytes
-        except ValueError:
-            logger.warn("Invalid memory value for %s: %s", key, value)
-
-    # Map environment variables to attribute names
-    env_mappings = {
-        "AWS_REGION": "cloud.region",
-        "AWS_LAMBDA_FUNCTION_NAME": "faas.name",
-        "AWS_LAMBDA_FUNCTION_VERSION": "faas.version",
-        "AWS_LAMBDA_LOG_STREAM_NAME": "faas.instance",
-        "AWS_LAMBDA_FUNCTION_MEMORY_SIZE": "faas.max_memory",
-    }
-
-    # Add attributes only if they exist in environment
-    for env_var, attr_name in env_mappings.items():
-        if value := os.environ.get(env_var):
-            if attr_name == "faas.max_memory":
-                parse_memory_value(attr_name, value, "128")
-            else:
-                attributes[attr_name] = value
-
-    # Add service name (guaranteed to have a value)
-    service_name = os.environ.get(
-        "OTEL_SERVICE_NAME",
-        os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "unknown_service"),
-    )
-    attributes["service.name"] = service_name
-
-    # Add telemetry configuration attributes
-    attributes["lambda_otel_lite.extension.span_processor_mode"] = os.environ.get(
-        "LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "sync"
-    )
-
-    # Parse numeric configuration values
-    parse_numeric_env(
-        "lambda_otel_lite.lambda_span_processor.queue_size",
-        "LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE",
-        "2048",
-    )
-    parse_numeric_env(
-        "lambda_otel_lite.lambda_span_processor.batch_size",
-        "LAMBDA_SPAN_PROCESSOR_BATCH_SIZE",
-        "512",
-    )
-    parse_numeric_env(
-        "lambda_otel_lite.otlp_stdout_span_exporter.compression_level",
-        "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL",
-        "6",
-    )
-
-    # OTEL_RESOURCE_ATTRIBUTES are automatically parsed by the Resource create method
-    # Create resource and merge with custom resource if provided
-    resource = Resource(attributes)
-
-    if custom_resource:
-        # Merge in reverse order so custom resource takes precedence
-        resource = resource.merge(custom_resource)
-
-    final_resource = Resource.create().merge(resource)
-    return final_resource
-
-
 def init_telemetry(
     *,
     resource: Resource | None = None,
@@ -240,24 +156,61 @@ def init_telemetry(
     # Create tracer provider
     tracer_provider = TracerProvider(resource=resource)
 
-    # Setup processors
+    # Setup processors with environment variables having precedence
     if span_processors is None:
+        # Get compression level with env var precedence
+        compression_level = None
+        env_compression = os.environ.get(EnvVars.COMPRESSION_LEVEL)
+        if env_compression is not None:
+            try:
+                compression_level = int(env_compression)
+                if not 0 <= compression_level <= 9:
+                    logger.warn(
+                        f"Invalid {EnvVars.COMPRESSION_LEVEL} value: {env_compression}, must be 0-9. Using default."
+                    )
+                    compression_level = Defaults.COMPRESSION_LEVEL
+            except ValueError:
+                logger.warn(
+                    f"Invalid {EnvVars.COMPRESSION_LEVEL} value: {env_compression}. Using default."
+                )
+                compression_level = Defaults.COMPRESSION_LEVEL
+        else:
+            compression_level = Defaults.COMPRESSION_LEVEL
+
+        # Get queue size with env var precedence
+        queue_size = None
+        env_queue_size = os.environ.get(EnvVars.QUEUE_SIZE)
+        if env_queue_size is not None:
+            try:
+                queue_size = int(env_queue_size)
+            except ValueError:
+                logger.warn(
+                    f"Invalid {EnvVars.QUEUE_SIZE} value: {env_queue_size}. Using default."
+                )
+                queue_size = Defaults.QUEUE_SIZE
+        else:
+            queue_size = Defaults.QUEUE_SIZE
+
+        # Get batch size with env var precedence
+        batch_size = None
+        env_batch_size = os.environ.get(EnvVars.BATCH_SIZE)
+        if env_batch_size is not None:
+            try:
+                batch_size = int(env_batch_size)
+            except ValueError:
+                logger.warn(
+                    f"Invalid {EnvVars.BATCH_SIZE} value: {env_batch_size}. Using default."
+                )
+                batch_size = Defaults.BATCH_SIZE
+        else:
+            batch_size = Defaults.BATCH_SIZE
+
         # Default case: Add LambdaSpanProcessor with OTLPStdoutSpanExporter
         tracer_provider.add_span_processor(
             LambdaSpanProcessor(
-                OTLPStdoutSpanExporter(
-                    gzip_level=int(
-                        os.environ.get(
-                            "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6"
-                        )
-                    )
-                ),
-                max_queue_size=int(
-                    os.environ.get("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "2048")
-                ),
-                max_export_batch_size=int(
-                    os.environ.get("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "512")
-                ),
+                OTLPStdoutSpanExporter(gzip_level=compression_level),
+                max_queue_size=queue_size,
+                max_export_batch_size=batch_size,
             )
         )
     else:

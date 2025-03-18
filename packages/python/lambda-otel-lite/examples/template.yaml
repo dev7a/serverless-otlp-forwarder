@@ -32,6 +32,3 @@ Outputs:
   HelloWorldLambdaFunctionArn:
     Description: 'ARN of the Demo Hello World Lambda function'
     Value: !GetAtt HelloWorld.Arn
-  HelloWorldFunctionUrl:
-    Description: 'URL of the Demo Hello World Lambda function'
-    Value: !GetAtt HelloWorldUrl.FunctionUrl

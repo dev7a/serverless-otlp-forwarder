@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2025-03-18
+
+### Added
+- New `constants` module with centralized environment variables, defaults, and resource attributes
+- Dedicated `resource` module for resource creation and attribute management
+- Improved environment variable precedence: env vars now always take precedence over constructor parameters
+
+### Changed
+- Resource attributes are now only recorded when environment variables are explicitly set
+- Updated initialization to follow a consistent pattern for all configuration values
+- Improved error handling for invalid environment variable values
+- Fixed unused import warnings and formatting issues
+- Code organization now mirrors the Node.js implementation for consistency across languages
+
 ## [0.10.2] - 2025-03-15
 
 ### Added
