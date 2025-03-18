@@ -1,6 +1,7 @@
 // Re-export public API
 export { createTracedHandler } from './handler';
-export { initTelemetry, getLambdaResource } from './internal/telemetry/init';
+export { initTelemetry } from './internal/telemetry/init';
+export { getLambdaResource } from './internal/telemetry/resource';
 export {
   apiGatewayV1Extractor,
   apiGatewayV2Extractor,
@@ -12,6 +13,15 @@ export {
   type ALBEvent,
 } from './internal/telemetry/extractors';
 export * from './mode';
+
+// Export processor related types
+export {
+  LambdaSpanProcessor,
+  type LambdaSpanProcessorConfig,
+} from './internal/telemetry/processor';
+
+// Export constants for configuration
+export { ENV_VARS, DEFAULTS, RESOURCE_ATTRIBUTES } from './constants';
 
 // Export types needed by users
 export type { TelemetryCompletionHandler } from './internal/telemetry/completion';

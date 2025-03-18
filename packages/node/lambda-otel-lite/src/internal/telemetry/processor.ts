@@ -3,6 +3,7 @@ import { Context, TraceFlags } from '@opentelemetry/api';
 import { SpanProcessor, ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
 import { ExportResult } from '@opentelemetry/core';
 import { createLogger } from '../logger';
+import { ENV_VARS, DEFAULTS } from '../../constants';
 
 const logger = createLogger('processor');
 
@@ -89,11 +90,38 @@ class CircularBuffer<T> {
 }
 
 /**
+ * Configuration options for the LambdaSpanProcessor.
+ */
+export interface LambdaSpanProcessorConfig {
+  /**
+   * Maximum number of spans that can be buffered (default: 2048).
+   * Environment variable LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE takes precedence if set.
+   */
+  maxQueueSize?: number;
+
+  /**
+   * Maximum number of spans to export in each batch (default: 512).
+   * Lower values reduce event loop blocking but may decrease throughput.
+   * Environment variable LAMBDA_SPAN_PROCESSOR_BATCH_SIZE takes precedence if set.
+   */
+  maxExportBatchSize?: number;
+}
+
+/**
  * Implementation of the SpanProcessor that batches spans exported by the SDK.
  * This processor is specifically designed for AWS Lambda environments, optimizing for:
  * 1. Memory efficiency using a circular buffer
  * 2. Non-blocking batch exports that yield to the event loop
  * 3. Configurable batch sizes to balance throughput and latency
+ *
+ * Configuration Precedence:
+ * 1. Environment variables (highest precedence)
+ * 2. Constructor parameters in config object
+ * 3. Default values (lowest precedence)
+ *
+ * Environment Variables:
+ * - LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: Maximum spans to queue (default: 2048)
+ * - LAMBDA_SPAN_PROCESSOR_BATCH_SIZE: Maximum batch size (default: 512)
  *
  * @example
  * ```typescript
@@ -115,16 +143,65 @@ export class LambdaSpanProcessor implements SpanProcessor {
    *
    * @param exporter - The span exporter to use
    * @param config - Configuration options
-   * @param config.maxQueueSize - Maximum number of spans that can be buffered (default: 2048)
-   * @param config.maxExportBatchSize - Maximum number of spans to export in each batch (default: 512).
-   *                                    Lower values reduce event loop blocking but may decrease throughput.
+   * @param config.maxQueueSize - Maximum number of spans that can be buffered.
+   *                              Environment variable LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE takes precedence if set.
+   *                              Defaults to 2048 if neither environment variable nor parameter is provided.
+   * @param config.maxExportBatchSize - Maximum number of spans to export in each batch.
+   *                                    Environment variable LAMBDA_SPAN_PROCESSOR_BATCH_SIZE takes precedence if set.
+   *                                    Defaults to 512 if neither environment variable nor parameter is provided.
    */
   constructor(
     private readonly exporter: SpanExporter,
-    config?: { maxQueueSize?: number; maxExportBatchSize?: number }
+    config?: LambdaSpanProcessorConfig
   ) {
-    const maxQueueSize = config?.maxQueueSize || 2048;
-    this.maxExportBatchSize = config?.maxExportBatchSize || 512;
+    // Set queue size with proper precedence
+    const configQueueSize = config?.maxQueueSize;
+    const envQueueSize = process.env[ENV_VARS.QUEUE_SIZE];
+    let maxQueueSize: number;
+
+    if (envQueueSize !== undefined) {
+      try {
+        const parsedQueueSize = parseInt(envQueueSize, 10);
+        if (!isNaN(parsedQueueSize) && parsedQueueSize > 0) {
+          maxQueueSize = parsedQueueSize;
+        } else {
+          logger.warn(`Invalid value in ${ENV_VARS.QUEUE_SIZE}: ${envQueueSize}, using fallback`);
+          maxQueueSize = configQueueSize !== undefined ? configQueueSize : DEFAULTS.QUEUE_SIZE;
+        }
+      } catch {
+        // Empty catch block - no need to use the error variable
+        logger.warn(`Failed to parse ${ENV_VARS.QUEUE_SIZE}: ${envQueueSize}, using fallback`);
+        maxQueueSize = configQueueSize !== undefined ? configQueueSize : DEFAULTS.QUEUE_SIZE;
+      }
+    } else {
+      // No environment variable, use parameter from config or default
+      maxQueueSize = configQueueSize !== undefined ? configQueueSize : DEFAULTS.QUEUE_SIZE;
+    }
+
+    // Set batch size with proper precedence
+    const configBatchSize = config?.maxExportBatchSize;
+    const envBatchSize = process.env[ENV_VARS.BATCH_SIZE];
+
+    if (envBatchSize !== undefined) {
+      try {
+        const parsedBatchSize = parseInt(envBatchSize, 10);
+        if (!isNaN(parsedBatchSize) && parsedBatchSize > 0) {
+          this.maxExportBatchSize = parsedBatchSize;
+        } else {
+          logger.warn(`Invalid value in ${ENV_VARS.BATCH_SIZE}: ${envBatchSize}, using fallback`);
+          this.maxExportBatchSize = configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
+        }
+      } catch {
+        // Empty catch block - no need to use the error variable
+        logger.warn(`Failed to parse ${ENV_VARS.BATCH_SIZE}: ${envBatchSize}, using fallback`);
+        this.maxExportBatchSize = configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
+      }
+    } else {
+      // No environment variable, use parameter from config or default
+      this.maxExportBatchSize = configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
+    }
+
+    // Initialize the buffer with the determined queue size
     this.buffer = new CircularBuffer<ReadableSpan>(maxQueueSize);
   }
 

@@ -298,14 +298,16 @@ You can provide multiple propagators, and they will be combined into a composite
 
 ### Library specific Resource Attributes
 
-The package adds several resource attributes under the `lambda_otel_lite` namespace to provide configuration visibility:
+The package adds several resource attributes under the `lambda_otel_lite` namespace to provide configuration visibility when the corresponding environment variables are explicitly set:
 
 - `lambda_otel_lite.extension.span_processor_mode`: Current processing mode (`sync`, `async`, or `finalize`)
 - `lambda_otel_lite.lambda_span_processor.queue_size`: Maximum number of spans that can be queued
 - `lambda_otel_lite.lambda_span_processor.batch_size`: Maximum batch size for span export
 - `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`: GZIP compression level used for span export
 
-These attributes are automatically added to the resource and can be used to understand the telemetry configuration in your observability backend.
+These attributes are **only added to the resource when the corresponding environment variables are explicitly set**. This ensures that the recorded resource attributes accurately reflect the actual configuration values used by the components.
+
+For example, if you set `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE=4096`, then the resource attribute `lambda_otel_lite.lambda_span_processor.queue_size` will be set to `4096`. If you don't set this environment variable, the attribute won't be present in the resource, even though the component may be using a default or constructor-provided value.
 
 ## Event Extractors
 
@@ -423,7 +425,11 @@ The `SpanAttributes` object returned by the extractor contains:
 
 ## Environment Variables
 
-The package can be configured using the following environment variables:
+The package can be configured using the following environment variables. All configuration follows a strict precedence order:
+
+1. Environment variables (highest precedence)
+2. Constructor parameters 
+3. Default values (lowest precedence)
 
 ### Processing Configuration
 - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Controls span processing strategy
@@ -443,6 +449,8 @@ The package can be configured using the following environment variables:
   - 1: Best speed
   - 6: Good balance between size and speed (default)
   - 9: Best compression
+
+> **Note:** If you set any of the environment variables for processing configuration or export configuration, the corresponding resource attribute will be set to reflect this configuration value. If you don't set an environment variable, the package will use the constructor parameter if provided, or fall back to the default value, but the resource attribute will not be set.
 
 ### Logging
 - `AWS_LAMBDA_LOG_LEVEL` or `LOG_LEVEL`: Configure log level (debug, info, warn, error, none)

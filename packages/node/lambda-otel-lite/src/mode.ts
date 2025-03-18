@@ -1,3 +1,5 @@
+import { ENV_VARS } from './constants';
+
 /**
  * Controls how spans are processed and exported.
  */
@@ -24,7 +26,7 @@ export enum ProcessorMode {
  * @param defaultMode - Default mode if environment variable is not set
  */
 export function processorModeFromEnv(
-  envVar: string = 'LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE',
+  envVar: string = ENV_VARS.PROCESSOR_MODE,
   defaultMode: ProcessorMode = ProcessorMode.Sync
 ): ProcessorMode {
   const envValue = process.env[envVar];

@@ -54,8 +54,8 @@ Before publishing a new version of `@dev7a/lambda-otel-lite`, ensure all these i
 5. Run linting: `npm run lint`
 6. Run tests: `npm test`
 7. Build package: `npm run build` (this will automatically generate the version.ts file)
-8. Create a branch for the release following the pattern `release-node-<package-name>-v<version>`
-9. Commit changes to the release branch and push to GitHub
+8. Create a branch for the release following the pattern `release-<rust|node|python|>-<package-name>-v<version>`
+9. Commit changes to the release branch and push to GitHub, with a commit message of `release <rust|node|python|> <package-name> v<version>`
 10. Create a pull request from the release branch to main
 11. Once the PR is approved and merged, tagging and publishing is done automatically by the CI pipeline
 

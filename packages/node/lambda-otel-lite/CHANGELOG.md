@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.11.0] - 2025-03-18
+
+### Changed
+- **Breaking Change**: Changed configuration precedence to ensure environment variables always take precedence over constructor parameters
+- Resource attributes for configuration values are now only recorded when the corresponding environment variables are explicitly set
+- Updated `LambdaSpanProcessor` to use a consistent approach for handling environment variables
+- Added proper error handling and logging for invalid environment variable values
+- Exported `LambdaSpanProcessorConfig` interface for improved TypeScript type safety
+- Refactored environment variable constants to a centralized `constants.ts` file 
+- Exported `ENV_VARS`, `DEFAULTS`, and `RESOURCE_ATTRIBUTES` constants for users of the package
+- Moved `getLambdaResource` function from `init.ts` to its own dedicated `resource.ts` file to improve code organization
+
 ## [0.10.2] - 2025-03-15
 
 ### Added
