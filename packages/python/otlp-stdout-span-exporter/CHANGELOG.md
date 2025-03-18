@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2025-03-18
+
+### Added
+- New constants module that exports `EnvVars`, `Defaults`, and `ResourceAttributes` classes
+- Improved documentation for configuration precedence rules
+- Added type hints for all constants
+
+### Changed
+- Environment variables now always take precedence over constructor parameters
+- Improved error handling for invalid configuration values
+- Enhanced input validation for environment variables
+- Updated README to document the new constants module and precedence rules
+
 ## [0.10.0] - 2025-03-05
 
 ### Changed

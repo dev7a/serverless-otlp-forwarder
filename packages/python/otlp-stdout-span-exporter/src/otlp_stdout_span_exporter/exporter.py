@@ -3,6 +3,7 @@ import gzip
 import json
 import os
 import sys
+import logging
 from collections.abc import Sequence
 from typing import Any
 
@@ -10,9 +11,11 @@ from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
+from .constants import EnvVars, Defaults
 from .version import VERSION
 
-DEFAULT_ENDPOINT = "http://localhost:4318/v1/traces"
+# Set up logger
+logger = logging.getLogger(__name__)
 
 
 class OTLPStdoutSpanExporter(SpanExporter):
@@ -62,12 +65,40 @@ class OTLPStdoutSpanExporter(SpanExporter):
             gzip_level: GZIP compression level (0-9). Defaults to 6.
         """
         super().__init__()
-        self._gzip_level = gzip_level or int(
-            os.environ.get("OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL", "6")
-        )
-        self._endpoint = DEFAULT_ENDPOINT
-        self._service_name = os.environ.get("OTEL_SERVICE_NAME") or os.environ.get(
-            "AWS_LAMBDA_FUNCTION_NAME", "unknown-service"
+
+        # Set gzip_level with proper precedence (env var > constructor param > default)
+        env_value = os.environ.get(EnvVars.COMPRESSION_LEVEL)
+        if env_value is not None:
+            try:
+                parsed_value = int(env_value)
+                if 0 <= parsed_value <= 9:
+                    self._gzip_level = parsed_value
+                else:
+                    logger.warning(
+                        f"Invalid value in {EnvVars.COMPRESSION_LEVEL}: {env_value} (must be 0-9), "
+                        f"using fallback"
+                    )
+                    self._gzip_level = (
+                        gzip_level
+                        if gzip_level is not None
+                        else Defaults.COMPRESSION_LEVEL
+                    )
+            except ValueError:
+                logger.warning(
+                    f"Failed to parse {EnvVars.COMPRESSION_LEVEL}: {env_value}, using fallback"
+                )
+                self._gzip_level = (
+                    gzip_level if gzip_level is not None else Defaults.COMPRESSION_LEVEL
+                )
+        else:
+            # No environment variable, use parameter or default
+            self._gzip_level = (
+                gzip_level if gzip_level is not None else Defaults.COMPRESSION_LEVEL
+            )
+
+        self._endpoint = Defaults.ENDPOINT
+        self._service_name = os.environ.get(EnvVars.SERVICE_NAME) or os.environ.get(
+            EnvVars.AWS_LAMBDA_FUNCTION_NAME, Defaults.SERVICE_NAME
         )
         self._headers = self._parse_headers()
 
@@ -84,9 +115,9 @@ class OTLPStdoutSpanExporter(SpanExporter):
         """
         headers: dict[str, str] = {}
         header_vars = [
-            os.environ.get("OTEL_EXPORTER_OTLP_HEADERS"),  # General headers first
+            os.environ.get(EnvVars.OTLP_HEADERS),  # General headers first
             os.environ.get(
-                "OTEL_EXPORTER_OTLP_TRACES_HEADERS"
+                EnvVars.OTLP_TRACES_HEADERS
             ),  # Trace-specific headers override
         ]
 

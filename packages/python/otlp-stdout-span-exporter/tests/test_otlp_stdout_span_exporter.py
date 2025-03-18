@@ -10,6 +10,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExportResult
 
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
+from otlp_stdout_span_exporter.constants import EnvVars
 from otlp_stdout_span_exporter.version import VERSION
 
 
@@ -38,6 +39,13 @@ def mock_print() -> Generator[Mock, None, None]:
         yield mock
 
 
+# Mock logger to capture warnings
+@pytest.fixture
+def mock_logger() -> Generator[Mock, None, None]:
+    with patch("otlp_stdout_span_exporter.exporter.logger") as mock:
+        yield mock
+
+
 @pytest.fixture
 def clean_env() -> Generator[None, None, None]:
     """Clean environment variables before each test."""
@@ -45,10 +53,11 @@ def clean_env() -> Generator[None, None, None]:
 
     # Clear relevant environment variables
     env_vars = [
-        "OTEL_SERVICE_NAME",
-        "AWS_LAMBDA_FUNCTION_NAME",
-        "OTEL_EXPORTER_OTLP_HEADERS",
-        "OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+        EnvVars.SERVICE_NAME,
+        EnvVars.AWS_LAMBDA_FUNCTION_NAME,
+        EnvVars.OTLP_HEADERS,
+        EnvVars.OTLP_TRACES_HEADERS,
+        EnvVars.COMPRESSION_LEVEL,
     ]
     for var in env_vars:
         if var in os.environ:
@@ -72,14 +81,14 @@ def test_default_values(clean_env: None, mock_print: Mock) -> None:
 
 def test_service_name_from_env(clean_env: None, mock_print: Mock) -> None:
     """Test service name from environment variables."""
-    os.environ["OTEL_SERVICE_NAME"] = "test-service"
+    os.environ[EnvVars.SERVICE_NAME] = "test-service"
     exporter = OTLPStdoutSpanExporter()
     assert exporter._service_name == "test-service"
 
 
 def test_service_name_fallback(clean_env: None, mock_print: Mock) -> None:
     """Test service name fallback to AWS_LAMBDA_FUNCTION_NAME."""
-    os.environ["AWS_LAMBDA_FUNCTION_NAME"] = "lambda-function"
+    os.environ[EnvVars.AWS_LAMBDA_FUNCTION_NAME] = "lambda-function"
     exporter = OTLPStdoutSpanExporter()
     assert exporter._service_name == "lambda-function"
 
@@ -97,6 +106,76 @@ def test_custom_gzip_level(
     result = exporter.export(spans)
     assert result == SpanExportResult.SUCCESS
     mock_gzip.assert_called_once_with(b"mock-serialized-data", compresslevel=9)
+
+
+def test_gzip_level_from_env(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+) -> None:
+    """Test gzip compression level from environment variable."""
+    os.environ[EnvVars.COMPRESSION_LEVEL] = "3"
+    exporter = OTLPStdoutSpanExporter()
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+    mock_gzip.assert_called_once_with(b"mock-serialized-data", compresslevel=3)
+
+
+def test_env_precedence_over_constructor(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+) -> None:
+    """Test that environment variables take precedence over constructor parameters."""
+    os.environ[EnvVars.COMPRESSION_LEVEL] = "3"
+    exporter = OTLPStdoutSpanExporter(gzip_level=9)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+    mock_gzip.assert_called_once_with(b"mock-serialized-data", compresslevel=3)
+
+
+def test_invalid_gzip_level_from_env(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_logger: Mock,
+) -> None:
+    """Test handling of invalid gzip level in environment variable."""
+    # Test with non-numeric value
+    os.environ[EnvVars.COMPRESSION_LEVEL] = "invalid"
+    exporter = OTLPStdoutSpanExporter(gzip_level=4)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+    mock_gzip.assert_called_once_with(b"mock-serialized-data", compresslevel=4)
+    mock_logger.warning.assert_called_once()
+
+
+def test_out_of_range_gzip_level_from_env(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_logger: Mock,
+) -> None:
+    """Test handling of out-of-range gzip level in environment variable."""
+    # Test with out-of-range value
+    os.environ[EnvVars.COMPRESSION_LEVEL] = "15"
+    exporter = OTLPStdoutSpanExporter(gzip_level=4)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+    mock_gzip.assert_called_once_with(b"mock-serialized-data", compresslevel=4)
+    mock_logger.warning.assert_called_once()
 
 
 def test_export_success(
@@ -148,7 +227,7 @@ def test_header_parsing(
     mock_print: Mock,
 ) -> None:
     """Test header parsing from environment variables."""
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = "api-key=secret123,custom-header=value"
+    os.environ[EnvVars.OTLP_HEADERS] = "api-key=secret123,custom-header=value"
     exporter = OTLPStdoutSpanExporter()
     spans: list[ReadableSpan] = []
 
@@ -166,10 +245,8 @@ def test_header_precedence(
     mock_print: Mock,
 ) -> None:
     """Test that trace-specific headers take precedence."""
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = "api-key=secret123,shared-key=general"
-    os.environ["OTEL_EXPORTER_OTLP_TRACES_HEADERS"] = (
-        "shared-key=specific,trace-key=value123"
-    )
+    os.environ[EnvVars.OTLP_HEADERS] = "api-key=secret123,shared-key=general"
+    os.environ[EnvVars.OTLP_TRACES_HEADERS] = "shared-key=specific,trace-key=value123"
     exporter = OTLPStdoutSpanExporter()
     spans: list[ReadableSpan] = []
 
@@ -191,9 +268,7 @@ def test_header_whitespace_handling(
     mock_print: Mock,
 ) -> None:
     """Test header parsing with whitespace."""
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
-        " api-key = secret123 , custom-header = value "
-    )
+    os.environ[EnvVars.OTLP_HEADERS] = " api-key = secret123 , custom-header = value "
     exporter = OTLPStdoutSpanExporter()
     spans: list[ReadableSpan] = []
 
@@ -211,7 +286,7 @@ def test_header_filtering(
     mock_print: Mock,
 ) -> None:
     """Test filtering of content-type and content-encoding headers."""
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = (
+    os.environ[EnvVars.OTLP_HEADERS] = (
         "content-type=text/plain,content-encoding=none,api-key=secret123"
     )
     exporter = OTLPStdoutSpanExporter()
@@ -231,7 +306,7 @@ def test_header_multiple_equals(
     mock_print: Mock,
 ) -> None:
     """Test handling of headers with multiple equal signs in value."""
-    os.environ["OTEL_EXPORTER_OTLP_HEADERS"] = "bearer-token=abc=123=xyz"
+    os.environ[EnvVars.OTLP_HEADERS] = "bearer-token=abc=123=xyz"
     exporter = OTLPStdoutSpanExporter()
     spans: list[ReadableSpan] = []
 

@@ -74,11 +74,10 @@ with tracer.start_as_current_span("my-operation") as span:
 ```python
 OTLPStdoutSpanExporter(
     # GZIP compression level (0-9, where 0 is no compression and 9 is maximum compression)
-    # Defaults to 6 or value from OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL
+    # Will be overridden by environment variable if set
     gzip_level=9
 )
 ```
-The explicit configuration via code will override any environment variable setting.
 
 ### Environment Variables
 
@@ -89,6 +88,9 @@ The exporter respects the following environment variables:
 - `OTEL_EXPORTER_OTLP_HEADERS`: Headers for OTLP export, used in the `headers` field
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (which take precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9). Defaults to 6.
+
+>[!IMPORTANT]
+>Environment variables always take precedence over constructor parameters. If both are specified, the environment variable value will be used.
 
 >[!NOTE]
 >For security best practices, avoid including authentication credentials or sensitive information in headers. The serverless-otlp-forwarder infrastructure is designed to handle authentication at the destination, rather than embedding credentials in your telemetry data.
