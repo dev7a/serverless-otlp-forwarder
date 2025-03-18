@@ -13,7 +13,6 @@ use clap::{Parser, Subcommand, ValueEnum};
 use std::fs;
 use chrono::Local;
 use std::path::PathBuf;
-use tracing::instrument;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ValueEnum)]
 pub enum Theme {

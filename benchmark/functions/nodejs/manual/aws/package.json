@@ -1,10 +1,10 @@
 {
-  "name": "otel-io-benchmark-function",
+  "name": "otel-benchmark-function",
   "version": "1.0.0",
-  "description": "OpenTelemetry I/O Lambda Benchmark Function",
-  "main": "io_test.js",
+  "description": "OpenTelemetry Lambda Benchmark Function",
+  "main": "index.js",
   "dependencies": {
-    "@dev7a/lambda-otel-lite": "^0.4.0",
+    "@dev7a/lambda-otel-lite": "^0.10.1",
     "@opentelemetry/instrumentation": "^0.57.0",
     "@opentelemetry/instrumentation-aws-sdk": "^0.49.0"
   }

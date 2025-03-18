@@ -1,11 +1,9 @@
-from lambda_otel_lite import init_telemetry, traced_handler
+from lambda_otel_lite import init_telemetry, create_traced_handler
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
 import json
 
-tracer, provider = init_telemetry(
-    name="benchmark-test",
-    exporter=OTLPStdoutSpanExporter(),
-)
+# Initialize telemetry once at module load time
+tracer, completion_handler = init_telemetry()
 
 
 def process_level(depth: int, iterations: int) -> None:
@@ -30,6 +28,15 @@ def process_level(depth: int, iterations: int) -> None:
             span.add_event("process-level-complete")
 
 
+# Create a traced handler with configuration
+traced = create_traced_handler(
+    name="benchmark-execution",
+    completion_handler=completion_handler,
+    # Using default extractor as we don't need specific HTTP attribute extraction
+)
+
+
+@traced
 def handler(event, context):
     """
     Lambda handler that creates a tree of spans based on input parameters.
@@ -45,24 +52,18 @@ def handler(event, context):
     Returns:
         dict: Response containing the benchmark parameters and completion status
     """
-    depth = event.get("depth", 2)
-    iterations = event.get("iterations", 2)
+    depth = event.get("depth", 3)
+    iterations = event.get("iterations", 4)
 
-    with traced_handler(
-        tracer=tracer,
-        tracer_provider=provider,
-        name="benchmark-execution",
-        event=event,
-        context=context,
-    ):
-        process_level(depth, iterations)
-        return {
-            "statusCode": 200,
-            "body": json.dumps(
-                {
-                    "message": "Benchmark complete",
-                    "depth": depth,
-                    "iterations": iterations,
-                }
-            ),
-        }
+    # Now that we're using the decorator, we don't need the context manager here
+    process_level(depth, iterations)
+    return {
+        "statusCode": 200,
+        "body": json.dumps(
+            {
+                "message": "Benchmark complete",
+                "depth": depth,
+                "iterations": iterations,
+            }
+        ),
+    }

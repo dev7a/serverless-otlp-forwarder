@@ -1,2 +1,2 @@
-lambda-otel-lite==0.4.0
-opentelemetry-instrumentation-botocore==0.50b0
+lambda-otel-lite>=0.10.1
+opentelemetry-instrumentation-botocore>=0.52b0

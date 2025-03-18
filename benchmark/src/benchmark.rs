@@ -20,6 +20,8 @@ use reqwest::header::HeaderMap;
 use serde_json::Value;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use aws_sdk_lambda::primitives::Blob;
+use statrs::statistics::{Data, OrderStatistics, Distribution, Min, Max};
+
 
 use crate::types::*;
 
@@ -184,7 +186,7 @@ pub async fn invoke_function(
                 .mutate_request(move |http_req| {
                     http_req.headers_mut().insert(
                         "X-Amzn-Trace-Id",
-                        http::header::HeaderValue::from_str(&header_value).unwrap(),
+                        header_value.clone(),
                     );
                 })
                 .send()
@@ -205,7 +207,7 @@ pub async fn invoke_function(
                 .mutate_request(move |http_req| {
                     http_req.headers_mut().insert(
                         "X-Amzn-Trace-Id",
-                        http::header::HeaderValue::from_str(&header_value).unwrap(),
+                        header_value.clone(),
                     );
                 })
                 .send()
@@ -913,17 +915,23 @@ pub struct MetricsStats {
 }
 
 pub fn calculate_stats(values: &[f64]) -> MetricsStats {
-    let mut sorted = values.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let len = sorted.len();
-    let p95_idx = (len as f64 * 0.95) as usize;
-
+    if values.is_empty() {
+        return MetricsStats {
+            min: 0.0,
+            max: 0.0,
+            mean: 0.0,
+            p50: 0.0,
+            p95: 0.0,
+        };
+    }
+    // Use the statrs Data structure which properly handles statistics
+    let mut data = Data::new(values.to_vec());
     MetricsStats {
-        min: sorted.first().copied().unwrap_or(0.0),
-        max: sorted.last().copied().unwrap_or(0.0),
-        mean: sorted.iter().sum::<f64>() / len as f64,
-        p50: sorted[len / 2],
-        p95: sorted[p95_idx],
+        min: data.min(),
+        max: data.max(),
+        mean: data.mean().unwrap_or(0.0),
+        p50: data.median(), // 50th percentile (properly handles even-length arrays)
+        p95: data.percentile(95), // 95th percentile with proper interpolation
     }
 }
 

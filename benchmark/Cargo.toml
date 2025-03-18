@@ -41,3 +41,4 @@ tera = "1.19.1"
 headless_chrome = { version = "1.0.9", optional = true }
 aws-sdk-cloudformation = "1.26.0"
 opentelemetry-aws.workspace = true
+statrs = "0.18.0"

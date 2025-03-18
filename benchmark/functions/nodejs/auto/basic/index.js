@@ -1,5 +1,4 @@
-const { trace, context, propagation } = require('@opentelemetry/api');
-
+const { trace } = require('@opentelemetry/api');
 const tracer = trace.getTracer('benchmark-test');
 
 /**
@@ -46,13 +45,6 @@ async function processLevel(depth, iterations) {
 exports.handler = async (event) => {
     const depth = event.depth ?? 3;
     const iterations = event.iterations ?? 4;
-
-    // Log only the _X_AMZN_TRACE_ID environment variable
-    console.log('Lambda XRAY Trace ID from env:', process.env._X_AMZN_TRACE_ID || 'Not defined');
-    // Log X-Amzn-Trace-Id from the event headers if it exists
-    if (event.headers && event.headers['X-Amzn-Trace-Id']) {
-        console.log('Lambda XRAY Trace ID from headers:', event.headers['X-Amzn-Trace-Id']);
-    }
 
     // Get the current active span from the tracer
     const currentSpan = trace.getActiveSpan();

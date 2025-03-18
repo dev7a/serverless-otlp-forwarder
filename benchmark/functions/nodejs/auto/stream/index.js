@@ -1,4 +1,4 @@
-const { trace, SpanKind } = require('@opentelemetry/api');
+const { trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('benchmark-test');
 

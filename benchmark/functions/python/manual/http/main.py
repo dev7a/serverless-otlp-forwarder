@@ -1,9 +1,10 @@
 from opentelemetry.instrumentation.urllib3 import URLLib3Instrumentor
-from lambda_otel_lite import init_telemetry, traced_handler
+from lambda_otel_lite import init_telemetry, create_traced_handler, api_gateway_v2_extractor
 import json
 import urllib3
 
-tracer, provider = init_telemetry("benchmark-test")
+# Initialize telemetry once at module load time
+tracer, completion_handler = init_telemetry()
 
 URLLib3Instrumentor().instrument()
 example_url = "https://example.com"
@@ -19,6 +20,16 @@ def test_http_operations() -> None:
             urllib3.request("HEAD", example_url)
 
 
+# Create a traced handler with configuration
+traced = create_traced_handler(
+    name="benchmark-execution",
+    completion_handler=completion_handler,
+    extractor=api_gateway_v2_extractor(),
+    # Using default extractor as we don't need specific HTTP attribute extraction
+)
+
+
+@traced
 def handler(event, context):
     """
     Lambda handler that exercises HTTP operations with OpenTelemetry instrumentation.
@@ -33,15 +44,8 @@ def handler(event, context):
     Returns:
         dict: Response with status code 200 and message indicating benchmark completion
     """
-    with traced_handler(
-        tracer=tracer,
-        tracer_provider=provider,
-        name="benchmark-execution",
-        event=event,
-        context=context,
-    ):
-        test_http_operations()
-        return {
-            "statusCode": 200,
-            "body": json.dumps({"message": "Benchmark complete"}),
-        }
+    test_http_operations()
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"message": "Benchmark complete"}),
+    }

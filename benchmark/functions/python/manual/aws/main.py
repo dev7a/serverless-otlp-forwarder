@@ -1,10 +1,11 @@
+from lambda_otel_lite import init_telemetry, create_traced_handler
 from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
 from opentelemetry.propagate import extract
-from lambda_otel_lite import init_telemetry, traced_handler
 import json
 import boto3
 
-tracer, provider = init_telemetry("benchmark-test")
+# Initialize telemetry once at module load time
+tracer, completion_handler = init_telemetry()
 BotocoreInstrumentor().instrument()
 
 # Initialize clients
@@ -28,6 +29,15 @@ def test_aws_operations() -> None:
             dynamo_span.set_attribute("aws.operation", "list_tables")
 
 
+# Create a traced handler with configuration
+traced = create_traced_handler(
+    name="benchmark-execution",
+    completion_handler=completion_handler,
+    # Using default extractor as we don't need specific HTTP attribute extraction
+)
+
+
+@traced
 def handler(event, context):
     """
     Lambda handler that exercises AWS SDK operations with OpenTelemetry instrumentation.
@@ -43,15 +53,8 @@ def handler(event, context):
         dict: Response containing status code and completion message
     """
 
-    with traced_handler(
-        tracer=tracer,
-        tracer_provider=provider,
-        name="benchmark-execution",
-        event=event,
-        context=context
-    ):
-        test_aws_operations()
-        return {
-            "statusCode": 200,
-            "body": json.dumps({"message": "Benchmark complete"}),
-        }
+    test_aws_operations()
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"message": "Benchmark complete"}),
+    }

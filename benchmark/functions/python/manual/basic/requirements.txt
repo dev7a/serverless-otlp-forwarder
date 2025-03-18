@@ -1,1 +1,1 @@
-lambda-otel-lite==0.4.0
+lambda-otel-lite>=0.10.1

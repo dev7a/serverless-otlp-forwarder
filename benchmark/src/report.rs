@@ -13,6 +13,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
+use statrs::statistics::OrderStatistics;
 
 /// Calculate statistics for cold start init duration
 fn calculate_cold_start_init_stats(cold_starts: &[ColdStartMetrics]) -> Option<(f64, f64, f64, f64, f64)> {
@@ -239,7 +240,6 @@ fn create_bar_chart_options(series: Vec<serde_json::Value>, _title: &str, unit: 
         ],
         "legend": {
             "orient": "horizontal",
-            "right": 0,
             "top": 10
         },
         "grid": [{
@@ -264,84 +264,266 @@ fn create_bar_chart_options(series: Vec<serde_json::Value>, _title: &str, unit: 
             "inverse": true,
             "data": ["AVG", "MIN", "MAX", "P95", "P50"]
         }],
-        "series": series
+        "series": series,
+        "toolbox": {
+            "feature": {
+                "restore": {},
+                "saveAsImage": {}
+            },
+            "right": "20px"
+        }
+
     })
 }
 
-/// Create line chart series for warm start net duration over time
-fn create_net_duration_time_series(results: &[BenchmarkReport], function_names: &[String]) -> Vec<serde_json::Value> {
-    function_names
+/// Create line chart series for warm start client duration over time
+fn create_client_duration_time_series(results: &[BenchmarkReport], function_names: &[String]) -> (Vec<serde_json::Value>, f64) {
+    let gap = 5; // Fixed small gap
+    let mut current_offset = 0;
+    
+    // Process each series in a single pass
+    let series_data = function_names
         .iter()
         .zip(results.iter())
         .map(|(name, report)| {
-            let data: Vec<_> = report.warm_starts
+            // Record current offset for this series
+            let x_offset = current_offset;
+            let points = report.client_measurements.len();
+            
+            // Update offset for next series
+            current_offset += points + gap;
+            
+            // Calculate mean value for this series
+            let mean_value = if !report.client_measurements.is_empty() {
+                let sum: f64 = report.client_measurements.iter()
+                    .map(|m| m.client_duration)
+                    .sum();
+                sum / report.client_measurements.len() as f64
+            } else {
+                0.0
+            };
+            
+            // Create data points for this series
+            let data = report.client_measurements
                 .iter()
                 .enumerate()
                 .map(|(index, m)| json!({
-                    "value": [index + 1, m.net_duration.round()],
+                    "value": [x_offset + index, m.client_duration.round()],
                 }))
-                .collect();
+                .collect::<Vec<_>>();
 
             json!({
                 "name": name,
                 "type": "scatter",
                 "smooth": true,
                 "showSymbol": true,
-                "label": {
-                    "show": false
-                },
-                "data": data
+                "label": { "show": false },
+                "data": data,
+                "markLine": {
+                    "silent": true,
+                    "symbol": ["none", "none"],  // Remove arrows at both ends
+                    "lineStyle": {
+                        "color": "#333",
+                        "width": 1,
+                        "type": "dashed"
+                    },
+                    "data": [
+                        {
+                            "yAxis": mean_value.round(),
+                            "xAxis": x_offset,
+                        },
+                        {
+                            "yAxis": mean_value.round(),
+                            "xAxis": x_offset + points - 1,
+                            "label": {
+                                "formatter": "{c} ms",
+                                "position": "end"
+                            }
+                        }
+                    ]
+                }
             })
         })
-        .collect()
+        .collect();
+    
+    // Calculate total width (subtract final gap)
+    let total_width = if current_offset > gap { current_offset - gap } else { 0 };
+    
+    (series_data, total_width as f64)
 }
 
 /// Create line chart options
-fn create_line_chart_options(series: Vec<serde_json::Value>, _title: &str, unit: &str) -> serde_json::Value {
-    json!({
-        "tooltip": {
-            "trigger": "axis",
-            "axisPointer": {
-                "type": "cross"
+fn create_line_chart_options(series: Vec<serde_json::Value>, _title: &str, unit: &str, max_x: Option<f64>) -> serde_json::Value {
+    // Determine max_x value (either provided or calculated)
+    let max_x = max_x.unwrap_or_else(|| {
+        // Extract the maximum x value across all data points
+        series.iter()
+            .flat_map(|s| s["data"].as_array().unwrap_or(&Vec::new()).to_vec())
+            .filter_map(|point| {
+                point["value"].as_array()
+                    .and_then(|arr| arr.first())
+                    .and_then(|x| x.as_f64())
+            })
+            .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .unwrap_or(100.0)
+    });
+
+    // Calculate reasonable y-axis range by finding all y values
+    let all_y_values: Vec<f64> = series.iter()
+        .flat_map(|s| s["data"].as_array().unwrap_or(&Vec::new()).to_vec())
+        .filter_map(|point| {
+            point["value"].as_array()
+                .and_then(|arr| arr.get(1))
+                .and_then(|y| y.as_f64())
+        })
+        .collect();
+
+    // Calculate just the 95th percentile directly
+    let p95 = if all_y_values.is_empty() {
+        1000.0 // Default value if no data
+    } else {
+        use statrs::statistics::Data;
+        let mut data = Data::new(all_y_values.clone());
+        data.percentile(95)
+    };
+    
+    // Use p95 * 1.2 as the y-axis max to show most points while excluding extreme outliers
+    let y_max = (p95 * 1.2).max(1000.0); // Ensure a reasonable minimum scale
+    
+    // Create a copy of the series array
+    let mut enhanced_series = series.clone();
+    
+    // Calculate the mean value for each data series
+    let series_means: Vec<(String, f64)> = series.iter()
+        .map(|s| {
+            let name = s["name"].as_str().unwrap_or("Unknown").to_string();
+            let values: Vec<f64> = s["data"].as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|point| {
+                    point["value"].as_array()
+                        .and_then(|arr| arr.get(1))
+                        .and_then(|y| y.as_f64())
+                })
+                .collect();
+            
+            let mean = if !values.is_empty() {
+                values.iter().sum::<f64>() / values.len() as f64
+            } else {
+                0.0
+            };
+            
+            (name, mean)
+        })
+        .collect();
+    
+    // Create mean trend lines for each series
+    let mean_trend_data: Vec<serde_json::Value> = series.iter()
+        .enumerate()
+        .map(|(idx, s)| {
+            let name = s["name"].as_str().unwrap_or("Unknown");
+            let mean = series_means[idx].1;
+            
+            // Find x-value range for this series
+            let x_values: Vec<f64> = s["data"].as_array()
+                .unwrap_or(&Vec::new())
+                .iter()
+                .filter_map(|point| {
+                    point["value"].as_array()
+                        .and_then(|arr| arr.get(0))
+                        .and_then(|x| x.as_f64())
+                })
+                .collect();
+            
+            if x_values.is_empty() {
+                return json!(null);
             }
-        },
-        "color": [
-            "#3fb1e3",
-            "#6be6c1",
-            "#626c91",
-            "#a0a7e6",
-            "#c4ebad",
-            "#96dee8"
-        ],
+            
+            let min_x = x_values.iter().fold(f64::INFINITY, |a, &b| a.min(b));
+            let max_x = x_values.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+            
+            json!({
+                "name": format!("{} Mean", name),
+                "type": "line",
+                "smooth": true,
+                "showSymbol": false,
+                "symbolSize": 0,
+                "lineStyle": {
+                    "width": 2,
+                    "type": "dashed"
+                },
+                "data": [
+                    [min_x, mean.round()],
+                    [max_x, mean.round()]
+                ],
+                "tooltip": {
+                    "formatter": format!("{} Mean: {:.1} {}", name, mean, unit)
+                },
+                "zlevel": 1,  // Ensure it renders above the scatter points
+                "legendHoverLink": false,  // Don't highlight when hovering legend
+                "silent": true  // Don't respond to mouse events
+            })
+        })
+        .filter(|item| !item.is_null())
+        .collect();
+    
+    // Add all the mean trend lines to the series
+    for trend_line in mean_trend_data {
+        enhanced_series.push(trend_line);
+    }
+    
+    // Filter the legend to only show data series (not mean lines)
+    let legend_data: Vec<String> = enhanced_series.iter()
+        .filter_map(|s| {
+            let name = s["name"].as_str().unwrap_or("").to_string();
+            if name.contains("Mean") {
+                None // Skip mean lines in legend
+            } else {
+                Some(name)
+            }
+        })
+        .collect();
+    
+    json!({
+        "tooltip": { "trigger": "axis", "axisPointer": { "type": "cross" } },
+        "color": ["#3fb1e3", "#6be6c1", "#626c91", "#a0a7e6", "#c4ebad", "#96dee8", "#ff9933", "#ff6666", "#99cc66", "#cc99ff"],
         "grid": {
-            "top": "10%",
-            "bottom": "5%",
-            "containLabel": true
+            "top": "10%", "bottom": "5%", "left": "3%", "right": "9%", "containLabel": true
         },
         "legend": {
-            "data": series.iter().map(|s| s["name"].as_str().unwrap()).collect::<Vec<_>>(),
-            "top": "10%"
+            "data": legend_data,
+            "top": "10"
         },
         "xAxis": {
             "type": "value",
-            "name": "Test Number",
+            "name": "Test Sequence",
             "nameLocation": "middle",
             "nameGap": 30,
+            "min": 0,
+            "max": max_x + 1.0,
             "minInterval": 1,
-            "splitLine": {
-                "show": false
-            }
+            "boundaryGap": false,
+            "splitLine": { "show": false }
         },
         "yAxis": {
             "type": "value",
             "name": format!("Duration ({})", unit),
             "nameLocation": "middle",
             "nameGap": 50,
-            "splitLine": {
-                "show": true
+            "splitLine": { "show": true },
+            "max": y_max,
+            "axisLabel": {
+                "formatter": format!("{{value}} {}", unit)
             }
         },
-        "series": series
+        "series": enhanced_series,
+        "toolbox": {
+            "feature": {
+                "restore": {},
+                "saveAsImage": {}
+            },
+            "right": "20px"
+        }
     })
 }
 
@@ -661,7 +843,7 @@ async fn process_directory(
             ("Warm Start - Client Duration", "client_duration.html", "Client-side duration for warm starts"),
             ("Warm Start - Server Duration", "server_duration.html", "Server-side duration for warm starts"),
             ("Warm Start - Net Duration", "net_duration.html", "Net duration for warm starts"),
-            ("Warm Start - Net Duration Over Time", "net_duration_time.html", "Net duration trend over time"),
+            ("Warm Start - Client Duration Over Time", "client_duration_time.html", "Client duration trend over time"),
             ("Memory Usage", "memory_usage.html", "Memory usage statistics"),
         ];
 
@@ -895,17 +1077,17 @@ pub async fn generate_reports_for_directory(
             pb,
         ).await?;
 
-        // Generate net duration over time chart
-        let net_time_series = create_net_duration_time_series(&results, &function_names);
-        let net_time_options = create_line_chart_options(net_time_series, "Warm Start: Net Duration Over Time", "ms");
+        // Generate client duration over time chart
+        let (client_time_series, total_points) = create_client_duration_time_series(&results, &function_names);
+        let client_time_options = create_line_chart_options(client_time_series, "Warm Start: Client Duration Over Time", "ms", Some(total_points));
         generate_chart(
             &PathBuf::from(output_directory),
             png_dir.as_deref(),
-            "net_duration_time",
-            custom_title.unwrap_or("Warm Start: Net Duration Over Time"),
-            net_time_options,
+            "client_duration_time",
+            custom_title.unwrap_or("Warm Start: Client Duration Over Time"),
+            client_time_options,
             &results[0].config,
-            "net_time",
+            "client_time",
             screenshot_theme,
             pb,
         ).await?;

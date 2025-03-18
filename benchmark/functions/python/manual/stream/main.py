@@ -1,8 +1,9 @@
-from lambda_otel_lite import init_telemetry, traced_handler
+from lambda_otel_lite import init_telemetry, create_traced_handler
 import json
 import base64
 
-tracer, provider = init_telemetry("benchmark-test")
+# Initialize telemetry once at module load time
+tracer, completion_handler = init_telemetry()
 
 
 def process_record(record: dict) -> None:
@@ -58,6 +59,15 @@ def test_stream_operations(records: list) -> None:
             process_record(record)
 
 
+# Create a traced handler with configuration
+traced = create_traced_handler(
+    name="benchmark-execution",
+    completion_handler=completion_handler,
+    # Using default extractor as we don't need specific HTTP attribute extraction
+)
+
+
+@traced
 def handler(event, context):
     """
     Lambda handler that processes Kinesis records with OpenTelemetry instrumentation.
@@ -74,17 +84,10 @@ def handler(event, context):
         dict: Response containing the number of records processed and completion status
     """
     records = event.get("Records", [])
-    with traced_handler(
-        tracer=tracer,
-        tracer_provider=provider,
-        name="benchmark-execution",
-        event=event,
-        context=context,
-    ):
-        test_stream_operations(records)
-        return {
-            "statusCode": 200,
-            "body": json.dumps(
-                {"message": "Benchmark complete", "records_processed": len(records)}
-            ),
-        }
+    test_stream_operations(records)
+    return {
+        "statusCode": 200,
+        "body": json.dumps(
+            {"message": "Benchmark complete", "records_processed": len(records)}
+        ),
+    }
