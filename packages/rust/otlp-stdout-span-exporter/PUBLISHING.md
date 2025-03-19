@@ -58,7 +58,9 @@ Before publishing a new version of `otlp-stdout-span-exporter`, ensure all these
 7. Run doc tests: `cargo test --doc`
 8. Build in release mode: `cargo build --release`
 9. Verify documentation: `cargo doc --no-deps`
-10. Tagging and publishing is done automatically by the CI pipeline
+10. Create a branch for the release following the pattern `release-<rust|node|python|>-<package-name>-v<version>`
+11. Commit changes to the release branch and push to GitHub, with a commit message of `release <rust|node|python|> <package-name> v<version>`
+12. Once the PR is approved and merged, tagging and publishing is done automatically by the CI pipeline
 
 ## Post-Publishing
 - [ ] Verify package installation works: `cargo add otlp-stdout-span-exporter`

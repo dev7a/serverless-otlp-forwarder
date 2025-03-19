@@ -4,7 +4,7 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 
 fn init_tracer() -> SdkTracerProvider {
-    let exporter = OtlpStdoutSpanExporter::new();
+    let exporter = OtlpStdoutSpanExporter::default();
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
         .build();

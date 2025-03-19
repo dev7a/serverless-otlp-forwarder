@@ -49,7 +49,7 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 
 fn init_tracer() -> SdkTracerProvider {
-    let exporter = OtlpStdoutSpanExporter::new();
+    let exporter = OtlpStdoutSpanExporter::default();
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
         .build();
@@ -93,18 +93,46 @@ The exporter respects the following environment variables:
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 
-
-
 ## Configuration
 
-The exporter can be configured with different GZIP compression levels:
+The exporter can be configured in multiple ways, with a strict precedence order:
 
-```rust ignore
-// Create exporter with custom GZIP level (0-9)
-let exporter = OtlpStdoutSpanExporter::with_gzip_level(9);
+1. Environment variables (highest precedence)
+2. Constructor parameters (medium precedence)
+3. Default values (lowest precedence)
+
+### Using Environment Variables
+
+Environment variables always take precedence over any programmatic configuration:
+
+```bash
+# Set GZIP compression level to 9 (maximum compression)
+export OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL=9
 ```
 
-You can also configure the compression level using the `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable. The explicit configuration via code will override any environment variable setting.
+### Using default or builder methods
+
+The exporter provides two main ways to create and configure it:
+
+```rust
+use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
+
+// Create with default options (compression level 6)
+let default_exporter = OtlpStdoutSpanExporter::default();
+
+// Create with specific compression level
+let max_compression_exporter = OtlpStdoutSpanExporter::builder().compression_level(9).build();
+```
+
+Note that even when using these constructor parameters, environment variables will still take precedence if they are set.
+
+## Default Values
+
+When neither environment variables nor constructor parameters are provided, the following defaults are used:
+
+- Compression level: 6 (good balance between speed and compression)
+- Service name: "unknown-service" (unless AWS_LAMBDA_FUNCTION_NAME is available)
+- Endpoint: "http://localhost:4318/v1/traces"
 
 ## Development
 

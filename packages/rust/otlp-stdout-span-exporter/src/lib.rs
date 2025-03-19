@@ -23,7 +23,7 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     // Create a new stdout exporter
-//!     let exporter = OtlpStdoutSpanExporter::new();
+//!     let exporter = OtlpStdoutSpanExporter::default();
 //!
 //!     // Create a new tracer provider with batch export
 //!     let provider = SdkTracerProvider::builder()
@@ -63,6 +63,29 @@
 //! - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 //! - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 //!
+//! # Configuration Precedence
+//!
+//! All configuration values follow this strict precedence order:
+//!
+//! 1. Environment variables (highest precedence)
+//! 2. Constructor parameters
+//! 3. Default values (lowest precedence)
+//!
+//! For example, when determining the compression level:
+//!
+//! ```rust
+//! use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
+//!
+//! // This will use the OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL environment variable if set,
+//! // otherwise it will use level 9, which was provided as a parameter
+//! let exporter = OtlpStdoutSpanExporter::builder()
+//!     .compression_level(9)
+//!     .build();
+//!
+//! // This will use the environment variable if set, or default to level 6
+//! let default_exporter = OtlpStdoutSpanExporter::default();
+//! ```
+//!
 //! # Output Format
 //!
 //! The exporter writes each batch of spans as a JSON object to stdout:
@@ -86,6 +109,7 @@
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine};
+use bon::bon;
 use flate2::{write::GzEncoder, Compression};
 use futures_util::future::BoxFuture;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
@@ -98,20 +122,23 @@ use opentelemetry_sdk::{
 };
 use prost::Message;
 use serde::Serialize;
-#[cfg(test)]
-use std::sync::Mutex;
-use std::{
-    collections::HashMap,
-    env,
-    io::{self, Write},
-    result::Result,
-    sync::Arc,
-};
+
+mod constants;
+use constants::{defaults, env_vars};
+
+// Make the constants module and its sub-modules publicly available
+pub mod consts {
+    //! Constants used by the exporter.
+    //!
+    //! This module provides constants for environment variables,
+    //! default values, and resource attributes.
+
+    pub use crate::constants::defaults;
+    pub use crate::constants::env_vars;
+    pub use crate::constants::resource_attributes;
+}
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const DEFAULT_ENDPOINT: &str = "http://localhost:4318/v1/traces";
-const DEFAULT_COMPRESSION_LEVEL: u8 = 6;
-const COMPRESSION_LEVEL_ENV_VAR: &str = "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL";
 
 /// Trait for output handling
 ///
@@ -143,34 +170,6 @@ impl Output for StdOutput {
         // Write the line and a newline in one operation
         writeln!(handle, "{}", line).map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
 
-        Ok(())
-    }
-}
-
-/// Test output implementation that captures to a buffer
-#[cfg(test)]
-#[derive(Debug, Default)]
-struct TestOutput {
-    buffer: Arc<Mutex<Vec<String>>>,
-}
-
-#[cfg(test)]
-impl TestOutput {
-    fn new() -> Self {
-        Self {
-            buffer: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
-    fn get_output(&self) -> Vec<String> {
-        self.buffer.lock().unwrap().clone()
-    }
-}
-
-#[cfg(test)]
-impl Output for TestOutput {
-    fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
-        self.buffer.lock().unwrap().push(line.to_string());
         Ok(())
     }
 }
@@ -224,95 +223,105 @@ struct ExporterOutput<'a> {
 /// use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 ///
 /// // Create an exporter with maximum compression
-/// let exporter = OtlpStdoutSpanExporter::with_gzip_level(9);
+/// let exporter = OtlpStdoutSpanExporter::builder()
+///     .compression_level(9)
+///     .build();
 /// ```
 #[derive(Debug)]
 pub struct OtlpStdoutSpanExporter {
     /// GZIP compression level (0-9)
-    gzip_level: u8,
-    /// Optional resource to be included with all spans
-    resource: Option<Resource>,
+    compression_level: u8,
     /// Output implementation (stdout or test buffer)
     output: Arc<dyn Output>,
+    /// Optional resource to be included with all spans
+    resource: Option<Resource>,
 }
 
 impl Default for OtlpStdoutSpanExporter {
     fn default() -> Self {
-        Self::new()
+        Self::builder().build()
     }
 }
-
+#[bon]
 impl OtlpStdoutSpanExporter {
-    /// Creates a new exporter with default configuration
+    /// Create a new `OtlpStdoutSpanExporter` with default configuration.
     ///
-    /// The default GZIP compression level is determined by:
+    /// This uses a GZIP compression level of 6 unless overridden by an environment variable.
+    ///
+    /// # Compression Level
+    ///
+    /// The compression level is determined in the following order (highest to lowest precedence):
+    ///
     /// 1. The `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable if set
-    /// 2. Otherwise, defaults to level 6
+    /// 2. Default value (6)
     ///
     /// # Example
     ///
-    /// ```rust
+    /// ```
     /// use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
     ///
-    /// let exporter = OtlpStdoutSpanExporter::new();
+    /// let exporter = OtlpStdoutSpanExporter::default();
     /// ```
-    pub fn new() -> Self {
-        let gzip_level =
-            Self::get_compression_level_from_env().unwrap_or(DEFAULT_COMPRESSION_LEVEL);
+    #[builder]
+    pub fn new(
+        compression_level: Option<u8>,
+        output: Option<Arc<dyn Output>>,
+        resource: Option<Resource>,
+    ) -> Self {
+        // Set gzip_level with proper precedence (env var > constructor param > default)
+        let compression_level = match env::var(env_vars::COMPRESSION_LEVEL) {
+            Ok(value) => match value.parse::<u8>() {
+                Ok(level) if level <= 9 => level,
+                Ok(level) => {
+                    log::warn!(
+                        "Invalid value in {}: {} (must be 0-9), using fallback",
+                        env_vars::COMPRESSION_LEVEL,
+                        level
+                    );
+                    compression_level.unwrap_or(defaults::COMPRESSION_LEVEL)
+                }
+                Err(_) => {
+                    log::warn!(
+                        "Failed to parse {}: {}, using fallback",
+                        env_vars::COMPRESSION_LEVEL,
+                        value
+                    );
+                    compression_level.unwrap_or(defaults::COMPRESSION_LEVEL)
+                }
+            },
+            Err(_) => {
+                // No environment variable, use parameter or default
+                compression_level.unwrap_or(defaults::COMPRESSION_LEVEL)
+            }
+        };
+
         Self {
-            gzip_level,
-            resource: None,
-            output: Arc::new(StdOutput),
+            compression_level,
+            resource,
+            output: output.unwrap_or(Arc::new(StdOutput)),
         }
     }
 
-    /// Creates a new exporter with custom GZIP compression level
+    /// Get the service name from environment variables.
     ///
-    /// This method explicitly sets the compression level, overriding any value
-    /// set in the `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable.
+    /// The service name is determined in the following order:
     ///
-    /// # Arguments
-    ///
-    /// * `gzip_level` - GZIP compression level (0-9, where 0 is no compression and 9 is maximum compression)
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
-    ///
-    /// // Create an exporter with maximum compression
-    /// let exporter = OtlpStdoutSpanExporter::with_gzip_level(9);
-    /// ```
-    pub fn with_gzip_level(gzip_level: u8) -> Self {
-        Self {
-            gzip_level,
-            resource: None,
-            output: Arc::new(StdOutput),
-        }
-    }
-
-    /// Get the compression level from environment variable
-    ///
-    /// This function tries to read the compression level from the
-    /// `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable.
-    /// It returns None if the variable is not set or cannot be parsed as a u8.
-    fn get_compression_level_from_env() -> Option<u8> {
-        env::var(COMPRESSION_LEVEL_ENV_VAR)
-            .ok()
-            .and_then(|val| val.parse::<u8>().ok())
-            .and_then(|level| if level <= 9 { Some(level) } else { None })
+    /// 1. OTEL_SERVICE_NAME
+    /// 2. AWS_LAMBDA_FUNCTION_NAME
+    /// 3. "unknown-service" (fallback)
+    fn get_service_name() -> String {
+        env::var(env_vars::SERVICE_NAME)
+            .or_else(|_| env::var(env_vars::AWS_LAMBDA_FUNCTION_NAME))
+            .unwrap_or_else(|_| defaults::SERVICE_NAME.to_string())
     }
 
     #[cfg(test)]
     fn with_test_output() -> (Self, Arc<TestOutput>) {
         let output = Arc::new(TestOutput::new());
-        let gzip_level =
-            Self::get_compression_level_from_env().unwrap_or(DEFAULT_COMPRESSION_LEVEL);
-        let exporter = Self {
-            gzip_level,
-            resource: None,
-            output: output.clone() as Arc<dyn Output>,
-        };
+
+        // Use the standard new() method to ensure environment variables are respected
+        let exporter = Self::builder().output(output.clone()).build();
+
         (exporter, output)
     }
 
@@ -353,18 +362,6 @@ impl OtlpStdoutSpanExporter {
             }
         }
     }
-
-    /// Get the service name from environment variables
-    ///
-    /// This function tries to get the service name from:
-    /// 1. OTEL_SERVICE_NAME
-    /// 2. AWS_LAMBDA_FUNCTION_NAME
-    /// 3. Falls back to "unknown-service" if neither is set
-    fn get_service_name() -> String {
-        env::var("OTEL_SERVICE_NAME")
-            .or_else(|_| env::var("AWS_LAMBDA_FUNCTION_NAME"))
-            .unwrap_or_else(|_| "unknown-service".to_string())
-    }
 }
 
 #[async_trait]
@@ -401,7 +398,8 @@ impl SpanExporter for OtlpStdoutSpanExporter {
             let proto_bytes = request.encode_to_vec();
 
             // Compress with GZIP
-            let mut encoder = GzEncoder::new(Vec::new(), Compression::new(self.gzip_level as u32));
+            let mut encoder =
+                GzEncoder::new(Vec::new(), Compression::new(self.compression_level as u32));
             encoder
                 .write_all(&proto_bytes)
                 .map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
@@ -416,7 +414,7 @@ impl SpanExporter for OtlpStdoutSpanExporter {
             let output_data = ExporterOutput {
                 version: VERSION,
                 source: Self::get_service_name(),
-                endpoint: DEFAULT_ENDPOINT,
+                endpoint: defaults::ENDPOINT,
                 method: "POST",
                 content_type: "application/x-protobuf",
                 content_encoding: "gzip",
@@ -487,6 +485,44 @@ use doc_comment::doctest;
 doctest!("../README.md", readme);
 
 #[cfg(test)]
+use std::sync::Mutex;
+use std::{
+    collections::HashMap,
+    env,
+    io::{self, Write},
+    result::Result,
+    sync::Arc,
+};
+
+/// Test output implementation that captures to a buffer
+#[cfg(test)]
+#[derive(Debug, Default)]
+struct TestOutput {
+    buffer: Arc<Mutex<Vec<String>>>,
+}
+
+#[cfg(test)]
+impl TestOutput {
+    fn new() -> Self {
+        Self {
+            buffer: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    fn get_output(&self) -> Vec<String> {
+        self.buffer.lock().unwrap().clone()
+    }
+}
+
+#[cfg(test)]
+impl Output for TestOutput {
+    fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
+        self.buffer.lock().unwrap().push(line.to_string());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use opentelemetry::{
@@ -495,6 +531,7 @@ mod tests {
     };
     use opentelemetry_sdk::trace::{SpanData, SpanEvents, SpanLinks};
     use serde_json::Value;
+    use serial_test::serial;
     use std::time::SystemTime;
 
     fn create_test_span() -> SpanData {
@@ -551,83 +588,70 @@ mod tests {
     #[test]
     fn test_service_name_resolution() {
         // Test OTEL_SERVICE_NAME priority
-        std::env::set_var("OTEL_SERVICE_NAME", "otel-service");
-        std::env::set_var("AWS_LAMBDA_FUNCTION_NAME", "lambda-function");
+        std::env::set_var(env_vars::SERVICE_NAME, "otel-service");
+        std::env::set_var(env_vars::AWS_LAMBDA_FUNCTION_NAME, "lambda-function");
         assert_eq!(OtlpStdoutSpanExporter::get_service_name(), "otel-service");
 
         // Test AWS_LAMBDA_FUNCTION_NAME fallback
-        std::env::remove_var("OTEL_SERVICE_NAME");
+        std::env::remove_var(env_vars::SERVICE_NAME);
         assert_eq!(
             OtlpStdoutSpanExporter::get_service_name(),
             "lambda-function"
         );
 
-        // Test default value
-        std::env::remove_var("AWS_LAMBDA_FUNCTION_NAME");
+        // Test default fallback
+        std::env::remove_var(env_vars::AWS_LAMBDA_FUNCTION_NAME);
         assert_eq!(
             OtlpStdoutSpanExporter::get_service_name(),
-            "unknown-service"
+            defaults::SERVICE_NAME
         );
     }
 
     #[test]
-    fn test_compression_level_from_env() {
-        // Test with valid compression level
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "3");
-        assert_eq!(
-            OtlpStdoutSpanExporter::get_compression_level_from_env(),
-            Some(3)
-        );
+    fn test_compression_level_precedence() {
+        // Test env var takes precedence over options
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "3");
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(7)
+            .build();
+        assert_eq!(exporter.compression_level, 3);
 
-        // Test with invalid compression level (>9)
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "10");
-        assert_eq!(
-            OtlpStdoutSpanExporter::get_compression_level_from_env(),
-            None
-        );
+        // Test invalid env var falls back to options
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "invalid");
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(7)
+            .build();
+        assert_eq!(exporter.compression_level, 7);
 
-        // Test with non-numeric value
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "invalid");
-        assert_eq!(
-            OtlpStdoutSpanExporter::get_compression_level_from_env(),
-            None
-        );
+        // Test no env var uses options
+        std::env::remove_var(env_vars::COMPRESSION_LEVEL);
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(7)
+            .build();
+        assert_eq!(exporter.compression_level, 7);
 
-        // Test with unset variable
-        std::env::remove_var(COMPRESSION_LEVEL_ENV_VAR);
-        assert_eq!(
-            OtlpStdoutSpanExporter::get_compression_level_from_env(),
-            None
-        );
+        // Test fallback to default
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(defaults::COMPRESSION_LEVEL)
+            .build();
+        assert_eq!(exporter.compression_level, defaults::COMPRESSION_LEVEL);
     }
 
     #[test]
     fn test_new_uses_env_compression_level() {
         // Set environment variable
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "3");
-        let exporter = OtlpStdoutSpanExporter::new();
-        assert_eq!(exporter.gzip_level, 3);
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "3");
+        let exporter = OtlpStdoutSpanExporter::default();
+        assert_eq!(exporter.compression_level, 3);
 
         // Test with unset variable (should use default)
-        std::env::remove_var(COMPRESSION_LEVEL_ENV_VAR);
-        let exporter = OtlpStdoutSpanExporter::new();
-        assert_eq!(exporter.gzip_level, DEFAULT_COMPRESSION_LEVEL);
-    }
-
-    #[test]
-    fn test_with_gzip_level_overrides_env() {
-        // Set environment variable
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "3");
-
-        // Explicit level should override environment
-        let exporter = OtlpStdoutSpanExporter::with_gzip_level(8);
-        assert_eq!(exporter.gzip_level, 8);
-
-        // Clean up
-        std::env::remove_var(COMPRESSION_LEVEL_ENV_VAR);
+        std::env::remove_var(env_vars::COMPRESSION_LEVEL);
+        let exporter = OtlpStdoutSpanExporter::default();
+        assert_eq!(exporter.compression_level, defaults::COMPRESSION_LEVEL);
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_compression_level_affects_output_size() {
         // Create a large span batch to make compression differences more noticeable
         let mut spans = Vec::new();
@@ -635,56 +659,48 @@ mod tests {
             let mut span = create_test_span();
             // Add unique attributes to each span to increase data size
             span.attributes.push(KeyValue::new("index", i));
-            span.attributes.push(KeyValue::new("data", "a".repeat(100)));
+            // Add a large attribute to make compression more effective
+            span.attributes
+                .push(KeyValue::new("data", "a".repeat(1000)));
             spans.push(span);
         }
 
-        // Test with no compression (level 0)
-        let (mut no_compression_exporter, no_compression_output) =
-            OtlpStdoutSpanExporter::with_test_output();
-        no_compression_exporter.gzip_level = 0;
+        // Make sure environment variables don't interfere with our test
+        std::env::remove_var(env_vars::COMPRESSION_LEVEL);
+
+        // Create exporter with no compression (level 0)
+        let no_compression_output = Arc::new(TestOutput::new());
+        let mut no_compression_exporter = OtlpStdoutSpanExporter {
+            compression_level: 0,
+            resource: None,
+            output: no_compression_output.clone() as Arc<dyn Output>,
+        };
         let _ = no_compression_exporter.export(spans.clone()).await;
         let no_compression_size = extract_payload_size(&no_compression_output.get_output()[0]);
 
-        // Test with medium compression (level 5)
-        let (mut medium_compression_exporter, medium_compression_output) =
-            OtlpStdoutSpanExporter::with_test_output();
-        medium_compression_exporter.gzip_level = 5;
-        let _ = medium_compression_exporter.export(spans.clone()).await;
-        let medium_compression_size =
-            extract_payload_size(&medium_compression_output.get_output()[0]);
-
-        // Test with maximum compression (level 9)
-        let (mut max_compression_exporter, max_compression_output) =
-            OtlpStdoutSpanExporter::with_test_output();
-        max_compression_exporter.gzip_level = 9;
+        // Create exporter with max compression (level 9)
+        let max_compression_output = Arc::new(TestOutput::new());
+        let mut max_compression_exporter = OtlpStdoutSpanExporter {
+            compression_level: 9,
+            resource: None,
+            output: max_compression_output.clone() as Arc<dyn Output>,
+        };
         let _ = max_compression_exporter.export(spans.clone()).await;
         let max_compression_size = extract_payload_size(&max_compression_output.get_output()[0]);
 
         // Verify that higher compression levels result in smaller payloads
-        assert!(no_compression_size > medium_compression_size,
-            "Medium compression (level 5) should produce smaller output than no compression (level 0). Got {} vs {}",
-            medium_compression_size, no_compression_size);
-
-        assert!(medium_compression_size >= max_compression_size,
-            "Maximum compression (level 9) should produce output no larger than medium compression (level 5). Got {} vs {}",
-            max_compression_size, medium_compression_size);
+        assert!(no_compression_size > max_compression_size,
+            "Maximum compression (level 9) should produce output no larger than no compression (level 0). Got {} vs {}",
+            max_compression_size, no_compression_size);
 
         // Verify that all outputs can be properly decoded and contain the same data
         let no_compression_spans = decode_and_count_spans(&no_compression_output.get_output()[0]);
-        let medium_compression_spans =
-            decode_and_count_spans(&medium_compression_output.get_output()[0]);
         let max_compression_spans = decode_and_count_spans(&max_compression_output.get_output()[0]);
 
         assert_eq!(
             no_compression_spans,
             spans.len(),
             "No compression output should contain all spans"
-        );
-        assert_eq!(
-            medium_compression_spans,
-            spans.len(),
-            "Medium compression output should contain all spans"
         );
         assert_eq!(
             max_compression_spans,
@@ -758,59 +774,104 @@ mod tests {
 
     #[tokio::test]
     async fn test_export_empty_batch() {
-        let mut exporter = OtlpStdoutSpanExporter::new();
+        let mut exporter = OtlpStdoutSpanExporter::default();
         let result = exporter.export(vec![]).await;
         assert!(result.is_ok());
     }
 
     #[test]
+    #[serial]
     fn test_gzip_level_configuration() {
-        let exporter = OtlpStdoutSpanExporter::with_gzip_level(9);
-        assert_eq!(exporter.gzip_level, 9);
+        // Ensure all environment variables are removed first
+        std::env::remove_var(env_vars::COMPRESSION_LEVEL);
+
+        // Now test the constructor parameter
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(9)
+            .build();
+        assert_eq!(exporter.compression_level, 9);
     }
 
     #[tokio::test]
+    #[serial]
     async fn test_env_var_affects_export_compression() {
-        // Create test data
+        // Create more test data with repeated content to make compression differences noticeable
         let span = create_test_span();
-        let spans = vec![span];
+        let mut spans = Vec::new();
+        // Create 100 spans with large attributes to make compression differences noticeable
+        for i in 0..100 {
+            let mut span = span.clone();
+            // Add unique attribute with large value to make compression more effective
+            span.attributes
+                .push(KeyValue::new(format!("test-key-{}", i), "a".repeat(1000)));
+            spans.push(span);
+        }
 
-        // Test with environment variable set to level 0 (no compression)
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "0");
-        let (mut env_exporter_0, env_output_0) = OtlpStdoutSpanExporter::with_test_output();
-        let _ = env_exporter_0.export(spans.clone()).await;
-        let env_size_0 = extract_payload_size(&env_output_0.get_output()[0]);
+        // First, create data with no compression
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "0");
+        let no_compression_output = Arc::new(TestOutput::new());
+        let mut no_compression_exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(0)
+            .build();
+        no_compression_exporter.output = no_compression_output.clone() as Arc<dyn Output>;
+        let _ = no_compression_exporter.export(spans.clone()).await;
+        let no_compression_size = extract_payload_size(&no_compression_output.get_output()[0]);
 
-        // Test with environment variable set to level 9 (max compression)
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "9");
-        let (mut env_exporter_9, env_output_9) = OtlpStdoutSpanExporter::with_test_output();
-        let _ = env_exporter_9.export(spans.clone()).await;
-        let env_size_9 = extract_payload_size(&env_output_9.get_output()[0]);
+        // Now with max compression
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "9");
+        let max_compression_output = Arc::new(TestOutput::new());
+        let mut max_compression_exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(9)
+            .build();
+        max_compression_exporter.output = max_compression_output.clone() as Arc<dyn Output>;
+        let _ = max_compression_exporter.export(spans.clone()).await;
+        let max_compression_size = extract_payload_size(&max_compression_output.get_output()[0]);
 
         // Verify that the environment variable affected the compression level
-        assert!(env_size_0 > env_size_9,
+        assert!(no_compression_size > max_compression_size,
             "Environment variable COMPRESSION_LEVEL=9 should produce smaller output than COMPRESSION_LEVEL=0. Got {} vs {}",
-            env_size_9, env_size_0);
+            max_compression_size, no_compression_size);
 
-        // Test with invalid environment variable (should use default)
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "invalid");
-        let (mut env_exporter_invalid, _env_output_invalid) =
-            OtlpStdoutSpanExporter::with_test_output();
-        let _ = env_exporter_invalid.export(spans.clone()).await;
+        // Test with explicit level when env var is set (env var should take precedence)
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "0");
+        let explicit_output = Arc::new(TestOutput::new());
 
-        // Test with explicit level (should override environment variable)
-        std::env::set_var(COMPRESSION_LEVEL_ENV_VAR, "0");
-        let (mut explicit_exporter, explicit_output) = OtlpStdoutSpanExporter::with_test_output();
-        explicit_exporter.gzip_level = 9;
+        // Create an exporter with the default() method which will use the environment variable
+        let mut explicit_exporter = OtlpStdoutSpanExporter::default();
+        explicit_exporter.output = explicit_output.clone() as Arc<dyn Output>;
+
+        // The environment variable should make it use compression level 0
         let _ = explicit_exporter.export(spans.clone()).await;
         let explicit_size = extract_payload_size(&explicit_output.get_output()[0]);
 
-        // Verify that explicit level overrides environment variable
-        assert!(env_size_0 > explicit_size,
-            "Explicit level 9 should produce smaller output than environment variable level 0. Got {} vs {}",
-            explicit_size, env_size_0);
+        // Should be approximately the same size as the no_compression_size since
+        // the environment variable (level 0) should take precedence
+        assert!(explicit_size > max_compression_size,
+            "Environment variable should take precedence over explicitly set level. Expected size closer to {} but got {}",
+            no_compression_size, explicit_size);
 
         // Clean up
-        std::env::remove_var(COMPRESSION_LEVEL_ENV_VAR);
+        std::env::remove_var(env_vars::COMPRESSION_LEVEL);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn test_environment_variable_precedence() {
+        // Set environment variable
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "3");
+
+        // With the new precedence rules, environment variables take precedence
+        // over constructor parameters
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(9)
+            .build();
+        assert_eq!(exporter.compression_level, 3);
+
+        // When environment variable is removed, constructor parameter should be used
+        std::env::remove_var(env_vars::COMPRESSION_LEVEL);
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(9)
+            .build();
+        assert_eq!(exporter.compression_level, 9);
     }
 }

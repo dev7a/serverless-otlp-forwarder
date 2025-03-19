@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.11.0] - 2024-03-18
+
+### Added
+- Added centralized constants module for configuration values
+- Added builder pattern using the `bon` crate for more idiomatic configuration
+- Added comprehensive documentation about configuration precedence rules
+
+### Changed
+- [Breaking] Changed configuration precedence to follow cloud-native best practices:
+  - Environment variables now always take precedence over constructor parameters
+  - Constructor parameters take precedence over default values
+- [Breaking] Removed internal `get_compression_level_from_env` method
+- [Breaking] Replaced `with_options` method with a more idiomatic builder pattern
+- Improved error handling with better logging for invalid configuration values
+- Updated tests to verify the new precedence rules and builder pattern
+
 ## [0.10.1] - 2025-03-04
 
 ### Changed
