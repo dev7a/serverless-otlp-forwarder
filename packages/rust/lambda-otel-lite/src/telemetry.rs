@@ -92,13 +92,14 @@
 //! - `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`: Log level configuration
 
 use crate::{
-    extension::register_extension, mode::ProcessorMode, processor::LambdaSpanProcessor,
-    resource::get_lambda_resource,
+    constants, extension::register_extension, mode::ProcessorMode, processor::LambdaSpanProcessor,
+    propagation::LambdaXrayPropagator, resource::get_lambda_resource,
 };
 use bon::Builder;
 use lambda_runtime::Error;
 use opentelemetry::propagation::{TextMapCompositePropagator, TextMapPropagator};
 use opentelemetry::{global, global::set_tracer_provider, trace::TracerProvider as _, KeyValue};
+use opentelemetry_aws::trace::XrayPropagator;
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
     trace::{SdkTracerProvider, SpanProcessor, TracerProviderBuilder},
@@ -358,6 +359,19 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
         self.propagators.push(Box::new(propagator));
         self
     }
+
+    pub fn with_named_propagator(self, name: &str) -> Self {
+        match name {
+            "tracecontext" => self.with_propagator(TraceContextPropagator::new()),
+            "xray" => self.with_propagator(XrayPropagator::new()),
+            "xray-lambda" => self.with_propagator(LambdaXrayPropagator::new()),
+            "none" => self.with_propagator(NoopPropagator::new()),
+            _ => {
+                tracing::warn!("Unknown propagator: {}, using default propagators", name);
+                self
+            }
+        }
+    }
 }
 
 /// Initialize OpenTelemetry for AWS Lambda with the provided configuration.
@@ -477,11 +491,35 @@ pub async fn init_telemetry(
 ) -> Result<(opentelemetry_sdk::trace::Tracer, TelemetryCompletionHandler), Error> {
     let mode = ProcessorMode::from_env();
 
-    // Set up the propagator(s)
-    if config.propagators.is_empty() {
-        config
-            .propagators
-            .push(Box::new(TraceContextPropagator::new()));
+    if let Ok(env_propagators) = env::var(constants::env_vars::PROPAGATORS) {
+        let propagators: Vec<&str> = env_propagators.split(',').map(|s| s.trim()).collect();
+
+        for propagator in propagators {
+            match propagator {
+                "tracecontext" => config
+                    .propagators
+                    .push(Box::new(TraceContextPropagator::new())),
+                "xray" => config.propagators.push(Box::new(XrayPropagator::new())),
+                "xray-lambda" => config
+                    .propagators
+                    .push(Box::new(LambdaXrayPropagator::new())),
+                "none" => config.propagators.push(Box::new(NoopPropagator::new())),
+                _ => tracing::warn!(
+                    "Unknown propagator: {}, using default propagators",
+                    propagator
+                ),
+            }
+        }
+    } else {
+        // if no propagators are set, use the default propagators
+        if config.propagators.is_empty() {
+            config
+                .propagators
+                .push(Box::new(TraceContextPropagator::new()));
+            config
+                .propagators
+                .push(Box::new(LambdaXrayPropagator::new()));
+        }
     }
 
     let composite_propagator = TextMapCompositePropagator::new(config.propagators);
@@ -575,6 +613,117 @@ mod tests {
     use sealed_test::prelude::*;
     use tokio::sync::mpsc;
 
+    // Helper to clean up environment variables between tests
+    fn cleanup_env() {
+        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
+        env::remove_var(constants::env_vars::PROPAGATORS);
+        env::remove_var("_X_AMZN_TRACE_ID");
+    }
+
+    #[test]
+    #[sealed_test]
+    fn test_telemetry_config_defaults() {
+        cleanup_env();
+
+        let config = TelemetryConfig::builder().build();
+        assert!(config.set_global_provider); // Should be true by default
+        assert!(!config.has_processor);
+        assert!(!config.enable_fmt_layer);
+        assert!(config.propagators.is_empty()); // No propagators by default in builder
+    }
+
+    #[test]
+    #[sealed_test]
+    fn test_telemetry_config_with_propagators() {
+        cleanup_env();
+
+        // Test with explicit tracecontext propagator
+        let config = TelemetryConfig::builder()
+            .with_span_processor(SimpleSpanProcessor::new(Box::new(
+                OtlpStdoutSpanExporter::default(),
+            )))
+            .with_named_propagator("tracecontext")
+            .build();
+        assert_eq!(config.propagators.len(), 1);
+
+        // Test with explicit xray propagator
+        let config = TelemetryConfig::builder()
+            .with_named_propagator("xray")
+            .build();
+        assert_eq!(config.propagators.len(), 1);
+
+        // Test with both propagators
+        let config = TelemetryConfig::builder()
+            .with_named_propagator("tracecontext")
+            .with_named_propagator("xray")
+            .build();
+        assert_eq!(config.propagators.len(), 2);
+
+        // Test with default propagators (empty - will be set in init_telemetry)
+        let config = TelemetryConfig::builder().build();
+        assert_eq!(config.propagators.len(), 0);
+
+        // Test with none
+        let config = TelemetryConfig::builder()
+            .with_named_propagator("none")
+            .build();
+        assert_eq!(config.propagators.len(), 1);
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_propagators_tracecontext() {
+        cleanup_env();
+
+        // Test with OTEL_PROPAGATORS=tracecontext
+        env::set_var(constants::env_vars::PROPAGATORS, "tracecontext");
+        let (_, handler) = init_telemetry(TelemetryConfig::default()).await.unwrap();
+        // In real usage we'd check the behavior rather than implementation details
+        // So we'll just check that we can create and use a handler
+        assert!(handler.sender.is_none());
+
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_propagators_xray() {
+        cleanup_env();
+
+        // Test with OTEL_PROPAGATORS=xray
+        env::set_var(constants::env_vars::PROPAGATORS, "xray");
+        let (_, handler) = init_telemetry(TelemetryConfig::default()).await.unwrap();
+        assert!(handler.sender.is_none());
+
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_propagators_combined() {
+        cleanup_env();
+
+        // Test with OTEL_PROPAGATORS=tracecontext,xray-lambda
+        env::set_var(constants::env_vars::PROPAGATORS, "tracecontext,xray-lambda");
+        let (_, handler) = init_telemetry(TelemetryConfig::default()).await.unwrap();
+        assert!(handler.sender.is_none());
+
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_propagators_none() {
+        cleanup_env();
+
+        // Test with OTEL_PROPAGATORS=none
+        env::set_var(constants::env_vars::PROPAGATORS, "none");
+        let (_, handler) = init_telemetry(TelemetryConfig::default()).await.unwrap();
+        assert!(handler.sender.is_none());
+
+        cleanup_env();
+    }
+
     #[tokio::test]
     #[sealed_test]
     async fn test_init_telemetry_defaults() {
@@ -588,6 +737,7 @@ mod tests {
         let resource = Resource::builder().build();
         let config = TelemetryConfig::builder()
             .resource(resource)
+            .with_named_propagator("tracecontext")
             .enable_fmt_layer(true)
             .set_global_provider(false)
             .build();
@@ -597,18 +747,9 @@ mod tests {
     }
 
     #[test]
-    fn test_telemetry_config_defaults() {
-        // Ensure environment variable is not set for this test
-        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
-
-        let config = TelemetryConfig::builder().build();
-        assert!(config.set_global_provider); // Should be true by default
-        assert!(!config.has_processor);
-        assert!(!config.enable_fmt_layer);
-    }
-
-    #[test]
     fn test_telemetry_config_env_fmt_layer() {
+        cleanup_env();
+
         // Test with environment variable set to true
         env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "true");
         let config = TelemetryConfig::default();
@@ -625,7 +766,7 @@ mod tests {
         assert!(!config.enable_fmt_layer);
 
         // Clean up
-        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
+        cleanup_env();
     }
 
     #[test]
@@ -750,5 +891,36 @@ mod tests {
 
         // Test that complete() doesn't panic when receiver is dropped
         completion_handler.complete();
+    }
+}
+
+// A simple no-op propagator
+#[derive(Debug)]
+struct NoopPropagator;
+
+impl NoopPropagator {
+    fn new() -> Self {
+        NoopPropagator
+    }
+}
+
+impl TextMapPropagator for NoopPropagator {
+    fn inject_context(
+        &self,
+        _cx: &opentelemetry::Context,
+        _injector: &mut dyn opentelemetry::propagation::Injector,
+    ) {
+    }
+
+    fn extract_with_context(
+        &self,
+        cx: &opentelemetry::Context,
+        _extractor: &dyn opentelemetry::propagation::Extractor,
+    ) -> opentelemetry::Context {
+        cx.clone()
+    }
+
+    fn fields(&self) -> opentelemetry::propagation::text_map_propagator::FieldIter<'_> {
+        opentelemetry::propagation::text_map_propagator::FieldIter::new(&[])
     }
 }

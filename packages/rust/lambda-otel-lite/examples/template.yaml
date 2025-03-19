@@ -10,6 +10,7 @@ Globals:
     Architectures:
       - arm64
     Runtime: provided.al2023
+    Tracing: Active
     LoggingConfig:
       LogFormat: JSON
       ApplicationLogLevel: INFO

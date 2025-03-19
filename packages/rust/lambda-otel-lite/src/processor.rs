@@ -103,9 +103,9 @@
 //!    - Monitor for export failures in logs
 //!    - Consider retry strategies in custom exporters
 
+use crate::constants::{defaults, env_vars};
 use crate::logger::Logger;
 use bon::bon;
-use crate::constants::{defaults, env_vars};
 
 /// Module-specific logger
 static LOGGER: Logger = Logger::const_new("processor");
@@ -266,12 +266,12 @@ where
     E: SpanExporter + std::fmt::Debug,
 {
     /// Creates a new LambdaSpanProcessor with the given exporter and configuration
-    /// 
+    ///
     /// # Environment Variable Precedence
     ///
     /// Configuration values follow this precedence order:
     /// 1. Environment variables (highest precedence)
-    /// 2. Constructor parameters 
+    /// 2. Constructor parameters
     /// 3. Default values (lowest precedence)
     ///
     /// The relevant environment variables are:
@@ -676,7 +676,7 @@ mod tests {
     #[serial]
     fn test_builder_default_values() {
         cleanup_env();
-        
+
         let mock_exporter = MockExporter::new();
 
         let processor = LambdaSpanProcessor::builder()
@@ -692,7 +692,7 @@ mod tests {
     #[serial]
     fn test_builder_env_var_values() {
         cleanup_env();
-        
+
         let mock_exporter = MockExporter::new();
 
         // Set custom values via env vars
@@ -706,15 +706,15 @@ mod tests {
         // Check that env var values were used
         assert_eq!(processor.max_batch_size, 100);
         assert_eq!(processor.spans.lock().unwrap().capacity, 1000);
-        
+
         cleanup_env();
     }
-    
+
     #[test]
     #[serial]
     fn test_builder_env_var_precedence() {
         cleanup_env();
-        
+
         let mock_exporter = MockExporter::new();
 
         // Set custom values via env vars
@@ -731,15 +731,15 @@ mod tests {
         // Check that env var values took precedence
         assert_eq!(processor.max_batch_size, 100);
         assert_eq!(processor.spans.lock().unwrap().capacity, 1000);
-        
+
         cleanup_env();
     }
-    
+
     #[test]
     #[serial]
     fn test_invalid_env_vars() {
         cleanup_env();
-        
+
         let mock_exporter = MockExporter::new();
 
         // Set invalid values via env vars
@@ -756,7 +756,7 @@ mod tests {
         // Check that fallback values were used
         assert_eq!(processor.max_batch_size, 50);
         assert_eq!(processor.spans.lock().unwrap().capacity, 500);
-        
+
         cleanup_env();
     }
 }

@@ -71,10 +71,10 @@
 //! See the [`telemetry`](crate::telemetry) module for more details on initialization
 //! and configuration options.
 
+use crate::constants::{env_vars, resource_attributes};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use std::env;
-use crate::constants::{env_vars, resource_attributes};
 
 /// Get default Lambda resource attributes.
 ///
@@ -92,8 +92,8 @@ use crate::constants::{env_vars, resource_attributes};
 /// - `OTEL_RESOURCE_ATTRIBUTES`: Additional attributes in key=value format
 ///
 /// # Configuration Attributes
-/// 
-/// The following configuration attributes are set in the resource **only when** 
+///
+/// The following configuration attributes are set in the resource **only when**
 /// the corresponding environment variables are explicitly set:
 ///
 /// - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Sets `lambda_otel_lite.extension.span_processor_mode`
@@ -102,7 +102,7 @@ use crate::constants::{env_vars, resource_attributes};
 /// - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: Sets `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`
 ///
 /// # Returns
-/// 
+///
 /// Returns a [`Resource`] containing all detected and configured attributes.
 ///
 /// # Examples
@@ -255,7 +255,10 @@ mod tests {
     }
 
     // Helper function to find an attribute by key
-    fn find_attr<'a>(attrs: &'a [(&'a str, &'a opentelemetry::Value)], key: &str) -> Option<&'a opentelemetry::Value> {
+    fn find_attr<'a>(
+        attrs: &'a [(&'a str, &'a opentelemetry::Value)],
+        key: &str,
+    ) -> Option<&'a opentelemetry::Value> {
         attrs.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
     }
 
@@ -302,7 +305,9 @@ mod tests {
         );
         assert_eq!(
             find_attr(&attrs, "faas.instance"),
-            Some(&opentelemetry::Value::String("2024/01/01/[$LATEST]abc123".into()))
+            Some(&opentelemetry::Value::String(
+                "2024/01/01/[$LATEST]abc123".into()
+            ))
         );
 
         cleanup_env();
@@ -420,7 +425,7 @@ mod tests {
         // Create resource with no environment variables set
         let resource = get_lambda_resource();
         let attrs: Vec<_> = resource.iter().map(|(k, v)| (k.as_str(), v)).collect();
-        
+
         // Verify that configuration attributes are not set
         assert!(find_attr(&attrs, resource_attributes::QUEUE_SIZE).is_none());
         assert!(find_attr(&attrs, resource_attributes::BATCH_SIZE).is_none());
@@ -435,8 +440,11 @@ mod tests {
 
         // Create resource with environment variables set
         let resource_with_env = get_lambda_resource();
-        let attrs_with_env: Vec<_> = resource_with_env.iter().map(|(k, v)| (k.as_str(), v)).collect();
-        
+        let attrs_with_env: Vec<_> = resource_with_env
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect();
+
         // Verify that configuration attributes are set with correct values
         assert_eq!(
             find_attr(&attrs_with_env, resource_attributes::QUEUE_SIZE),
@@ -462,31 +470,34 @@ mod tests {
     #[serial]
     fn test_resource_attributes_not_set_with_invalid_env_vars() {
         cleanup_env();
-        
+
         // Set invalid environment variables
         env::set_var(env_vars::QUEUE_SIZE, "not_a_number");
         env::set_var(env_vars::BATCH_SIZE, "invalid");
         env::set_var(env_vars::COMPRESSION_LEVEL, "high");
-        
+
         // Create resource with invalid environment variables
         let resource = get_lambda_resource();
         let attrs: Vec<_> = resource.iter().map(|(k, v)| (k.as_str(), v)).collect();
-        
+
         // Verify that configuration attributes with invalid values are not set
         assert!(find_attr(&attrs, resource_attributes::QUEUE_SIZE).is_none());
         assert!(find_attr(&attrs, resource_attributes::BATCH_SIZE).is_none());
         assert!(find_attr(&attrs, resource_attributes::COMPRESSION_LEVEL).is_none());
-        
+
         // But the mode attribute should be set since it's a string
         env::set_var(env_vars::PROCESSOR_MODE, "custom_mode");
         let resource_with_mode = get_lambda_resource();
-        let attrs_with_mode: Vec<_> = resource_with_mode.iter().map(|(k, v)| (k.as_str(), v)).collect();
-        
+        let attrs_with_mode: Vec<_> = resource_with_mode
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect();
+
         assert_eq!(
             find_attr(&attrs_with_mode, resource_attributes::PROCESSOR_MODE),
             Some(&opentelemetry::Value::String("custom_mode".into()))
         );
-        
+
         cleanup_env();
     }
 }

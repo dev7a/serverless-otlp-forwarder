@@ -4,7 +4,7 @@
 //! events. It includes:
 //! - Built-in support for common AWS event types (API Gateway, ALB)
 //! - Extensible trait system for custom event types
-//! - Automatic W3C Trace Context propagation
+//! - Automatic W3C Trace Context and AWS X-Ray propagation
 //! - Support for span links and custom attributes
 //!
 //! # Architecture
@@ -13,7 +13,7 @@
 //!
 //! 1. **Event Processing**: Each supported event type implements the `SpanAttributesExtractor` trait
 //! 2. **Attribute Collection**: Standard attributes are collected based on event type
-//! 3. **Context Propagation**: W3C Trace Context headers are automatically extracted
+//! 3. **Context Propagation**: W3C Trace Context and AWS X-Ray headers are automatically extracted
 //! 4. **Custom Attributes**: Additional attributes can be added through custom implementations
 //!
 //! # Automatic Attributes
@@ -165,9 +165,10 @@ impl Default for TriggerType {
 ///
 /// # Context Propagation
 ///
-/// The `carrier` field supports W3C Trace Context headers:
-/// - `traceparent`: Contains trace ID, span ID, and trace flags
-/// - `tracestate`: Vendor-specific trace information
+/// The `carrier` field supports both W3C Trace Context and AWS X-Ray headers:
+/// - `traceparent`: W3C format containing trace ID, span ID, and trace flags
+/// - `tracestate`: W3C vendor-specific trace information
+/// - `x-amzn-trace-id`: AWS X-Ray trace header format
 ///
 /// # Examples
 ///
@@ -208,10 +209,11 @@ pub struct SpanAttributes {
     #[builder(default)]
     pub links: Vec<Link>,
 
-    /// Optional carrier headers for context propagation (W3C Trace Context format).
-    /// Common headers:
-    /// - traceparent: Contains trace ID, span ID, and trace flags
-    /// - tracestate: Vendor-specific trace information
+    /// Optional carrier headers for context propagation.
+    /// Supports both W3C Trace Context and AWS X-Ray formats:
+    /// - `traceparent`: W3C format containing trace ID, span ID, and trace flags
+    /// - `tracestate`: W3C vendor-specific trace information
+    /// - `x-amzn-trace-id`: AWS X-Ray trace header format
     pub carrier: Option<HashMap<String, String>>,
 
     /// The type of trigger for this Lambda invocation.
@@ -323,8 +325,8 @@ pub fn set_common_attributes(span: &Span, context: &Context, is_cold_start: bool
 ///      - "CLIENT" for outbound calls
 ///
 /// 3. **Context Propagation**:
-///    - Extract W3C Trace Context headers if available
-///    - Handle both `traceparent` and `tracestate`
+///    - Extract both W3C Trace Context and AWS X-Ray headers
+///    - Handle `traceparent`, `tracestate`, and `x-amzn-trace-id` headers
 ///    - Validate header values when possible
 ///
 /// 4. **Performance**:
@@ -356,6 +358,10 @@ pub fn set_common_attributes(span: &Span, context: &Context, is_cold_start: bool
 ///         if let Some(header) = &self.trace_parent {
 ///             carrier.insert("traceparent".to_string(), header.clone());
 ///         }
+///         // You can also handle X-Ray headers
+///         // if let Some(xray_header) = &self.xray_trace_id {
+///         //    carrier.insert("x-amzn-trace-id".to_string(), xray_header.clone());
+///         // }
 ///
 ///         SpanAttributes::builder()
 ///             .attributes(attributes)
@@ -395,7 +401,7 @@ pub trait SpanAttributesExtractor {
 /// - `user_agent.original`: The user agent header
 /// - `server.address`: The domain name
 ///
-/// Also extracts W3C Trace Context headers for distributed tracing.
+/// Also extracts W3C Trace Context headers and AWS X-Ray headers for distributed tracing.
 impl SpanAttributesExtractor for ApiGatewayV2httpRequest {
     fn extract_span_attributes(&self) -> SpanAttributes {
         let mut attributes = HashMap::new();
@@ -504,7 +510,7 @@ impl SpanAttributesExtractor for ApiGatewayV2httpRequest {
 /// - `user_agent.original`: The user agent header
 /// - `server.address`: The domain name
 ///
-/// Also extracts W3C Trace Context headers for distributed tracing.
+/// Also extracts W3C Trace Context headers and AWS X-Ray headers for distributed tracing.
 impl SpanAttributesExtractor for ApiGatewayProxyRequest {
     fn extract_span_attributes(&self) -> SpanAttributes {
         let mut attributes = HashMap::new();
@@ -626,7 +632,7 @@ impl SpanAttributesExtractor for ApiGatewayProxyRequest {
 /// - `server.address`: The host header
 /// - `alb.target_group_arn`: The ARN of the target group
 ///
-/// Also extracts W3C Trace Context headers for distributed tracing.
+/// Also extracts W3C Trace Context headers and AWS X-Ray headers for distributed tracing.
 impl SpanAttributesExtractor for AlbTargetGroupRequest {
     fn extract_span_attributes(&self) -> SpanAttributes {
         let mut attributes = HashMap::new();
@@ -894,6 +900,93 @@ mod tests {
             Some(&Value::String(
                 "arn:aws:elasticloadbalancing:...".to_string().into()
             ))
+        );
+    }
+
+    #[test]
+    fn test_xray_header_extraction() {
+        // Create API Gateway request with X-Ray header
+        let mut headers = aws_lambda_events::http::HeaderMap::new();
+        let xray_header =
+            "Root=1-58406520-a006649127e371903a2de979;Parent=4c721bf33e3caf8f;Sampled=1";
+        headers.insert(
+            "x-amzn-trace-id",
+            aws_lambda_events::http::HeaderValue::from_str(xray_header).unwrap(),
+        );
+
+        // Also include a W3C traceparent header
+        let traceparent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01";
+        headers.insert(
+            "traceparent",
+            aws_lambda_events::http::HeaderValue::from_str(traceparent).unwrap(),
+        );
+
+        // Create API Gateway V2 request
+        let request = ApiGatewayV2httpRequest {
+            headers,
+            raw_path: Some("/test".to_string()),
+            route_key: Some("GET /test".to_string()),
+            request_context: aws_lambda_events::apigw::ApiGatewayV2httpRequestContext {
+                http: aws_lambda_events::apigw::ApiGatewayV2httpRequestContextHttpDescription {
+                    method: Method::GET,
+                    path: Some("/test".to_string()),
+                    protocol: Some("HTTP/1.1".to_string()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        // Extract attributes
+        let attrs = request.extract_span_attributes();
+
+        // Verify carrier contains both headers
+        assert!(attrs.carrier.is_some());
+        let carrier = attrs.carrier.unwrap();
+
+        // X-Ray header should be present and unaltered
+        assert!(carrier.contains_key("x-amzn-trace-id"));
+        assert_eq!(carrier.get("x-amzn-trace-id").unwrap(), xray_header);
+
+        // W3C header should also be present
+        assert!(carrier.contains_key("traceparent"));
+        assert_eq!(carrier.get("traceparent").unwrap(), traceparent);
+    }
+
+    #[test]
+    fn test_json_extractor_with_xray_headers() {
+        // Create a JSON value with headers including X-Ray
+        let json_value = serde_json::json!({
+            "headers": {
+                "x-amzn-trace-id": "Root=1-58406520-a006649127e371903a2de979;Parent=4c721bf33e3caf8f;Sampled=1",
+                "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+                "content-type": "application/json"
+            },
+            "body": "{\"message\":\"Hello World\"}",
+            "requestContext": {
+                "requestId": "12345"
+            }
+        });
+
+        // Extract attributes
+        let attrs = json_value.extract_span_attributes();
+
+        // Verify carrier contains the headers
+        assert!(attrs.carrier.is_some());
+        let carrier = attrs.carrier.unwrap();
+
+        // Both trace headers should be present
+        assert!(carrier.contains_key("x-amzn-trace-id"));
+        assert_eq!(
+            carrier.get("x-amzn-trace-id").unwrap(),
+            "Root=1-58406520-a006649127e371903a2de979;Parent=4c721bf33e3caf8f;Sampled=1"
+        );
+
+        assert!(carrier.contains_key("traceparent"));
+        assert_eq!(
+            carrier.get("traceparent").unwrap(),
+            "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
         );
     }
 }
