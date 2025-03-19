@@ -98,7 +98,7 @@ The exporter respects the following environment variables:
 The exporter can be configured in multiple ways, with a strict precedence order:
 
 1. Environment variables (highest precedence)
-2. Constructor parameters (medium precedence)
+2. Builder methods (medium precedence)
 3. Default values (lowest precedence)
 
 ### Using Environment Variables
