@@ -75,6 +75,12 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
   - Environment-based configuration
   - Custom attribute support
 
+- `constants`: Centralized configuration constants
+  - Environment variable names
+  - Default values
+  - Resource attribute keys
+  - Ensures consistency across the codebase
+
 - `extractors`: Event processing
   - Built-in support for API Gateway and ALB events
   - Extensible trait system for custom events
@@ -624,26 +630,31 @@ By creating a newtype wrapper, you can add custom span attributes specific to ea
 
 ## Environment Variables
 
-The crate can be configured using the following environment variables:
+The library uses environment variables for configuration, with a clear precedence order:
+
+1. Environment variables (highest precedence)
+2. Constructor parameters 
+3. Default values (lowest precedence)
 
 ### Processing Configuration
-- `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Controls span processing strategy
-  - `sync`: Direct export in handler thread (default)
-  - `async`: Deferred export via extension
-  - `finalize`: Custom export strategy
-- `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Maximum number of spans to queue (default: 2048)
-- `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Maximum number of spans to export in a single batch (default: 512)
+
+- `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Controls processing mode
+  - `"sync"` for Sync mode (default)
+  - `"async"` for Async mode
+  - `"finalize"` for Finalize mode
+- `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Maximum spans to queue (default: 2048)
+- `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Maximum batch size (default: 512)
 
 ### Resource Configuration
-- `OTEL_SERVICE_NAME`: Override the service name (defaults to function name)
-- `OTEL_RESOURCE_ATTRIBUTES`: Additional resource attributes in key=value,key2=value2 format
+
+- `OTEL_SERVICE_NAME`: Service name for spans (falls back to `AWS_LAMBDA_FUNCTION_NAME`)
+- `OTEL_RESOURCE_ATTRIBUTES`: Additional resource attributes in format: `key=value,key2=value2`
+
+Resource attributes from environment variables are only included in the resource when the environment variable is explicitly set. This ensures that the reported resource attributes accurately reflect the actual configuration used.
 
 ### Export Configuration
-- `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: Gzip compression level for stdout exporter
-  - 0: No compression
-  - 1: Best speed
-  - 6: Good balance between size and speed (default)
-  - 9: Best compression
+
+- `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 
 ### Logging and Debug
 - `LAMBDA_TRACING_ENABLE_FMT_LAYER`: Enable console output of spans for debugging (default: false)

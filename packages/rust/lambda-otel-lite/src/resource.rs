@@ -74,6 +74,7 @@
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use std::env;
+use crate::constants::{env_vars, resource_attributes};
 
 /// Get default Lambda resource attributes.
 ///
@@ -90,8 +91,18 @@ use std::env;
 /// - `OTEL_SERVICE_NAME`: Overrides default service name
 /// - `OTEL_RESOURCE_ATTRIBUTES`: Additional attributes in key=value format
 ///
-/// # Returns
+/// # Configuration Attributes
+/// 
+/// The following configuration attributes are set in the resource **only when** 
+/// the corresponding environment variables are explicitly set:
 ///
+/// - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Sets `lambda_otel_lite.extension.span_processor_mode`
+/// - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Sets `lambda_otel_lite.lambda_span_processor.queue_size`
+/// - `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Sets `lambda_otel_lite.lambda_span_processor.batch_size`
+/// - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: Sets `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`
+///
+/// # Returns
+/// 
 /// Returns a [`Resource`] containing all detected and configured attributes.
 ///
 /// # Examples
@@ -172,12 +183,8 @@ pub fn get_lambda_resource() -> Resource {
         attributes.push(KeyValue::new("cloud.region", region));
     }
 
-    if let Ok(function_name) = env::var("AWS_LAMBDA_FUNCTION_NAME") {
+    if let Ok(function_name) = env::var(env_vars::AWS_LAMBDA_FUNCTION_NAME) {
         attributes.push(KeyValue::new("faas.name", function_name.clone()));
-        // Use function name as service name if not set
-        if env::var("OTEL_SERVICE_NAME").is_err() {
-            attributes.push(KeyValue::new("service.name", function_name));
-        }
     }
 
     if let Ok(version) = env::var("AWS_LAMBDA_FUNCTION_VERSION") {
@@ -195,6 +202,34 @@ pub fn get_lambda_resource() -> Resource {
         attributes.push(KeyValue::new("faas.instance", log_stream));
     }
 
+    // Add service name if explicitly set
+    if let Ok(service_name) = env::var(env_vars::SERVICE_NAME) {
+        attributes.push(KeyValue::new("service.name", service_name));
+    }
+
+    // Add configuration attributes only when environment variables are explicitly set
+    if let Ok(mode) = env::var(env_vars::PROCESSOR_MODE) {
+        attributes.push(KeyValue::new(resource_attributes::PROCESSOR_MODE, mode));
+    }
+
+    if let Ok(queue_size) = env::var(env_vars::QUEUE_SIZE) {
+        if let Ok(size) = queue_size.parse::<i64>() {
+            attributes.push(KeyValue::new(resource_attributes::QUEUE_SIZE, size));
+        }
+    }
+
+    if let Ok(batch_size) = env::var(env_vars::BATCH_SIZE) {
+        if let Ok(size) = batch_size.parse::<i64>() {
+            attributes.push(KeyValue::new(resource_attributes::BATCH_SIZE, size));
+        }
+    }
+
+    if let Ok(compression_level) = env::var(env_vars::COMPRESSION_LEVEL) {
+        if let Ok(level) = compression_level.parse::<i64>() {
+            attributes.push(KeyValue::new(resource_attributes::COMPRESSION_LEVEL, level));
+        }
+    }
+
     // create resource with standard attributes and merge with custom attributes
     Resource::builder().with_attributes(attributes).build()
 }
@@ -207,12 +242,21 @@ mod tests {
 
     fn cleanup_env() {
         env::remove_var("AWS_REGION");
-        env::remove_var("AWS_LAMBDA_FUNCTION_NAME");
+        env::remove_var(env_vars::AWS_LAMBDA_FUNCTION_NAME);
         env::remove_var("AWS_LAMBDA_FUNCTION_VERSION");
         env::remove_var("AWS_LAMBDA_FUNCTION_MEMORY_SIZE");
         env::remove_var("AWS_LAMBDA_LOG_STREAM_NAME");
-        env::remove_var("OTEL_SERVICE_NAME");
-        env::remove_var("OTEL_RESOURCE_ATTRIBUTES");
+        env::remove_var(env_vars::SERVICE_NAME);
+        env::remove_var(env_vars::RESOURCE_ATTRIBUTES);
+        env::remove_var(env_vars::BATCH_SIZE);
+        env::remove_var(env_vars::QUEUE_SIZE);
+        env::remove_var(env_vars::PROCESSOR_MODE);
+        env::remove_var(env_vars::COMPRESSION_LEVEL);
+    }
+
+    // Helper function to find an attribute by key
+    fn find_attr<'a>(attrs: &'a [(&'a str, &'a opentelemetry::Value)], key: &str) -> Option<&'a opentelemetry::Value> {
+        attrs.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
     }
 
     #[test]
@@ -222,7 +266,7 @@ mod tests {
 
         // Set up test environment
         env::set_var("AWS_REGION", "us-west-2");
-        env::set_var("AWS_LAMBDA_FUNCTION_NAME", "test-function");
+        env::set_var(env_vars::AWS_LAMBDA_FUNCTION_NAME, "test-function");
         env::set_var("AWS_LAMBDA_FUNCTION_VERSION", "$LATEST");
         env::set_var("AWS_LAMBDA_FUNCTION_MEMORY_SIZE", "128");
         env::set_var("AWS_LAMBDA_LOG_STREAM_NAME", "2024/01/01/[$LATEST]abc123");
@@ -232,43 +276,50 @@ mod tests {
         assert!(schema.is_empty()); // Default resource has no schema URL
 
         // Check attributes using the resource's attribute iterator
-        let attrs: Vec<_> = resource.iter().collect();
-
-        // Helper function to find an attribute by key
-        let find_attr = |key: &str| -> Option<&opentelemetry::Value> {
-            attrs.iter().find(|kv| kv.0.as_str() == key).map(|kv| kv.1)
-        };
+        let attrs: Vec<_> = resource.iter().map(|(k, v)| (k.as_str(), v)).collect();
 
         assert_eq!(
-            find_attr("cloud.provider"),
+            find_attr(&attrs, "cloud.provider"),
             Some(&opentelemetry::Value::String("aws".into()))
         );
         assert_eq!(
-            find_attr("cloud.region"),
+            find_attr(&attrs, "cloud.region"),
             Some(&opentelemetry::Value::String("us-west-2".into()))
         );
         assert_eq!(
-            find_attr("faas.name"),
+            find_attr(&attrs, "faas.name"),
             Some(&opentelemetry::Value::String("test-function".into()))
         );
         assert_eq!(
-            find_attr("service.name"),
-            Some(&opentelemetry::Value::String("test-function".into()))
-        );
-        assert_eq!(
-            find_attr("faas.version"),
+            find_attr(&attrs, "faas.version"),
             Some(&opentelemetry::Value::String("$LATEST".into()))
         );
+
+        // Verify memory is converted to bytes
         assert_eq!(
-            find_attr("faas.max_memory"),
-            Some(&opentelemetry::Value::I64(134217728))
-        ); // 128 * 1024 * 1024
-        assert_eq!(
-            find_attr("faas.instance"),
-            Some(&opentelemetry::Value::String(
-                "2024/01/01/[$LATEST]abc123".into()
-            ))
+            find_attr(&attrs, "faas.max_memory"),
+            Some(&opentelemetry::Value::I64(128 * 1024 * 1024))
         );
+        assert_eq!(
+            find_attr(&attrs, "faas.instance"),
+            Some(&opentelemetry::Value::String("2024/01/01/[$LATEST]abc123".into()))
+        );
+
+        cleanup_env();
+    }
+
+    #[test]
+    #[serial]
+    fn test_get_lambda_resource_with_no_env() {
+        cleanup_env();
+
+        let resource = get_lambda_resource();
+        let attrs: Vec<_> = resource.iter().map(|(k, v)| (k.as_str(), v)).collect();
+
+        // No attributes should be set
+        assert!(find_attr(&attrs, "cloud.provider").is_none());
+        assert!(find_attr(&attrs, "cloud.region").is_none());
+        assert!(find_attr(&attrs, "faas.name").is_none());
 
         cleanup_env();
     }
@@ -363,22 +414,79 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_get_lambda_resource_with_empty_environment() {
+    fn test_resource_attributes_only_set_when_env_vars_present() {
         cleanup_env();
 
+        // Create resource with no environment variables set
         let resource = get_lambda_resource();
-        assert!(resource.schema_url().unwrap_or("").is_empty());
+        let attrs: Vec<_> = resource.iter().map(|(k, v)| (k.as_str(), v)).collect();
+        
+        // Verify that configuration attributes are not set
+        assert!(find_attr(&attrs, resource_attributes::QUEUE_SIZE).is_none());
+        assert!(find_attr(&attrs, resource_attributes::BATCH_SIZE).is_none());
+        assert!(find_attr(&attrs, resource_attributes::PROCESSOR_MODE).is_none());
+        assert!(find_attr(&attrs, resource_attributes::COMPRESSION_LEVEL).is_none());
 
-        let attrs: Vec<_> = resource.iter().collect();
+        // Set environment variables
+        env::set_var(env_vars::QUEUE_SIZE, "4096");
+        env::set_var(env_vars::BATCH_SIZE, "1024");
+        env::set_var(env_vars::PROCESSOR_MODE, "async");
+        env::set_var(env_vars::COMPRESSION_LEVEL, "9");
 
-        let find_attr = |key: &str| -> Option<&opentelemetry::Value> {
-            attrs.iter().find(|kv| kv.0.as_str() == key).map(|kv| kv.1)
-        };
+        // Create resource with environment variables set
+        let resource_with_env = get_lambda_resource();
+        let attrs_with_env: Vec<_> = resource_with_env.iter().map(|(k, v)| (k.as_str(), v)).collect();
+        
+        // Verify that configuration attributes are set with correct values
+        assert_eq!(
+            find_attr(&attrs_with_env, resource_attributes::QUEUE_SIZE),
+            Some(&opentelemetry::Value::I64(4096))
+        );
+        assert_eq!(
+            find_attr(&attrs_with_env, resource_attributes::BATCH_SIZE),
+            Some(&opentelemetry::Value::I64(1024))
+        );
+        assert_eq!(
+            find_attr(&attrs_with_env, resource_attributes::PROCESSOR_MODE),
+            Some(&opentelemetry::Value::String("async".into()))
+        );
+        assert_eq!(
+            find_attr(&attrs_with_env, resource_attributes::COMPRESSION_LEVEL),
+            Some(&opentelemetry::Value::I64(9))
+        );
 
-        assert!(find_attr("cloud.provider").is_none());
-        assert!(find_attr("cloud.region").is_none());
-        assert!(find_attr("faas.name").is_none());
+        cleanup_env();
+    }
 
+    #[test]
+    #[serial]
+    fn test_resource_attributes_not_set_with_invalid_env_vars() {
+        cleanup_env();
+        
+        // Set invalid environment variables
+        env::set_var(env_vars::QUEUE_SIZE, "not_a_number");
+        env::set_var(env_vars::BATCH_SIZE, "invalid");
+        env::set_var(env_vars::COMPRESSION_LEVEL, "high");
+        
+        // Create resource with invalid environment variables
+        let resource = get_lambda_resource();
+        let attrs: Vec<_> = resource.iter().map(|(k, v)| (k.as_str(), v)).collect();
+        
+        // Verify that configuration attributes with invalid values are not set
+        assert!(find_attr(&attrs, resource_attributes::QUEUE_SIZE).is_none());
+        assert!(find_attr(&attrs, resource_attributes::BATCH_SIZE).is_none());
+        assert!(find_attr(&attrs, resource_attributes::COMPRESSION_LEVEL).is_none());
+        
+        // But the mode attribute should be set since it's a string
+        env::set_var(env_vars::PROCESSOR_MODE, "custom_mode");
+        let resource_with_mode = get_lambda_resource();
+        let attrs_with_mode: Vec<_> = resource_with_mode.iter().map(|(k, v)| (k.as_str(), v)).collect();
+        
+        assert_eq!(
+            find_attr(&attrs_with_mode, resource_attributes::PROCESSOR_MODE),
+            Some(&opentelemetry::Value::String("custom_mode".into()))
+        );
+        
         cleanup_env();
     }
 }

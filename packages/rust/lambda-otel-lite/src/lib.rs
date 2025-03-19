@@ -93,7 +93,7 @@
 //!   - Falls back to AWS_LAMBDA_FUNCTION_NAME
 //!   - Required for proper service identification
 //!
-//! See [`telemetry`] module for detailed configuration options.
+//! See [`constants`] module for centralized constants and [`telemetry`] module for detailed configuration options.
 //!
 //! # Examples
 //!
@@ -162,6 +162,7 @@ pub mod mode;
 pub mod processor;
 pub mod resource;
 pub mod telemetry;
+pub mod constants;
 
 pub use extension::OtelInternalExtension;
 pub use extractors::{SpanAttributes, SpanAttributesExtractor, TriggerType};

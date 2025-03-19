@@ -105,6 +105,7 @@
 
 use crate::logger::Logger;
 use bon::bon;
+use crate::constants::{defaults, env_vars};
 
 /// Module-specific logger
 static LOGGER: Logger = Logger::const_new("processor");
@@ -264,27 +265,51 @@ impl<E> LambdaSpanProcessor<E>
 where
     E: SpanExporter + std::fmt::Debug,
 {
-    /// Returns the default max batch size from environment or fallback value
-    fn default_max_batch_size() -> usize {
-        env::var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(512)
-    }
-
-    /// Returns the default max queue size from environment or fallback value
-    fn default_max_queue_size() -> usize {
-        env::var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(2048)
-    }
-
     /// Creates a new LambdaSpanProcessor with the given exporter and configuration
+    /// 
+    /// # Environment Variable Precedence
+    ///
+    /// Configuration values follow this precedence order:
+    /// 1. Environment variables (highest precedence)
+    /// 2. Constructor parameters 
+    /// 3. Default values (lowest precedence)
+    ///
+    /// The relevant environment variables are:
+    /// - `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Controls the maximum batch size
+    /// - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Controls the maximum queue size
     #[builder]
     pub fn new(exporter: E, max_batch_size: Option<usize>, max_queue_size: Option<usize>) -> Self {
-        let max_batch_size = max_batch_size.unwrap_or_else(Self::default_max_batch_size);
-        let max_queue_size = max_queue_size.unwrap_or_else(Self::default_max_queue_size);
+        // Get batch size with proper precedence (env var > param > default)
+        let max_batch_size = match env::var(env_vars::BATCH_SIZE) {
+            Ok(value) => match value.parse::<usize>() {
+                Ok(size) => size,
+                Err(_) => {
+                    LOGGER.warn(format!(
+                        "Failed to parse {}: {}, using fallback",
+                        env_vars::BATCH_SIZE,
+                        value
+                    ));
+                    max_batch_size.unwrap_or(defaults::BATCH_SIZE)
+                }
+            },
+            Err(_) => max_batch_size.unwrap_or(defaults::BATCH_SIZE),
+        };
+
+        // Get queue size with proper precedence (env var > param > default)
+        let max_queue_size = match env::var(env_vars::QUEUE_SIZE) {
+            Ok(value) => match value.parse::<usize>() {
+                Ok(size) => size,
+                Err(_) => {
+                    LOGGER.warn(format!(
+                        "Failed to parse {}: {}, using fallback",
+                        env_vars::QUEUE_SIZE,
+                        value
+                    ));
+                    max_queue_size.unwrap_or(defaults::QUEUE_SIZE)
+                }
+            },
+            Err(_) => max_queue_size.unwrap_or(defaults::QUEUE_SIZE),
+        };
 
         Self {
             exporter: Mutex::new(exporter),
@@ -460,6 +485,14 @@ mod tests {
             status: opentelemetry::trace::Status::default(),
             instrumentation_scope: InstrumentationScope::builder("test").build(),
         }
+    }
+
+    fn cleanup_env() {
+        env::remove_var(env_vars::BATCH_SIZE);
+        env::remove_var(env_vars::QUEUE_SIZE);
+        env::remove_var(env_vars::PROCESSOR_MODE);
+        env::remove_var(env_vars::COMPRESSION_LEVEL);
+        env::remove_var(env_vars::SERVICE_NAME);
     }
 
     #[test]
@@ -642,11 +675,9 @@ mod tests {
     #[test]
     #[serial]
     fn test_builder_default_values() {
+        cleanup_env();
+        
         let mock_exporter = MockExporter::new();
-
-        // Remove any existing env vars to test true defaults
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE");
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE");
 
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
@@ -660,11 +691,13 @@ mod tests {
     #[test]
     #[serial]
     fn test_builder_env_var_values() {
+        cleanup_env();
+        
         let mock_exporter = MockExporter::new();
 
         // Set custom values via env vars
-        env::set_var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "100");
-        env::set_var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "1000");
+        env::set_var(env_vars::BATCH_SIZE, "100");
+        env::set_var(env_vars::QUEUE_SIZE, "1000");
 
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
@@ -673,55 +706,57 @@ mod tests {
         // Check that env var values were used
         assert_eq!(processor.max_batch_size, 100);
         assert_eq!(processor.spans.lock().unwrap().capacity, 1000);
-
-        // Clean up
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE");
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE");
+        
+        cleanup_env();
     }
-
+    
     #[test]
     #[serial]
-    fn test_builder_explicit_values_override_env() {
+    fn test_builder_env_var_precedence() {
+        cleanup_env();
+        
         let mock_exporter = MockExporter::new();
 
-        // Set env vars that should be overridden
-        env::set_var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "100");
-        env::set_var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "1000");
+        // Set custom values via env vars
+        env::set_var(env_vars::BATCH_SIZE, "100");
+        env::set_var(env_vars::QUEUE_SIZE, "1000");
 
+        // Create with explicit values (should be overridden by env vars)
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
-            .max_batch_size(200)
-            .max_queue_size(2000)
+            .max_batch_size(50)
+            .max_queue_size(500)
             .build();
 
-        // Check that explicit values were used instead of env vars
-        assert_eq!(processor.max_batch_size, 200);
-        assert_eq!(processor.spans.lock().unwrap().capacity, 2000);
-
-        // Clean up
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE");
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE");
+        // Check that env var values took precedence
+        assert_eq!(processor.max_batch_size, 100);
+        assert_eq!(processor.spans.lock().unwrap().capacity, 1000);
+        
+        cleanup_env();
     }
-
+    
     #[test]
     #[serial]
-    fn test_builder_invalid_env_vars() {
+    fn test_invalid_env_vars() {
+        cleanup_env();
+        
         let mock_exporter = MockExporter::new();
 
-        // Set invalid values in env vars
-        env::set_var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE", "not_a_number");
-        env::set_var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE", "also_not_a_number");
+        // Set invalid values via env vars
+        env::set_var(env_vars::BATCH_SIZE, "not_a_number");
+        env::set_var(env_vars::QUEUE_SIZE, "invalid");
 
+        // Create with explicit values (should be used as fallbacks)
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
+            .max_batch_size(50)
+            .max_queue_size(500)
             .build();
 
-        // Check that defaults were used
-        assert_eq!(processor.max_batch_size, 512);
-        assert_eq!(processor.spans.lock().unwrap().capacity, 2048);
-
-        // Clean up
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_BATCH_SIZE");
-        env::remove_var("LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE");
+        // Check that fallback values were used
+        assert_eq!(processor.max_batch_size, 50);
+        assert_eq!(processor.spans.lock().unwrap().capacity, 500);
+        
+        cleanup_env();
     }
 }
