@@ -1,7 +1,7 @@
 use lambda_runtime::{run, service_fn, tracing, Error, LambdaEvent};
 use aws_sdk_lambda::Client as LambdaClient;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::time::Instant;
 use aws_sdk_lambda::primitives::Blob;
 
@@ -30,8 +30,6 @@ async fn function_handler(
 ) -> Result<ProxyResponse, Error> {
     let request = event.payload;
     
-    // Start timing
-    let start = Instant::now();
     
     // Extract X-Ray header from payload if it exists
     let xray_header_value = if let Some(headers) = request.payload.get("headers") {
@@ -55,6 +53,9 @@ async fn function_handler(
             serde_json::to_vec(&request.payload)?
         ));
     
+    // Start timing
+    let start: Instant = Instant::now();
+
     // Invoke target function with X-Ray header if available
     let invoke_result = if let Some(header_value) = xray_header_value {
         req_builder.customize()
@@ -76,10 +77,14 @@ async fn function_handler(
     
     // Parse response payload
     let response = if let Some(payload) = invoke_result.payload() {
-        serde_json::from_slice(payload.as_ref())?
+        serde_json::from_slice::<Value>(payload.as_ref())?
     } else {
-        Value::Null
+        json!({
+            "status": "no_payload",
+            "message": "The Lambda function did not return a payload"
+        })
     };
+    tracing::info!(response = serde_json::to_string(&response).unwrap_or_default());
     
     Ok(ProxyResponse {
         invocation_time_ms,

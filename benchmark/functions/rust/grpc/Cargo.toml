@@ -1,0 +1,29 @@
+[package]
+name = "benchmark-functions-rust-grpc"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde_json.workspace = true
+lambda_runtime.workspace = true
+tracing.workspace = true
+aws_lambda_events.workspace = true
+lambda-otel-lite.workspace = true
+tracing-opentelemetry.workspace = true
+opentelemetry.workspace = true
+opentelemetry-otlp = {workspace = true, default-features = false, features = ["grpc-tonic", "gzip-tonic"] }
+opentelemetry_sdk.workspace = true
+serde.workspace = true
+reqwest.workspace = true
+tracing-subscriber.workspace = true
+opentelemetry-aws = "0.16.0"
+[[bin]]
+name = "basic-rust-grpc"
+path = "src/main.rs"
+
+
+

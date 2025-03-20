@@ -25,6 +25,8 @@ Mappings:
       otel: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-nodejs-0_10_0:1'
       collector: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-0_13_0:1'
       appsignals: 'arn:aws:lambda:us-east-1:615299751070:layer:AWSOpenTelemetryDistroJs:6'
+    rust:
+      collector: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-0_13_0:1'
 
 Globals:
   Function:
@@ -46,10 +48,10 @@ Globals:
         OTEL_LOGS_EXPORTER: none
         OTEL_TRACES_SAMPLER: always_on
         OTEL_LAMBDA_DISABLE_AWS_CONTEXT_PROPAGATION: true
-        # the node otel sdk at least supports enabling specific instrumentations, so we can just provide a list of enabled ones
+        # the node otel sdk supports enabling specific instrumentations, so we can just provide a list of enabled ones
         OTEL_NODE_ENABLED_INSTRUMENTATIONS: aws-sdk,aws-lambda,http
         # the python otel sdk doesn't support enabling specific instrumentations, just providing a list of disabled ones, 
-        #so we need to list all of them (!) minus the ones we want to enable 
+        # so we need to list all of them (!) minus the ones we want to enable 
         # (also see https://github.com/aws-observability/aws-otel-python-instrumentation/blob/main/lambda-layer/src/otel-instrument)
         OTEL_PYTHON_DISABLED_INSTRUMENTATIONS: >-
           aio-pika,aiohttp-client,aiohttp-server,aiopg,asgi,asyncio,asyncpg,boto,boto3,cassandra,celery,confluent_kafka,dbapi,django,elasticsearch,falcon,fastapi,flask,grpc_client,grpc_server,grpc_aio_client,grpc_aio_server,httpx,jinja2,kafka,logging,mysql,mysqlclient,pika,psycopg,psycopg2,pymemcache,pymongo,pymysql,pyramid,redis,remoulade,requests,sklearn,sqlalchemy,sqlite3,starlette,system_metrics,threading,tornado,tortoiseorm,urllib,wsgi
@@ -68,7 +70,6 @@ Resources:
       Handler: bootstrap
       Runtime: provided.al2023
       MemorySize: 512
-      Timeout: 10
       Tracing: Disabled
       Policies:
         - Version: '2012-10-17'
@@ -78,6 +79,59 @@ Resources:
                 - 'lambda:InvokeFunction'
               Resource: '*'
 
+  BasicRustStdoutFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: basic-rust-stdout
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-basic-rust-stdout'
+      CodeUri: functions/rust/stdout/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Environment:
+        Variables:
+          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-basic-rust-stdout'
+
+  BasicRustHttpFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: basic-rust-http
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-basic-rust-http'
+      CodeUri: functions/rust/http/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Environment:
+        Variables:
+          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-basic-rust-http'
+          OPENTELEMETRY_COLLECTOR_CONFIG_URI: "/opt/collector.yaml"
+      Layers:
+        - !FindInMap [LayerArns, rust, collector]
+        - !Ref CollectorConfiglLayer
+
+  BasicRustGrpcFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: basic-rust-grpc
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-basic-rust-grpc'
+      CodeUri: functions/rust/grpc/
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Environment:
+        Variables:
+          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-basic-rust-grpc'
+          OPENTELEMETRY_COLLECTOR_CONFIG_URI: "/opt/collector.yaml"
+          GRPC_GO_REQUIRE_HANDSHAKE: off
+      Layers:
+        - !FindInMap [LayerArns, rust, collector]
+        - !Ref CollectorConfiglLayer
 
   # Basic Test Node.js Functions
   BasicNodeStdoutFunction:
@@ -695,6 +749,16 @@ Resources:
       BuildMethod: makefile
 
 Outputs:
+  # Rust
+  BasicRustStdoutFunction:
+    Description: Rust OTLP Stdout Function ARN
+    Value: !GetAtt BasicRustStdoutFunction.Arn
+  BasicRustHttpFunction:
+    Description: Rust OTLP HTTP Function ARN
+    Value: !GetAtt BasicRustHttpFunction.Arn
+  BasicRustGrpcFunction:
+    Description: Rust OTLP GRPC Function ARN
+    Value: !GetAtt BasicRustGrpcFunction.Arn
   # Basic Test Function Outputs
   # Node.js
   BasicNodeStdoutFunction:
