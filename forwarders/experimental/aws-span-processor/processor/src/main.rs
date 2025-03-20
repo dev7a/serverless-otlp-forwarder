@@ -283,7 +283,24 @@ mod tests {
             "scope": {
                 "name": "test-scope",
                 "version": "1.0.0"
-            }
+            },
+            "events": [
+                {
+                    "timeUnixNano": 1619712000500000000_u64,
+                    "name": "Event 1",
+                    "attributes": {
+                        "event.key1": "value1",
+                        "event.key2": 123
+                    }
+                },
+                {
+                    "timeUnixNano": 1619712000800000000_u64,
+                    "name": "Event 2",
+                    "attributes": {
+                        "event.key3": "value3"
+                    }
+                }
+            ]
         });
 
         let event = LogEntry {

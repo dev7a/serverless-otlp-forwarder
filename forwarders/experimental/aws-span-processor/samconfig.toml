@@ -9,4 +9,5 @@ region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
 parameter_overrides = "CollectorsSecretsKeyPrefix=\"serverless-otlp-forwarder/keys\" CollectorsCacheTtlSeconds=\"300\" SpanLogGroupName=\"aws/spans\" VpcId=\"\" SubnetIds=\"\""
 image_repositories = []
-s3_prefix = "serverless-otlp-forwarder-aws-span-processor"
+s3_prefix = "aws-span-processor"
+stack_name = "aws-span-processor"
