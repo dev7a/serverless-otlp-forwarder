@@ -268,7 +268,7 @@ impl StdoutClient {
     /// A `Result` indicating success or failure
     async fn process_payload(
         &self,
-        request: &Request<Vec<u8>>,
+        request: &Request<bytes::Bytes>,
         content_type: &str,
         content_encoding: Option<&str>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
@@ -280,11 +280,11 @@ impl StdoutClient {
         // if input is json, optionally decompress it and optimize it
         if is_json {
             let decompressed = if is_input_gzipped {
-                Self::decompress_payload(request.body())?
+                Self::decompress_payload(request.body())?.into()
             } else {
                 request.body().clone()
             };
-            payload = Self::optimize_json(&decompressed)?;
+            payload = Self::optimize_json(&decompressed)?.into();
         } else {
             // if input is not json, we need to encode it as base64 in any case
             should_encode_base64 = true;
@@ -292,7 +292,7 @@ impl StdoutClient {
 
         // Compress payload if output compression is enabled
         if self.content_encoding_gzip.is_some() {
-            payload = Self::compress_payload(&payload)?;
+            payload = Self::compress_payload(&payload)?.into();
             // if we compressed, we need to encode as base64
             should_encode_base64 = true;
         }
@@ -441,9 +441,9 @@ impl Default for StdoutClient {
 /// appropriately for stdout output.
 #[async_trait]
 impl HttpClient for StdoutClient {
-    async fn send(
+    async fn send_bytes(
         &self,
-        request: Request<Vec<u8>>,
+        request: Request<bytes::Bytes>,
     ) -> Result<Response<Bytes>, Box<dyn StdError + Send + Sync>> {
         let headers = request.headers();
         let content_type = headers
