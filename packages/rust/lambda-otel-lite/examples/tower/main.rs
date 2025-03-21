@@ -64,6 +64,7 @@ async fn handler(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<Value, E
             Ok(serde_json::json!({
                 "statusCode": 200,
                 "body": format!("Hello from request {}", request_id)
+                "headers": { "Content-Type": "text/plain" },
             }))
         }
         Err(ErrorType::Expected) => {
