@@ -71,6 +71,7 @@
 //! See the [`telemetry`](crate::telemetry) module for more details on initialization
 //! and configuration options.
 
+use crate::constants::defaults;
 use crate::constants::{env_vars, resource_attributes};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
@@ -202,10 +203,15 @@ pub fn get_lambda_resource() -> Resource {
         attributes.push(KeyValue::new("faas.instance", log_stream));
     }
 
-    // Add service name if explicitly set
-    if let Ok(service_name) = env::var(env_vars::SERVICE_NAME) {
-        attributes.push(KeyValue::new("service.name", service_name));
-    }
+    // Set service name with fallback logic:
+    // 1. Use OTEL_SERVICE_NAME if defined
+    // 2. Fall back to AWS_LAMBDA_FUNCTION_NAME if available
+    // 3. Fall back to "unknown_service" if neither is available
+    let service_name = env::var(env_vars::SERVICE_NAME)
+        .or_else(|_| env::var(env_vars::AWS_LAMBDA_FUNCTION_NAME))
+        .unwrap_or_else(|_| defaults::SERVICE_NAME.to_string());
+
+    attributes.push(KeyValue::new("service.name", service_name));
 
     // Add configuration attributes only when environment variables are explicitly set
     if let Ok(mode) = env::var(env_vars::PROCESSOR_MODE) {
