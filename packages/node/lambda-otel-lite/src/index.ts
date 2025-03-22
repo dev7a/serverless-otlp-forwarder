@@ -6,6 +6,7 @@ export {
   apiGatewayV1Extractor,
   apiGatewayV2Extractor,
   albExtractor,
+  defaultExtractor,
   TriggerType,
   type SpanAttributes,
   type APIGatewayV2Event,

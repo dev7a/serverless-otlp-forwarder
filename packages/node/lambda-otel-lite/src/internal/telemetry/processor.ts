@@ -189,16 +189,19 @@ export class LambdaSpanProcessor implements SpanProcessor {
           this.maxExportBatchSize = parsedBatchSize;
         } else {
           logger.warn(`Invalid value in ${ENV_VARS.BATCH_SIZE}: ${envBatchSize}, using fallback`);
-          this.maxExportBatchSize = configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
+          this.maxExportBatchSize =
+            configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
         }
       } catch {
         // Empty catch block - no need to use the error variable
         logger.warn(`Failed to parse ${ENV_VARS.BATCH_SIZE}: ${envBatchSize}, using fallback`);
-        this.maxExportBatchSize = configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
+        this.maxExportBatchSize =
+          configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
       }
     } else {
       // No environment variable, use parameter from config or default
-      this.maxExportBatchSize = configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
+      this.maxExportBatchSize =
+        configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
     }
 
     // Initialize the buffer with the determined queue size

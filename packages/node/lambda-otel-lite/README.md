@@ -345,13 +345,23 @@ The library automatically detects API Gateway v1 and v2 events and sets the appr
 
 ### Built-in Extractors
 
+You can import extractors in two ways:
+
 ```typescript
+// Method 1: Import from the dedicated extractors subpath (recommended)
 import {
     apiGatewayV1Extractor,  // API Gateway REST API
     apiGatewayV2Extractor,  // API Gateway HTTP API
     albExtractor,           // Application Load Balancer
     defaultExtractor        // Basic Lambda attributes
 } from '@dev7a/lambda-otel-lite/extractors';
+
+// Method 2: Import from the main package
+import {
+    apiGatewayV1Extractor,
+    apiGatewayV2Extractor,
+    albExtractor
+} from '@dev7a/lambda-otel-lite';
 ```
 
 Each extractor is designed to handle a specific event type and extract relevant attributes:

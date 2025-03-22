@@ -6,7 +6,10 @@
  */
 
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
-const { initTelemetry, createTracedHandler, apiGatewayV2Extractor } = require('@dev7a/lambda-otel-lite');
+// Import initTelemetry and createTracedHandler from the main package
+const { initTelemetry, createTracedHandler } = require('@dev7a/lambda-otel-lite');
+// Import extractor from the dedicated subpath
+const { apiGatewayV2Extractor } = require('@dev7a/lambda-otel-lite/extractors');
 
 // Initialize telemetry once at module load
 const { tracer, completionHandler } = initTelemetry();

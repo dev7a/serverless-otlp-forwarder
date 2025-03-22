@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2025-03-22
+
+### Fixed
+- Added missing `./extractors` subpath to package exports, fixing errors when importing from `@dev7a/lambda-otel-lite/extractors`
+- Created dedicated extractors directory for cleaner imports
+- Updated documentation with examples of both import patterns
+
 ## [0.11.0] - 2025-03-18
 
 ### Changed

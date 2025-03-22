@@ -1,6 +1,6 @@
 {
   "name": "@dev7a/lambda-otel-lite",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Lightweight OpenTelemetry instrumentation for AWS Lambda",
   "license": "MIT",
   "keywords": [
@@ -35,6 +35,10 @@
     "./telemetry": {
       "types": "./dist/telemetry/index.d.ts",
       "default": "./dist/telemetry/index.js"
+    },
+    "./extractors": {
+      "types": "./dist/internal/telemetry/extractors.d.ts",
+      "default": "./dist/internal/telemetry/extractors.js"
     }
   },
   "files": [

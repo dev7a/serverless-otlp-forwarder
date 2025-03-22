@@ -140,8 +140,12 @@ describe('getLambdaResource', () => {
 
     // These attributes should not be present when environment variables are not set
     expect(resource.attributes['lambda_otel_lite.extension.span_processor_mode']).toBeUndefined();
-    expect(resource.attributes['lambda_otel_lite.lambda_span_processor.queue_size']).toBeUndefined();
-    expect(resource.attributes['lambda_otel_lite.lambda_span_processor.batch_size']).toBeUndefined();
+    expect(
+      resource.attributes['lambda_otel_lite.lambda_span_processor.queue_size']
+    ).toBeUndefined();
+    expect(
+      resource.attributes['lambda_otel_lite.lambda_span_processor.batch_size']
+    ).toBeUndefined();
     expect(
       resource.attributes['lambda_otel_lite.otlp_stdout_span_exporter.compression_level']
     ).toBeUndefined();
