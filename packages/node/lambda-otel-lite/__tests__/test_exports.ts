@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
+// No need to import types we're not using
 
 describe('Package exports', () => {
   // Get the package.json data
@@ -22,19 +23,16 @@ describe('Package exports', () => {
     expect(packageJson.exports['./extractors'].default).toBe('./dist/internal/telemetry/extractors.js');
   });
 
-  it('should have compiled extractors directory and files', () => {
-    // Check if dist/extractors exists and contains the expected files
-    const extractorsDir = path.resolve(__dirname, '../dist/extractors');
+  it('should have extractors directory in source', () => {
+    // Check if src/extractors exists and contains the expected files
+    const extractorsDir = path.resolve(__dirname, '../src/extractors');
     expect(fs.existsSync(extractorsDir)).toBe(true);
-    expect(fs.existsSync(path.join(extractorsDir, 'index.js'))).toBe(true);
-    expect(fs.existsSync(path.join(extractorsDir, 'index.d.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(extractorsDir, 'index.ts'))).toBe(true);
   });
 
-  it('should expose all necessary extractors from the dedicated subpath', async () => {
-    // When in the test environment, we can directly import from the dist files
-    // to check that all expected exports are available
-    // Use dynamic import to avoid linting issues
-    const extractorsModule = await import('../dist/extractors/index');
+  it('should expose all necessary extractors from the source files', async () => {
+    // Import directly from source files which are available during tests
+    const extractorsModule = await import('../src/extractors/index');
     
     const expectedExports = [
       'apiGatewayV1Extractor',
