@@ -41,15 +41,3 @@ path = "src/frontend/main.rs"
 [[bin]]
 name = "backend"
 path = "src/backend/main.rs"
-
-[[bin]]
-name = "hello"
-path = "src/hello/main.rs"
-
-[[bin]]
-name = "simple"
-path = "src/simple/main.rs"
-
-[[bin]]
-name = "tower"
-path = "src/tower/main.rs"

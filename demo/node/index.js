@@ -1,12 +1,18 @@
-const { initTelemetry, tracedHandler } = require('@dev7a/lambda-otel-lite');
-const { SpanStatusCode } = require('@opentelemetry/api');
+const { initTelemetry, createTracedHandler } = require('@dev7a/lambda-otel-lite');
+const { defaultExtractor, TriggerType } = require('@dev7a/lambda-otel-lite/extractors');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { AwsInstrumentation } = require('@opentelemetry/instrumentation-aws-sdk');
-const { tracer, provider } = initTelemetry('demo-function');
 
+// Initialize telemetry with default configuration
+// The service name will be automatically set from OTEL_SERVICE_NAME 
+// or AWS_LAMBDA_FUNCTION_NAME environment variables
+const { tracer, completionHandler } = initTelemetry();
+
+// Register instrumentations
 registerInstrumentations({
-  tracerProvider: provider,
+  tracerProvider: trace.getTracerProvider(),
   instrumentations: [
     new AwsInstrumentation(),
     new HttpInstrumentation()
@@ -66,10 +72,11 @@ async function sendQuote(quote) {
 }
 
 // Process a single quote
-async function processQuote(span, quoteNumber, totalQuotes) {
+async function processQuote(quoteNumber, totalQuotes) {
+  const activeSpan = trace.getActiveSpan();
   const quote = await getRandomQuote();
   
-  span.addEvent('Random Quote Fetched', {
+  activeSpan?.addEvent('Random Quote Fetched', {
     'log.severity': 'info',
     'log.message': `Successfully fetched random quote ${quoteNumber}/${totalQuotes}`,
     'quote.text': quote.quote,
@@ -78,7 +85,7 @@ async function processQuote(span, quoteNumber, totalQuotes) {
 
   await sendQuote(quote);
   
-  span.addEvent('Quote Sent', {
+  activeSpan?.addEvent('Quote Sent', {
     'log.severity': 'info',
     'log.message': `Quote ${quoteNumber}/${totalQuotes} sent to SQS`,
     'quote.id': quote.id
@@ -88,55 +95,67 @@ async function processQuote(span, quoteNumber, totalQuotes) {
 }
 
 // Process a batch of quotes
-async function processBatch(span, batchSize) {
+async function processBatch(batchSize) {
   const quotes = [];
   
   for (let i = 0; i < batchSize; i++) {
-    const quote = await processQuote(span, i + 1, batchSize);
+    const quote = await processQuote(i + 1, batchSize);
     quotes.push(quote);
   }
   
   return quotes;
 }
 
-// Lambda handler
-exports.handler = async (event, context) => {
-  return tracedHandler({
-    tracer,
-    provider,
-    name: 'lambda-invocation',
-    event,
-    context,
-    fn: async (span) => {
-      try {
-        span.addEvent('Lambda Invocation Started', {
-          'log.severity': 'info',
-          'log.message': 'Lambda function invocation started'
-        });
-
-        const batchSize = Math.floor(Math.random() * 10) + 1;
-        span.setAttribute('batch.size', batchSize);
-        
-        const quotes = await processBatch(span, batchSize);
-
-        span.addEvent('Batch Processing Completed', {
-          'log.severity': 'info',
-          'log.message': `Successfully processed batch of ${batchSize} quotes`
-        });
-
-        return {
-          statusCode: 200,
-          body: JSON.stringify({
-            message: `Retrieved and sent ${batchSize} random quotes to SQS`,
-            input: event,
-            quotes
-          })
-        };
-      } catch (error) {
-        span.recordException(error);
-        span.setStatus({ code: SpanStatusCode.ERROR });
-        throw error;
+// Create the traced handler with timer trigger type
+const traced = createTracedHandler(
+  'quote-generator',
+  completionHandler,
+  (event, context) => {
+    const baseAttributes = defaultExtractor(event, context);
+    return {
+      ...baseAttributes,
+      trigger: TriggerType.Timer,
+      spanName: 'generate-quotes',
+      attributes: {
+        ...baseAttributes.attributes,
+        'schedule.period': '5m'
       }
-    }
+    };
+  }
+);
+
+// Lambda handler
+exports.handler = traced(async (event, context) => {
+  // Get current span to add custom attributes
+  const currentSpan = trace.getActiveSpan();
+  
+  currentSpan?.addEvent('Lambda Invocation Started', {
+    'log.severity': 'info',
+    'log.message': 'Lambda function invocation started'
   });
-};
+
+  try {
+    const batchSize = Math.floor(Math.random() * 10) + 1;
+    currentSpan?.setAttribute('batch.size', batchSize);
+    
+    const quotes = await processBatch(batchSize);
+
+    currentSpan?.addEvent('Batch Processing Completed', {
+      'log.severity': 'info',
+      'log.message': `Successfully processed batch of ${batchSize} quotes`
+    });
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        message: `Retrieved and sent ${batchSize} random quotes to SQS`,
+        input: event,
+        quotes
+      })
+    };
+  } catch (error) {
+    currentSpan?.recordException(error);
+    currentSpan?.setStatus({ code: SpanStatusCode.ERROR });
+    throw error;
+  }
+});

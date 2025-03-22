@@ -1,10 +1,7 @@
 use aws_lambda_events::apigw::ApiGatewayV2httpRequest;
 use chrono::{DateTime, Duration, FixedOffset, Utc};
 use lambda_lw_http_router::{define_router, route};
-use lambda_otel_utils::{
-    HttpTracerProviderBuilder, OpenTelemetryFaasTrigger, OpenTelemetryLayer,
-    OpenTelemetrySubscriberBuilder,
-};
+use lambda_otel_lite::{create_traced_handler, init_telemetry, TelemetryConfig};
 use lambda_runtime::{service_fn, Error as LambdaError, LambdaEvent, Runtime};
 use reqwest::Client;
 use reqwest_middleware::ClientBuilder;
@@ -379,21 +376,8 @@ async fn handle_quote(rctx: RouteContext) -> Result<Value, LambdaError> {
 
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
-    // Initialize tracer
-    let tracer_provider = HttpTracerProviderBuilder::default()
-        .with_stdout_client()
-        .with_default_text_map_propagator()
-        .with_batch_exporter()
-        .enable_global(true)
-        .build()
-        .expect("Failed to build tracer provider");
-
-    // Initialize the OpenTelemetry subscriber
-    OpenTelemetrySubscriberBuilder::new()
-        .with_env_filter(true)
-        .with_tracer_provider(tracer_provider.clone())
-        .with_service_name("serverless-otlp-forwarder")
-        .init()?;
+    // Initialize telemetry with default configuration
+    let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 
     let target_url = env::var("TARGET_URL").expect("TARGET_URL must be set");
     // Initialize templates
@@ -428,18 +412,26 @@ async fn main() -> Result<(), LambdaError> {
     // Initialize router
     let router = Arc::new(RouterBuilder::from_registry().build());
 
-    let lambda = move |event: LambdaEvent<ApiGatewayV2httpRequest>| {
-        let state = Arc::clone(&state);
-        let router = Arc::clone(&router);
-        async move { router.handle_request(event, state).await }
-    };
+    // Define the handler function
+    async fn handler(
+        event: LambdaEvent<ApiGatewayV2httpRequest>,
+        router: Arc<Router>,
+        state: Arc<AppState>,
+    ) -> Result<Value, LambdaError> {
+        router.handle_request(event, state).await
+    }
 
-    let runtime = Runtime::new(service_fn(lambda)).layer(
-        OpenTelemetryLayer::new(|| {
-            tracer_provider.force_flush();
-        })
-        .with_trigger(OpenTelemetryFaasTrigger::Http),
+    // Create a traced handler with the captured router and state
+    let traced_handler = create_traced_handler(
+        "frontend-handler",
+        completion_handler,
+        move |event| {
+            let router_clone = router.clone();
+            let state_clone = state.clone();
+            handler(event, router_clone, state_clone)
+        },
     );
 
-    runtime.run().await
+    // Run the Lambda runtime with our traced handler
+    Runtime::new(service_fn(traced_handler)).run().await
 }

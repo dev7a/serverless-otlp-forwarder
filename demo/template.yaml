@@ -2,16 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 Description: AWS SAM template for the serverless-otlp-forwarder application.
 
-Parameters:
-  ExporterProtocol:
-    Type: String
-    Description: The protocol of the OTLP exporter
-    Default: http/protobuf
-  ExporterCompression:
-    Type: String
-    Description: The compression of the OTLP exporter
-    Default: gzip
-
 
 Globals:
   Function:
@@ -23,12 +13,8 @@ Globals:
       LogFormat: JSON
       ApplicationLogLevel: INFO
       SystemLogLevel: WARN
-    Environment:
-      Variables:
-        OTEL_EXPORTER_OTLP_PROTOCOL: !Ref ExporterProtocol
-        OTEL_EXPORTER_OTLP_COMPRESSION: !Ref ExporterCompression
+    Tracing: Active
   
-
 Resources:
   QuotesQueue:
     Type: AWS::SQS::Queue
@@ -45,83 +31,24 @@ Resources:
       EndpointConfiguration:
         Type: REGIONAL
 
-
-  RustHelloLambdaFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: rust-cargolambda
-      BuildProperties:
-        Binary: hello
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-hello'
-      CodeUri: ./rust
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Description: 'Demo Hello Lambda function to showcase OpenTelemetry integration'
-      FunctionUrlConfig:
-        AuthType: NONE
-      Environment:
-        Variables:
-          RUST_LOG: info
-          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-lambda-hello'
-
-  RustSimpleLambdaFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: rust-cargolambda
-      BuildProperties:
-        Binary: simple
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-simple'
-      CodeUri: ./rust
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Description: 'Demo Simple Lambda function to showcase OpenTelemetry integration'
-      FunctionUrlConfig:
-        AuthType: NONE
-      Environment:
-        Variables:
-          RUST_LOG: info
-          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-lambda-simple'
-
-  RustTowerLambdaFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: rust-cargolambda
-      BuildProperties:
-        Binary: tower
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-tower'
-      CodeUri: ./rust
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Description: 'Demo Tower Lambda function to showcase OpenTelemetry integration'
-      FunctionUrlConfig:
-        AuthType: NONE
-      Environment:
-        Variables:
-          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-lambda-tower'
-          AWS_LAMBDA_EXEC_WRAPPER: /var/task/bootstrap
-
-  BackendLambdaFunction:
+  QuoteStorageAPIFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
       BuildProperties:
         Binary: backend
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-backend'
+      FunctionName: !Sub '${AWS::StackName}-quote-storage-api'
       CodeUri: ./rust
       Handler: bootstrap
       Runtime: provided.al2023
-      Description: 'Demo Backend Lambda function to showcase OpenTelemetry integration'
+      Description: 'Backend API for quote storage with CRUD operations'
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Table
       Environment:
         Variables:
-          RUST_LOG: info
-          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-lambda-backend'
+          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-quote-storage-api'
           TABLE_NAME: !Sub '${AWS::StackName}-table'
       Events:
         PostQuote:
@@ -143,38 +70,36 @@ Resources:
             Method: get
             RestApiId: !Ref BackendApi
 
-  FrontendLambdaFunction:
+  QuoteUIFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
       BuildProperties:
         Binary: frontend
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-frontend'
+      FunctionName: !Sub '${AWS::StackName}-quote-ui'
       CodeUri: ./rust
       Handler: bootstrap
       Runtime: provided.al2023
-      Description: 'Demo Frontend Lambda function to showcase OpenTelemetry integration'
+      Description: 'User interface for viewing and interacting with quotes'
       FunctionUrlConfig:
         AuthType: NONE
       Environment:
         Variables:
-          RUST_LOG: info
-          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-lambda-frontend'
+          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-quote-ui'
           TARGET_URL: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
 
-
-  PythonLambdaFunction:
+  QuoteProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-python-client'
+      FunctionName: !Sub '${AWS::StackName}-quote-processor'
       CodeUri: ./python
       Handler: main.lambda_handler
       Runtime: python3.12
-      Description: 'Demo Python Client Lambda function to showcase OpenTelemetry integration'
+      Description: 'Processes quotes from SQS and forwards them to the backend API'
       Environment:
         Variables:
-          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-python-client'
+          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-quote-processor'
           TARGET_URL: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/quotes'
       Events:
         SQSEvent:
@@ -184,17 +109,17 @@ Resources:
             BatchSize: 10
             MaximumBatchingWindowInSeconds: 10
 
-  NodeLambdaFunction:
+  QuoteGeneratorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-node-client'
+      FunctionName: !Sub '${AWS::StackName}-quote-generator'
       CodeUri: ./node
       Handler: index.handler
       Runtime: nodejs20.x
-      Description: 'Demo Node.js Client Lambda function to showcase OpenTelemetry integration'
+      Description: 'Periodically fetches random quotes and sends them to SQS'
       Environment:
         Variables:
-          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-node-client'
+          OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-quote-generator'
           TARGET_URL: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/quotes'
           QUOTES_QUEUE_URL: !Ref QuotesQueue
       Policies:
@@ -224,27 +149,18 @@ Resources:
         Enabled: true
 
 Outputs:
-  FrontendLambdaFunctionArn:
-    Description: 'ARN of the Demo Frontend Lambda function'
-    Value: !GetAtt FrontendLambdaFunction.Arn
-  BackendLambdaFunctionArn:
-    Description: 'ARN of the Demo Backend Lambda function'
-    Value: !GetAtt BackendLambdaFunction.Arn
-  PythonLambdaFunctionArn:
-    Description: 'ARN of the Demo Python Client Lambda function'
-    Value: !GetAtt PythonLambdaFunction.Arn
-  BackendUrl:
-    Description: 'URL of the Backend API'
+  QuoteUIFunctionArn:
+    Description: 'ARN of the Quote UI function'
+    Value: !GetAtt QuoteUIFunction.Arn
+  QuoteStorageAPIFunctionArn:
+    Description: 'ARN of the Quote Storage API function'
+    Value: !GetAtt QuoteStorageAPIFunction.Arn
+  QuoteProcessorFunctionArn:
+    Description: 'ARN of the Quote Processor function'
+    Value: !GetAtt QuoteProcessorFunction.Arn
+  BackendApiUrl:
+    Description: 'URL of the Quote API'
     Value: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/quotes'
-  FrontendUrl:
-    Description: 'URL of the Frontend Lambda function'
-    Value: !GetAtt FrontendLambdaFunctionUrl.FunctionUrl
-  HelloWorldUrl:
-    Description: 'URL of the Hello World Lambda function'
-    Value: !Sub '${RustHelloLambdaFunctionUrl.FunctionUrl}hello/world'
-  SimpleUrl:
-    Description: 'URL of the Simple Lambda function'
-    Value: !Sub '${RustSimpleLambdaFunctionUrl.FunctionUrl}'
-  TowerUrl:
-    Description: 'URL of the Tower Lambda function'
-    Value: !Sub '${RustTowerLambdaFunctionUrl.FunctionUrl}'
+  QuoteUIFunctionUrl:
+    Description: 'URL of the Quote UI function'
+    Value: !GetAtt QuoteUIFunctionUrl.FunctionUrl

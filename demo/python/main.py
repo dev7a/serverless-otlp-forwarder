@@ -1,20 +1,21 @@
 import os
 import json
 from requests import Session
-from lambda_otel_lite import init_telemetry, traced_handler
+from lambda_otel_lite import init_telemetry, create_traced_handler
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.trace import Status, StatusCode, get_current_span, SpanKind, Link
 from opentelemetry import context, propagate, trace
 import logging
 from opentelemetry.propagate import get_global_textmap
 from opentelemetry.propagators.textmap import Getter
-from typing import Optional, List, Mapping
+from typing import Optional, List, Mapping, Any
 
 logger = logging.getLogger(__name__)
 
-tracer, provider = init_telemetry("demo-function")
+# Initialize telemetry
+tracer, completion_handler = init_telemetry()
 
-# instrument requests library
+# Instrument requests library
 RequestsInstrumentor().instrument()
 
 http_session = Session()
@@ -53,26 +54,35 @@ class Boto3SQSGetter(Getter[dict]):
 boto3sqs_getter = Boto3SQSGetter()
 
 
-def create_span_link_from_message_attributes(message_attributes: dict) -> Link | None:
+def extract_links_from_sqs_records(records: List[dict]) -> List[Link]:
     """
-    Create a span link from SQS message attributes for distributed tracing.
-
+    Extract trace context links from SQS records.
+    
     Args:
-        message_attributes: SQS message attributes dictionary containing the trace context
-
+        records: List of SQS record dictionaries
+        
     Returns:
-        Link: OpenTelemetry span link if valid trace context is found, None otherwise
+        List of valid span links extracted from message attributes
     """
-    try:
-        ctx = context.Context()
-        carrier_ctx = propagate.extract(
-            message_attributes, context=ctx, getter=boto3sqs_getter
-        )
-        span_context = trace.get_current_span(carrier_ctx).get_span_context()
-        return Link(context=span_context) if span_context.is_valid else None
-    except Exception as e:
-        logger.warning(f"Failed to extract trace context from message attributes: {e}")
-        return None
+    links = []
+    
+    for record in records:
+        message_attributes = record.get("messageAttributes", {})
+        if not message_attributes:
+            continue
+            
+        try:
+            # Extract context using our custom getter
+            carrier_ctx = propagate.extract(message_attributes, getter=boto3sqs_getter)
+            span_context = trace.get_current_span(carrier_ctx).get_span_context()
+            
+            # Only add valid span contexts as links
+            if span_context.is_valid:
+                links.append(Link(context=span_context))
+        except Exception as e:
+            logger.warning(f"Failed to extract trace context from message attributes: {e}")
+            
+    return links
 
 
 @tracer.start_as_current_span("save_quote")
@@ -113,6 +123,61 @@ def save_quote(quote: dict):
     return response.json()
 
 
+# Create a custom SQS event extractor
+def sqs_event_extractor(event, context):
+    """Extract span attributes from SQS events"""
+    from lambda_otel_lite import SpanAttributes, TriggerType
+    
+    attributes = {}
+    links = []
+    
+    # Add Lambda context attributes
+    if hasattr(context, "aws_request_id"):
+        attributes["faas.invocation_id"] = context.aws_request_id
+    
+    if hasattr(context, "invoked_function_arn"):
+        arn = context.invoked_function_arn
+        attributes["cloud.resource_id"] = arn
+        # Extract account ID from ARN
+        arn_parts = arn.split(":")
+        if len(arn_parts) >= 5:
+            attributes["cloud.account.id"] = arn_parts[4]
+    
+    # Add SQS specific attributes
+    records = event.get("Records", [])
+    if records:
+        attributes["messaging.system"] = "aws.sqs"
+        attributes["messaging.operation"] = "process"
+        attributes["messaging.message.batch.size"] = len(records)
+        
+        # Extract trace context links from all records
+        links = extract_links_from_sqs_records(records)
+        
+        # Extract the queue name from the first record if available
+        if records and "eventSourceARN" in records[0]:
+            queue_arn = records[0]["eventSourceARN"]
+            attributes["messaging.destination.name"] = queue_arn.split(":")[-1]
+    
+    # Return span attributes with extracted links
+    return SpanAttributes(
+        trigger=TriggerType.PUBSUB,
+        attributes=attributes,
+        span_name="process-sqs-messages",
+        kind=SpanKind.CONSUMER,
+        links=links
+    )
+
+
+# Create the traced handler
+traced_handler = create_traced_handler(
+    "sqs-processor",
+    completion_handler,
+    attributes_extractor=sqs_event_extractor
+)
+
+
+# Lambda handler
+@traced_handler
 def lambda_handler(event, lambda_context):
     """
     Lambda handler that processes SQS events containing quotes.
@@ -126,64 +191,53 @@ def lambda_handler(event, lambda_context):
     Returns:
         dict: Response with status code 200 and processing results
     """
-    with traced_handler(
-        tracer=tracer,
-        tracer_provider=provider,
-        name="process-quotes",
-        event=event,
-        context=lambda_context,
-        kind=SpanKind.CONSUMER,
-    ) as parent_span:
-        parent_span.add_event(
-            "Processing started",
-            {
-                "log.severity": "info",
-                "log.message": "Started processing SQS messages",
-                "batch.size": len(event.get("Records", [])),
-            },
-        )
+    # Get the current span (already created by the traced_handler decorator)
+    parent_span = get_current_span()
+    
+    parent_span.add_event(
+        "Processing started",
+        {
+            "log.severity": "info",
+            "log.message": "Started processing SQS messages",
+            "batch.size": len(event.get("Records", [])),
+        },
+    )
 
-        results = []
-        for record in event.get("Records", []):
-            message_attributes = record.get("messageAttributes", {})
-            message_body = record.get("body", "{}")
-            quote = json.loads(message_body)
-            message_id = record.get("messageId")
+    results = []
+    for record in event.get("Records", []):
+        message_body = record.get("body", "{}")
+        quote = json.loads(message_body)
+        message_id = record.get("messageId")
 
-            # Extract trace context and create link for this specific message
-            carrier_ctx = propagate.extract(message_attributes, getter=boto3sqs_getter)
-            span_context = trace.get_current_span(carrier_ctx).get_span_context()
+        with tracer.start_as_current_span(
+            "process-quote", kind=SpanKind.CONSUMER
+        ) as record_span:
+            record_span.set_attribute("messaging.message_id", message_id)
+            record_span.add_event(
+                "Processing quote",
+                {
+                    "log.severity": "info",
+                    "log.message": "Processing individual quote from batch",
+                    "quote.text": quote.get("quote", ""),
+                    "quote.author": quote.get("author", ""),
+                },
+            )
 
-            links = [Link(context=span_context)] if span_context.is_valid else []
-            with tracer.start_as_current_span(
-                "process-quote", kind=SpanKind.CONSUMER, links=links
-            ) as record_span:
-                record_span.set_attribute("messaging.message_id", message_id)
-                record_span.add_event(
-                    "Processing quote",
-                    {
-                        "log.severity": "info",
-                        "log.message": "Processing individual quote from batch",
-                        "quote.text": quote.get("quote", ""),
-                        "quote.author": quote.get("author", ""),
-                    },
-                )
+            # Save the quote
+            result = save_quote(quote)
+            results.append(result)
 
-                # Save the quote
-                result = save_quote(quote)
-                results.append(result)
+    parent_span.add_event(
+        "Processing completed",
+        {
+            "log.severity": "info",
+            "log.message": f"Successfully processed {len(results)} quotes",
+        },
+    )
 
-        parent_span.add_event(
-            "Processing completed",
-            {
-                "log.severity": "info",
-                "log.message": f"Successfully processed {len(results)} quotes",
-            },
-        )
-
-        return {
-            "statusCode": 200,
-            "body": json.dumps(
-                {"message": "Quote processing complete", "processed": len(results)}
-            ),
-        }
+    return {
+        "statusCode": 200,
+        "body": json.dumps(
+            {"message": "Quote processing complete", "processed": len(results)}
+        ),
+    }

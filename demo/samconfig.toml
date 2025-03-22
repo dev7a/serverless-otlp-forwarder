@@ -1,12 +1,11 @@
 version = 0.1
 [default.global.parameters]
-stack_name = "otel-demo"
+stack_name = "demo"
 beta_features = "yes"
 
 [default.deploy.parameters]
 resolve_s3 = true
-s3_prefix = "otel-demo"
+s3_prefix = "demo"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "ExporterProtocol=\"http/protobuf\" ExporterCompression=\"gzip\""
 image_repositories = []
