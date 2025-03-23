@@ -108,7 +108,7 @@ pub async fn process_telemetry_batch(
 
             async move {
                 // Get all collectors with proper signal paths
-                let collectors = Collectors::get_signal_endpoints(&telemetry.endpoint, &source)?;
+                let collectors = Collectors::get_signal_endpoints(&telemetry.endpoint, &source).await?;
 
                 // Create futures for sending to each collector
                 let collector_tasks: Vec<_> = collectors
@@ -121,6 +121,11 @@ pub async fn process_telemetry_batch(
                         let region = region.clone();
 
                         async move {
+                            tracing::info!(
+                                "Preparing to send telemetry to collector {}",
+                                collector_name
+                            );
+
                             let headers = match LogRecordHeaders::default()
                                 .with_telemetry(telemetry)
                                 .and_then(|h| {
@@ -133,11 +138,20 @@ pub async fn process_telemetry_batch(
                                 }) {
                                 Ok(h) => h.build(),
                                 Err(e) => {
-                                    tracing::error!("Failed to build headers: {}", e);
+                                    tracing::error!(
+                                        "Failed to build headers for collector {}: {}",
+                                        collector_name,
+                                        e
+                                    );
                                     return Err(e);
                                 }
                             };
 
+                            tracing::info!(
+                                "Sending telemetry to collector {} at endpoint {}",
+                                collector_name,
+                                collector.endpoint
+                            );
                             if let Err(e) =
                                 send_telemetry(&client, &collector.endpoint, telemetry, headers)
                                     .await
@@ -149,6 +163,10 @@ pub async fn process_telemetry_batch(
                                 );
                                 return Err(e);
                             }
+                            tracing::info!(
+                                "Successfully sent telemetry to collector {}",
+                                collector_name
+                            );
                             Ok(())
                         }
                     })

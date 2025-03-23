@@ -14,21 +14,18 @@
 //! - OpenTelemetry instrumentation
 
 use anyhow::{Context, Result};
-use aws_lambda_events::event::cloudwatch_logs::LogEntry;
 use aws_credential_types::provider::ProvideCredentials;
+use aws_lambda_events::event::cloudwatch_logs::LogEntry;
 use lambda_otlp_forwarder::{
     collectors::Collectors,
     processing::process_telemetry_batch,
     span_compactor::{compact_telemetry_payloads, SpanCompactionConfig},
     telemetry::TelemetryData,
-    LogsEventWrapper,
-    AppState,
+    AppState, LogsEventWrapper,
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
 
-use lambda_otel_lite::{
-    init_telemetry, OtelTracingLayer, TelemetryConfig,
-};
+use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
 
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::trace::BatchSpanProcessor;
@@ -69,19 +66,20 @@ async fn function_handler(
             }
         })
         .collect();
-    
+
     // If we have telemetry data, process it
     if !telemetry_batch.is_empty() {
         // Compact multiple payloads into a single one
         // This will also apply compression to the final result
-        let compacted_telemetry = match compact_telemetry_payloads(telemetry_batch, &SpanCompactionConfig::default()) {
-            Ok(telemetry) => vec![telemetry],
-            Err(e) => {
-                tracing::error!("Failed to compact telemetry payloads: {}", e);
-                return Err(e);
-            }
-        };
-        
+        let compacted_telemetry =
+            match compact_telemetry_payloads(telemetry_batch, &SpanCompactionConfig::default()) {
+                Ok(telemetry) => vec![telemetry],
+                Err(e) => {
+                    tracing::error!("Failed to compact telemetry payloads: {}", e);
+                    return Err(e);
+                }
+            };
+
         // Process the compacted telemetry (single POST request)
         process_telemetry_batch(
             compacted_telemetry,
@@ -91,7 +89,7 @@ async fn function_handler(
         )
         .await?;
     }
-    
+
     Ok(())
 }
 
@@ -116,10 +114,11 @@ async fn main() -> Result<(), LambdaError> {
         .with_service("xray")
         .with_signing_predicate(Box::new(|request| {
             // Only sign requests to AWS endpoints
-            request
-                .uri()
-                .host()
-                .map_or(false, |host| host.ends_with(".amazonaws.com"))
+            if let Some(host) = request.uri().host() {
+                host.ends_with(".amazonaws.com")
+            } else {
+                false
+            }
         }))
         .build()?;
 
@@ -134,7 +133,6 @@ async fn main() -> Result<(), LambdaError> {
     let (_, completion_handler) = init_telemetry(
         TelemetryConfig::builder()
             .with_span_processor(BatchSpanProcessor::builder(batch_exporter).build())
-            // .enable_fmt_layer(true)
             .build(),
     )
     .await?;

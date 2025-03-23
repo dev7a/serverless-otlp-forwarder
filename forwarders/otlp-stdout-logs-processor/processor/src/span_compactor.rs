@@ -8,7 +8,7 @@ use tracing;
 use crate::telemetry::TelemetryData;
 
 /// Decodes a protobuf-serialized OTLP payload
-/// 
+///
 /// This function assumes the payload is in binary protobuf format and not compressed.
 fn decode_otlp_payload(payload: &[u8]) -> Result<ExportTraceServiceRequest, LambdaError> {
     // Decode protobuf directly
@@ -17,9 +17,7 @@ fn decode_otlp_payload(payload: &[u8]) -> Result<ExportTraceServiceRequest, Lamb
 }
 
 /// Encodes an OTLP request to binary protobuf format (uncompressed)
-fn encode_otlp_payload(
-    request: &ExportTraceServiceRequest,
-) -> Vec<u8> {
+fn encode_otlp_payload(request: &ExportTraceServiceRequest) -> Vec<u8> {
     // Serialize to protobuf
     request.encode_to_vec()
 }
@@ -55,11 +53,12 @@ pub fn compact_telemetry_payloads(
     // Early return if compaction is disabled or there's only one item
     if !config.enabled || batch.len() <= 1 {
         let mut result = batch.into_iter().next().unwrap_or_default();
-        
+
         // Apply compression to the result
-        result.compress(config.compression_level)
+        result
+            .compress(config.compression_level)
             .map_err(|e| LambdaError::from(format!("Failed to compress payload: {}", e)))?;
-            
+
         return Ok(result);
     }
 
@@ -98,12 +97,12 @@ pub fn compact_telemetry_payloads(
 
     // Use the metadata from the first telemetry item but with the new payload
     let first_telemetry = &batch[0];
-    
+
     tracing::info!(
         "Compacted {} payloads into a single request",
         original_count
     );
-    
+
     // Create the result telemetry with uncompressed payload
     let mut result = TelemetryData {
         source: first_telemetry.source.clone(),
@@ -112,20 +111,21 @@ pub fn compact_telemetry_payloads(
         content_type: "application/x-protobuf".to_string(),
         content_encoding: None, // No compression yet
     };
-    
+
     // Apply compression to the result
-    result.compress(config.compression_level)
+    result
+        .compress(config.compression_level)
         .map_err(|e| LambdaError::from(format!("Failed to compress payload: {}", e)))?;
-    
+
     Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::read::GzDecoder;
     use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
     use std::io::Read;
-    use flate2::read::GzDecoder;
 
     // Helper function to create a test ExportTraceServiceRequest with a specified number of spans
     fn create_test_request(span_count: usize) -> ExportTraceServiceRequest {
@@ -166,13 +166,13 @@ mod tests {
     fn test_decode_encode_roundtrip() {
         // Create a simple request
         let request = create_test_request(1);
-        
+
         // Encode it
         let encoded = encode_otlp_payload(&request);
-        
+
         // Decode it back
         let decoded = decode_otlp_payload(&encoded).unwrap();
-        
+
         // Verify resource_spans count is the same
         assert_eq!(request.resource_spans.len(), decoded.resource_spans.len());
     }
@@ -181,8 +181,10 @@ mod tests {
     fn test_compact_single_payload() {
         // Test that a single payload is returned as-is but compressed
         let telemetry = create_test_telemetry(1);
-        let result = compact_telemetry_payloads(vec![telemetry.clone()], &SpanCompactionConfig::default()).unwrap();
-        
+        let result =
+            compact_telemetry_payloads(vec![telemetry.clone()], &SpanCompactionConfig::default())
+                .unwrap();
+
         assert_eq!(result.source, telemetry.source);
         assert_eq!(result.content_type, "application/x-protobuf");
         assert_eq!(result.content_encoding, Some("gzip".to_string())); // Should be compressed
@@ -193,23 +195,24 @@ mod tests {
         // Test that multiple payloads are compacted into one
         let telemetry1 = create_test_telemetry(2);
         let telemetry2 = create_test_telemetry(3);
-        
+
         let result = compact_telemetry_payloads(
             vec![telemetry1.clone(), telemetry2.clone()],
-            &SpanCompactionConfig::default()
-        ).unwrap();
-        
+            &SpanCompactionConfig::default(),
+        )
+        .unwrap();
+
         // Result should be compressed
         assert_eq!(result.content_encoding, Some("gzip".to_string()));
-        
+
         // Decompress to verify contents
         let mut decoder = GzDecoder::new(&result.payload[..]);
         let mut decompressed = Vec::new();
         decoder.read_to_end(&mut decompressed).unwrap();
-        
+
         // Decode the decompressed payload
         let decoded = ExportTraceServiceRequest::decode(decompressed.as_slice()).unwrap();
-        
+
         // Count total spans
         let mut span_count = 0;
         for resource_span in &decoded.resource_spans {
@@ -217,7 +220,7 @@ mod tests {
                 span_count += scope_span.spans.len();
             }
         }
-        
+
         // Should have 5 spans total (2 + 3)
         assert_eq!(span_count, 5);
     }
@@ -233,25 +236,28 @@ mod tests {
 
         // Test compaction
         let batch = vec![telemetry1, telemetry2];
-        
+
         // This should succeed because both payloads are in protobuf format
         let result = compact_telemetry_payloads(batch, &config);
-        
+
         // Verify the result
-        assert!(result.is_ok(), "Compaction should succeed with protobuf payloads");
-        
+        assert!(
+            result.is_ok(),
+            "Compaction should succeed with protobuf payloads"
+        );
+
         let compacted = result.unwrap();
         assert_eq!(compacted.content_type, "application/x-protobuf");
         assert_eq!(compacted.content_encoding, Some("gzip".to_string()));
-        
+
         // Decompress to verify contents
         let mut decoder = GzDecoder::new(&compacted.payload[..]);
         let mut decompressed = Vec::new();
         decoder.read_to_end(&mut decompressed).unwrap();
-        
+
         // Decode the decompressed payload
         let decoded = ExportTraceServiceRequest::decode(decompressed.as_slice()).unwrap();
-        
+
         // Count total spans
         let mut span_count = 0;
         for resource_span in &decoded.resource_spans {
@@ -259,7 +265,7 @@ mod tests {
                 span_count += scope_span.spans.len();
             }
         }
-        
+
         // Should have 5 spans total (2 + 3)
         assert_eq!(span_count, 5);
     }

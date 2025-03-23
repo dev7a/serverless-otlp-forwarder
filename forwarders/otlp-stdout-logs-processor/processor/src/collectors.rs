@@ -13,18 +13,15 @@ use aws_sdk_secretsmanager::Client as SecretsManagerClient;
 use regex::Regex;
 use serde::{Deserialize, Deserializer};
 use std::env;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use tracing::instrument;
 use url::Url;
 
 /// Global storage for cached collectors configuration
-static COLLECTORS: OnceLock<Arc<CollectorsCache>> = OnceLock::new();
-
-/// Last time we emitted a warning about AWS endpoints
-static LAST_WARNING: AtomicU64 = AtomicU64::new(0);
+static COLLECTORS: OnceLock<Arc<Mutex<CollectorsCache>>> = OnceLock::new();
 
 /// Represents a single collector configuration.
 /// Each collector has a name, endpoint, and optional authentication details.
@@ -115,13 +112,17 @@ impl Collectors {
     #[instrument(skip(client))]
     pub async fn init(client: &SecretsManagerClient) -> Result<()> {
         // If cache exists, check if it's stale
-        if let Some(cache) = COLLECTORS.get() {
+        if COLLECTORS.get().is_some() {
+            let cache_lock = COLLECTORS.get().unwrap();
+            let mut cache = cache_lock.lock().await;
+            
             if cache.is_stale() {
                 tracing::info!("Cache expired, refreshing collectors configuration");
                 let items = fetch_collectors(client).await?;
-                let new_cache = Arc::new(CollectorsCache::new(Collectors::new(items)));
-                // Replace the old cache - Arc handles cleanup of old instance
-                let _ = COLLECTORS.set(new_cache);
+                
+                // Update the existing cache in-place
+                *cache = CollectorsCache::new(Collectors::new(items));
+                
                 tracing::info!("Refreshed collectors configuration");
             }
             return Ok(());
@@ -129,50 +130,77 @@ impl Collectors {
 
         // Initial cache load
         let items = fetch_collectors(client).await?;
-        let cache = Arc::new(CollectorsCache::new(Collectors::new(items)));
+        let cache = CollectorsCache::new(Collectors::new(items));
+        let mutex_cache = Arc::new(Mutex::new(cache));
+        
         COLLECTORS
-            .set(cache)
+            .set(mutex_cache)
             .map_err(|_| anyhow::anyhow!("Collectors cache already initialized"))?;
 
         tracing::info!(
             "Initialized collectors cache with {} collectors",
-            COLLECTORS.get().unwrap().inner.items.len()
+            COLLECTORS.get().unwrap().lock().await.inner.items.len()
         );
         Ok(())
     }
 
-    // /// Finds a collector matching the given endpoint
-    // #[instrument(skip_all)]
-    // pub fn find_matching(endpoint: &str) -> Option<Collector> {
-    //     let cache = COLLECTORS.get().expect("Collectors cache not initialized");
-    //     cache
-    //         .inner
-    //         .items
-    //         .iter()
-    //         .find(|c| endpoint.starts_with(&c.endpoint))
-    //         .cloned()
-    // }
-
     /// Returns all collectors with endpoints configured for the given signal path
     #[instrument(skip_all)]
-    pub fn get_signal_endpoints(original_endpoint: &str, source: &str) -> Result<Vec<Collector>> {
-        let cache = COLLECTORS.get().expect("Collectors cache not initialized");
+    pub async fn get_signal_endpoints(original_endpoint: &str, source: &str) -> Result<Vec<Collector>> {
+        let cache_lock = COLLECTORS.get().expect("Collectors cache not initialized");
+        let cache = cache_lock.lock().await;
 
-        cache
+        tracing::debug!(
+            "Original source: {}, endpoint: {}",
+            source,
+            original_endpoint
+        );
+        tracing::debug!("Checking against {} collectors", cache.inner.items.len());
+
+        let result = cache
             .inner
             .items
             .iter()
-            .filter(|collector| !collector.should_exclude(source))
-            .map(|collector| {
-                let endpoint = collector.construct_signal_endpoint(original_endpoint)?;
-                Ok(Collector {
-                    name: collector.name.clone(),
-                    endpoint,
-                    auth: collector.auth.clone(),
-                    exclude: collector.exclude.clone(),
-                })
+            .filter_map(|collector| {
+                tracing::debug!(
+                    "Collector: {}, endpoint: {}",
+                    collector.name,
+                    collector.endpoint
+                );
+
+                if collector.should_exclude(source) {
+                    tracing::debug!("Collector {} excluding source {}", collector.name, source);
+                    return None;
+                }
+
+                match collector.construct_signal_endpoint(original_endpoint) {
+                    Ok(endpoint) => {
+                        tracing::debug!(
+                            "Collector {} will receive telemetry at {}",
+                            collector.name,
+                            endpoint
+                        );
+                        Some(Ok(Collector {
+                            name: collector.name.clone(),
+                            endpoint,
+                            auth: collector.auth.clone(),
+                            exclude: collector.exclude.clone(),
+                        }))
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to construct endpoint for collector {}: {}",
+                            collector.name,
+                            e
+                        );
+                        None
+                    }
+                }
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+
+        tracing::info!("Sending telemetry to {} collectors", result.len());
+        Ok(result)
     }
 }
 
@@ -202,42 +230,37 @@ impl Collector {
         Ok(base.to_string())
     }
 
-    fn should_emit_warning() -> bool {
-        let now = Instant::now().elapsed().as_secs();
-        let last = LAST_WARNING.load(Ordering::Relaxed);
-        if now - last > 600 {
-            // Warn once every 10 minutes
-            LAST_WARNING.store(now, Ordering::Relaxed);
-            true
-        } else {
-            false
-        }
-    }
-
     /// Checks if a log group should be excluded based on the collector's exclude pattern
     /// or if it's aws/spans being sent to an AWS endpoint (to prevent infinite loops)
     pub(crate) fn should_exclude(&self, log_group: &str) -> bool {
         // Check explicit exclusion pattern first
         if let Some(pattern) = &self.exclude {
-            return pattern.is_match(log_group);
+            let matches = pattern.is_match(log_group);
+            if matches {
+                tracing::debug!(
+                    "Collector {} excluded log group {} due to explicit pattern {}",
+                    self.name,
+                    log_group,
+                    pattern
+                );
+            }
+            return matches;
         }
 
         // Prevent infinite loops: exclude aws/spans when endpoint is AWS
         if log_group == "aws/spans" {
             if let Ok(base) = Url::parse(&self.endpoint) {
-                if base
-                    .host_str()
-                    .map_or(false, |h| h.ends_with(".amazonaws.com"))
-                {
-                    if Self::should_emit_warning() {
-                        tracing::warn!(
-                            "Collector endpoint {} is an AWS OTLP endpoint and aws/spans log group is not excluded. \
+                if let Some(host) = base.host_str() {
+                    if host.ends_with(".amazonaws.com") {
+                        tracing::debug!(
+                            "Collector {} with endpoint {} is an AWS OTLP endpoint and aws/spans log group is not excluded. \
                             This could cause an infinite loop. Please configure the aws/spans exclusion in your \
                             collector configuration to prevent this.",
+                            self.name,
                             self.endpoint
                         );
+                        return true;
                     }
-                    return true;
                 }
             }
         }
@@ -328,8 +351,9 @@ pub(crate) mod test_utils {
     pub fn init_test_collectors(collector: Collector) {
         INIT.call_once(|| {
             let collectors = Collectors::new(vec![collector]);
-            let cache = Arc::new(CollectorsCache::new(collectors));
-            let _ = COLLECTORS.set(cache);
+            let cache = CollectorsCache::new(collectors);
+            let mutex_cache = Arc::new(Mutex::new(cache));
+            let _ = COLLECTORS.set(mutex_cache);
         });
     }
 }
@@ -338,6 +362,8 @@ pub(crate) mod test_utils {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::time::Duration;
+    use tokio::time::sleep;
 
     #[test]
     fn test_collector_deserialization() {
@@ -514,5 +540,52 @@ mod tests {
         });
         let collector: Collector = serde_json::from_value(valid_no_exclude).unwrap();
         assert_eq!(collector.exclude.as_ref().map(|r| r.as_str()), None);
+    }
+
+    #[tokio::test]
+    async fn test_cache_refresh() {
+        // We'll simulate cache refresh by directly manipulating the cache
+        // Set a short TTL for testing
+        std::env::set_var("COLLECTORS_CACHE_TTL_SECONDS", "1");
+        
+        // Create collectors for our test
+        let collector1 = Collector {
+            name: "collector1".to_string(),
+            endpoint: "https://collector1.example.com".to_string(),
+            auth: None,
+            exclude: None,
+        };
+        
+        let collector2 = Collector {
+            name: "collector2".to_string(),
+            endpoint: "https://collector2.example.com".to_string(),
+            auth: None,
+            exclude: None,
+        };
+        
+        // Create a cache with just collector1
+        let collectors = Collectors::new(vec![collector1.clone()]);
+        let cache = CollectorsCache::new(collectors);
+        
+        // Verify the initial state
+        assert_eq!(cache.inner.items.len(), 1);
+        assert_eq!(cache.inner.items[0].name, "collector1");
+        assert!(!cache.is_stale());
+        
+        // Sleep for 2 seconds to exceed TTL
+        sleep(Duration::from_secs(2)).await;
+        
+        // Verify the cache is now stale
+        assert!(cache.is_stale());
+        
+        // Now simulate a refresh with two collectors
+        let collectors_updated = Collectors::new(vec![collector1.clone(), collector2.clone()]);
+        let cache_updated = CollectorsCache::new(collectors_updated);
+        
+        // Verify the updated state
+        assert_eq!(cache_updated.inner.items.len(), 2);
+        assert_eq!(cache_updated.inner.items[0].name, "collector1");
+        assert_eq!(cache_updated.inner.items[1].name, "collector2");
+        assert!(!cache_updated.is_stale());
     }
 }

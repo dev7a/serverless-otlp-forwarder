@@ -7,8 +7,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "log_processor"
-path = "src/log_processor.rs"
+name = "lambda_otlp_forwarder"
+path = "src/main.rs"
 
 [dependencies]
 tokio.workspace = true
@@ -36,6 +36,7 @@ aws_lambda_events = { version = "0.16.0", features = ["cloudwatch_logs", "kinesi
 regex = "1.11.1"
 opentelemetry-proto = "0.28.0"
 prost = "0.13.5"
+cached = { version = "0.55.1", features = ["default", "async"] }
 
 [dev-dependencies]
 wiremock = "0.6"

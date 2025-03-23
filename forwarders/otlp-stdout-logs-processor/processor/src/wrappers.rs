@@ -18,13 +18,13 @@ impl SpanAttributesExtractor for KinesisEventWrapper {
     fn extract_span_attributes(&self) -> SpanAttributes {
         let mut attributes: HashMap<String, Value> = HashMap::new();
         let records = &self.0.records;
-        
+
         // Add attributes from the Kinesis event
         attributes.insert(
             "forwarder.events.count".to_string(),
             Value::I64(records.len() as i64),
         );
-        
+
         if let Some(first_record) = records.first() {
             if let Some(event_source) = &first_record.event_source {
                 attributes.insert(
@@ -50,7 +50,7 @@ impl SpanAttributesExtractor for LogsEventWrapper {
     fn extract_span_attributes(&self) -> SpanAttributes {
         let mut attributes: HashMap<String, Value> = HashMap::new();
         let log_data = self.0.aws_logs.data.clone();
-        
+
         // Add attributes from the LogsEvent
         attributes.insert(
             "forwarder.log_group".to_string(),
@@ -67,4 +67,4 @@ impl SpanAttributesExtractor for LogsEventWrapper {
             .attributes(attributes)
             .build()
     }
-} 
+}
