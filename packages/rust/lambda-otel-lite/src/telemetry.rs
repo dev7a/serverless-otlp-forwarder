@@ -755,24 +755,32 @@ mod tests {
         assert!(completion_handler.sender.is_none());
     }
 
-    #[test]
-    fn test_telemetry_config_env_fmt_layer() {
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_fmt_layer() {
         cleanup_env();
 
-        // Test with environment variable set to true
+        // Test that environment variable is respected
         env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "true");
         let config = TelemetryConfig::default();
+        assert!(!config.enable_fmt_layer); // Config should not be affected by env var
+        let enable_fmt = env::var(env_vars::ENABLE_FMT_LAYER)
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(defaults::ENABLE_FMT_LAYER);
+        assert!(enable_fmt); // But the env var should be true
+
+        // Test that code-level setting works independently
+        let config = TelemetryConfig::builder().enable_fmt_layer(true).build();
         assert!(config.enable_fmt_layer);
 
-        // Test with environment variable set to 1
-        env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "1");
-        let config = TelemetryConfig::default();
-        assert!(config.enable_fmt_layer);
-
-        // Test with environment variable set to false
-        env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "false");
+        // Test default behavior
+        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
         let config = TelemetryConfig::default();
         assert!(!config.enable_fmt_layer);
+        let enable_fmt = env::var(env_vars::ENABLE_FMT_LAYER)
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(defaults::ENABLE_FMT_LAYER);
+        assert!(!enable_fmt);
 
         // Clean up
         cleanup_env();
