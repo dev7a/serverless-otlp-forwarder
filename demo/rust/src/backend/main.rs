@@ -267,15 +267,12 @@ async fn main() -> Result<(), LambdaError> {
     }
 
     // Create a traced handler with the captured router and state
-    let traced_handler = create_traced_handler(
-        "backend-handler",
-        completion_handler,
-        move |event| {
+    let traced_handler =
+        create_traced_handler("backend-handler", completion_handler, move |event| {
             let router_clone = router.clone();
             let state_clone = state.clone();
             handler(event, router_clone, state_clone)
-        },
-    );
+        });
 
     // Run the Lambda runtime with our traced handler
     Runtime::new(service_fn(traced_handler)).run().await
