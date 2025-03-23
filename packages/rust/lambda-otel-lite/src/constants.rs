@@ -29,6 +29,10 @@ pub mod env_vars {
     /// Comma-separated list of context propagators to use.
     /// Valid values: tracecontext, xray, xray-lambda, none
     pub const PROPAGATORS: &str = "OTEL_PROPAGATORS";
+
+    /// Controls whether to enable the fmt layer for logging regardless of code settings.
+    /// Set to "true" to force enable logging output.
+    pub const ENABLE_FMT_LAYER: &str = "LAMBDA_TRACING_ENABLE_FMT_LAYER";
 }
 
 /// Default values for configuration parameters.
@@ -47,6 +51,9 @@ pub mod defaults {
 
     /// Default processor mode.
     pub const PROCESSOR_MODE: &str = "sync";
+
+    /// Default value for enabling fmt layer from environment.
+    pub const ENABLE_FMT_LAYER: bool = false;
 }
 
 /// Resource attribute keys used in the Lambda resource.
