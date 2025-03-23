@@ -6,18 +6,37 @@ use lambda_runtime::{service_fn, Error as LambdaError, LambdaEvent, Runtime};
 use reqwest::Client;
 use reqwest_middleware::ClientBuilder;
 use reqwest_middleware::ClientWithMiddleware;
+use reqwest_tracing::TracingMiddleware;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::env;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use tera::{Context as TeraContext, Tera};
+use thiserror::Error;
 use tracing::instrument;
-
-mod reqwest_propagation;
-use reqwest_propagation::OtelPropagationMiddleware;
 
 // Embed the quotes.html template at compile time
 const QUOTES_TEMPLATE: &str = include_str!("templates/quotes.html");
+
+// Application configuration
+struct Config {
+    target_url: String,
+    templates: Tera,
+}
+
+impl Config {
+    fn from_env() -> Result<Self, LambdaError> {
+        let target_url = env::var("TARGET_URL")
+            .map_err(|_| "TARGET_URL environment variable must be set".to_string())?;
+            
+        let mut templates = Tera::default();
+        templates.add_raw_template("quotes.html", QUOTES_TEMPLATE)
+            .map_err(|e| format!("Failed to add template: {}", e))?;
+            
+        Ok(Self { target_url, templates })
+    }
+}
 
 #[derive(Clone)]
 struct AppState {
@@ -26,21 +45,24 @@ struct AppState {
     target_url: String,
     templates: Tera,
 }
+
 define_router!(event = ApiGatewayV2httpRequest, state = AppState);
 
-fn format_relative_time(timestamp: &str) -> String {
+fn format_relative_time(timestamp: &str) -> Result<String, LambdaError> {
     let timestamp = DateTime::parse_from_rfc3339(timestamp)
-        .unwrap_or_else(|_| DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z").unwrap());
+        .or_else(|_| DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z"))
+        .map_err(|e| format!("Invalid timestamp format: {}", e))?;
+    
     let now = Utc::now();
     let duration = now.signed_duration_since(timestamp.with_timezone(&Utc));
 
-    if duration.num_minutes() < 60 {
+    Ok(if duration.num_minutes() < 60 {
         format!("{} minutes ago", duration.num_minutes())
     } else if duration.num_hours() < 24 {
         format!("{} hours ago", duration.num_hours())
     } else {
         format!("{} days ago", duration.num_days())
-    }
+    })
 }
 
 #[instrument(skip_all)]
@@ -53,12 +75,12 @@ async fn get_all_quotes(
     let request = client
         .get(target_url.as_str())
         .build()
-        .map_err(|e| LambdaError::from(format!("Failed to create request: {}", e)))?;
+        .map_err(|e| format!("Failed to create request: {}", e))?;
 
     let response = client
         .execute(request)
         .await
-        .map_err(|e| LambdaError::from(format!("Failed to execute request: {}", e)))?;
+        .map_err(|e| format!("Failed to execute request: {}", e))?;
 
     // Handle non-success status codes
     if !response.status().is_success() {
@@ -68,31 +90,25 @@ async fn get_all_quotes(
             .await
             .unwrap_or_else(|_| "Unable to read error body".to_string());
 
-        return Err(LambdaError::from(format!(
-            "HTTP error {}: {}",
-            status, error_body
-        )));
+        return Err(format!("HTTP error {}: {}", status, error_body).into());
     }
 
-    let response_body = response
+    response
         .json::<Value>()
         .await
-        .map_err(|e| LambdaError::from(format!("Failed to parse response as JSON: {}", e)))?;
-
-    Ok(response_body)
+        .map_err(|e| format!("Failed to parse response as JSON: {}", e).into())
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 enum QuoteError {
+    #[error("Quote {0} not found")]
     NotFound(String),
+    
+    #[error("Backend error {0}: {1}")]
     BackendError(u16, String),
+    
+    #[error("Request error: {0}")]
     RequestError(String),
-}
-
-impl From<QuoteError> for LambdaError {
-    fn from(error: QuoteError) -> Self {
-        LambdaError::from(format!("{:?}", error))
-    }
 }
 
 #[instrument(skip_all)]
@@ -114,12 +130,13 @@ async fn get_quote(
         .map_err(|e| QuoteError::RequestError(format!("Failed to execute request: {}", e)))?;
 
     match response.status() {
-        status if status.is_success() => response.json::<Value>().await.map_err(|e| {
-            QuoteError::RequestError(format!("Failed to parse response as JSON: {}", e))
-        }),
-        reqwest::StatusCode::NOT_FOUND => {
-            Err(QuoteError::NotFound(format!("Quote {} not found", id)))
-        }
+        status if status.is_success() => response
+            .json::<Value>()
+            .await
+            .map_err(|e| QuoteError::RequestError(format!("Failed to parse response as JSON: {}", e))),
+        
+        reqwest::StatusCode::NOT_FOUND => Err(QuoteError::NotFound(format!("Quote {} not found", id))),
+        
         status => {
             let error_body = response
                 .text()
@@ -170,7 +187,7 @@ struct ProcessedQuote {
 impl ProcessedQuote {
     fn from_value(mut quote: Value) -> Option<Self> {
         let timestamp = quote.get("timestamp")?.as_str()?;
-        let relative_time = format_relative_time(timestamp);
+        let relative_time = format_relative_time(timestamp).ok()?;
         quote.as_object_mut()?.insert(
             "relative_time".to_string(),
             Value::String(relative_time.clone()),
@@ -204,7 +221,7 @@ async fn handle_root_redirect(_rctx: RouteContext) -> Result<Value, LambdaError>
 }
 
 #[route(method = "GET", path = "/{timeframe}")]
-async fn hande_home(rctx: RouteContext) -> Result<Value, LambdaError> {
+async fn handle_home(rctx: RouteContext) -> Result<Value, LambdaError> {
     // Parse and validate timeframe
     let timeframe = match rctx
         .params
@@ -212,7 +229,7 @@ async fn hande_home(rctx: RouteContext) -> Result<Value, LambdaError> {
         .and_then(|f| TimeFrame::from_param(f))
     {
         Some(frame) => {
-            rctx.set_otel_attribute("resource.query.time.frame", frame.name.clone());
+            rctx.set_otel_attribute("resource.query.time_frame", frame.name.clone());
             frame
         }
         None => {
@@ -232,7 +249,8 @@ async fn hande_home(rctx: RouteContext) -> Result<Value, LambdaError> {
     tera_ctx.insert("quotes", &quotes);
     tera_ctx.insert("timeframe", &timeframe.name);
 
-    let html_content = rctx.state.templates.render("quotes.html", &tera_ctx)?;
+    let html_content = rctx.state.templates.render("quotes.html", &tera_ctx)
+        .map_err(|e| format!("Template rendering error: {}", e))?;
 
     Ok(json!({
         "statusCode": 200,
@@ -252,14 +270,12 @@ async fn get_and_process_quotes(
         _ => return Ok(Vec::new()),
     };
 
-    let mut processed_quotes: Vec<ProcessedQuote> = quotes
+    // Process quotes with a more functional approach
+    let mut processed_quotes = quotes
         .into_iter()
-        .filter_map(|quote| {
-            let processed = ProcessedQuote::from_value(quote)?;
-            let quote_time = processed.timestamp()?;
-            timeframe.is_quote_in_range(quote_time).then_some(processed)
-        })
-        .collect();
+        .filter_map(ProcessedQuote::from_value)
+        .filter(|quote| quote.timestamp().map_or(false, |t| timeframe.is_quote_in_range(t)))
+        .collect::<Vec<_>>();
 
     // Sort quotes by timestamp in descending order (newest first)
     processed_quotes.sort_by(|a, b| match (a.timestamp(), b.timestamp()) {
@@ -290,7 +306,7 @@ fn render_quotes_template(
 
     templates
         .render("quotes.html", &ctx)
-        .map_err(|e| LambdaError::from(format!("Template rendering error: {}", e)))
+        .map_err(|e| format!("Template rendering error: {}", e).into())
 }
 
 /// Helper function to create an HTML response with the given status code
@@ -325,10 +341,10 @@ async fn handle_quote(rctx: RouteContext) -> Result<Value, LambdaError> {
     match get_quote(&rctx.state.http_client, &rctx.state.target_url, quote_id).await {
         Ok(mut quote) => {
             if let Some(timestamp) = quote.get("timestamp").and_then(|t| t.as_str()) {
-                let relative_time = format_relative_time(timestamp);
+                let relative_time = format_relative_time(timestamp)?;
                 quote
                     .as_object_mut()
-                    .ok_or_else(|| LambdaError::from("Invalid quote format"))?
+                    .ok_or_else(|| "Invalid quote format".to_string())?
                     .insert("relative_time".to_string(), Value::String(relative_time));
             }
 
@@ -379,24 +395,20 @@ async fn main() -> Result<(), LambdaError> {
     // Initialize telemetry with default configuration
     let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
 
-    let target_url = env::var("TARGET_URL").expect("TARGET_URL must be set");
-    // Initialize templates
-    let templates = {
-        let mut tera = Tera::default();
-        tera.add_raw_template("quotes.html", QUOTES_TEMPLATE)
-            .expect("Failed to add embedded template");
-        tera
-    };
-
+    // Load configuration from environment
+    let config = Config::from_env()?;
+    
     // Initialize application state
     let state = Arc::new(AppState {
         http_client: {
             let reqwest_client = Client::builder()
+                .timeout(StdDuration::from_secs(30))
+                .user_agent("Quote-Viewer/1.0")
                 .build()
-                .expect("Failed to create HTTP client");
+                .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
             ClientBuilder::new(reqwest_client)
-                .with(OtelPropagationMiddleware::new())
+                .with(TracingMiddleware::default())
                 .build()
         },
         base_context: {
@@ -405,30 +417,28 @@ async fn main() -> Result<(), LambdaError> {
             ctx.insert("version", env!("CARGO_PKG_VERSION"));
             ctx
         },
-        target_url,
-        templates,
+        target_url: config.target_url,
+        templates: config.templates,
     });
 
     // Initialize router
     let router = Arc::new(RouterBuilder::from_registry().build());
 
-    // Define the handler function
-    async fn handler(
-        event: LambdaEvent<ApiGatewayV2httpRequest>,
-        router: Arc<Router>,
-        state: Arc<AppState>,
-    ) -> Result<Value, LambdaError> {
-        router.handle_request(event, state).await
-    }
-
     // Create a traced handler with the captured router and state
     let traced_handler =
         create_traced_handler("frontend-handler", completion_handler, move |event| {
-            let router_clone = router.clone();
-            let state_clone = state.clone();
-            handler(event, router_clone, state_clone)
+            handle_lambda_event(event, router.clone(), state.clone())
         });
 
     // Run the Lambda runtime with our traced handler
     Runtime::new(service_fn(traced_handler)).run().await
+}
+
+// Extracted handler function for better testing
+async fn handle_lambda_event(
+    event: LambdaEvent<ApiGatewayV2httpRequest>,
+    router: Arc<Router>,
+    state: Arc<AppState>,
+) -> Result<Value, LambdaError> {
+    router.handle_request(event, state).await
 }
