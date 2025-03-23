@@ -1,40 +1,40 @@
+use anyhow::{Context, Result};
 use opentelemetry_proto::tonic::{
+    collector::trace::v1::ExportTraceServiceRequest,
     common::v1::{any_value, AnyValue, ArrayValue, KeyValue},
     resource::v1::Resource,
     trace::v1::{
         span::{Event, Link, SpanKind},
-        ResourceSpans, ScopeSpans, Span, Status,
         status::StatusCode,
+        ResourceSpans, ScopeSpans, Span, Status,
     },
-    collector::trace::v1::ExportTraceServiceRequest,
 };
 use prost::Message;
 use serde_json::{Map, Value};
-use anyhow::{Context, Result};
 
 /// Decodes a hex string to bytes
 fn decode_hex(s: &str) -> Result<Vec<u8>> {
     // Handle both with and without 0x prefix
     let s = s.trim_start_matches("0x");
-    
+
     // Remove any non-hex characters (like hyphens)
     let s: String = s.chars().filter(|c| c.is_ascii_hexdigit()).collect();
-    
+
     // Decode hex string to bytes
     let mut result = Vec::new();
     for i in (0..s.len()).step_by(2) {
         if i + 2 <= s.len() {
-            let byte = u8::from_str_radix(&s[i..i+2], 16)
+            let byte = u8::from_str_radix(&s[i..i + 2], 16)
                 .map_err(|e| anyhow::anyhow!("Invalid hex string: {}", e))?;
             result.push(byte);
         } else if i + 1 == s.len() {
             // Handle odd number of digits by padding with 0
-            let byte = u8::from_str_radix(&format!("{}0", &s[i..i+1]), 16)
+            let byte = u8::from_str_radix(&format!("{}0", &s[i..i + 1]), 16)
                 .map_err(|e| anyhow::anyhow!("Invalid hex string: {}", e))?;
             result.push(byte);
         }
     }
-    
+
     Ok(result)
 }
 
@@ -81,7 +81,7 @@ fn convert_value(value: &Value) -> AnyValue {
             AnyValue {
                 value: Some(any_value::Value::ArrayValue(ArrayValue { values })),
             }
-        },
+        }
         Value::String(s) => AnyValue {
             value: Some(any_value::Value::StringValue(s.to_string())),
         },
@@ -148,7 +148,7 @@ pub fn convert_span_to_otlp_protobuf(record: Value) -> Result<Vec<u8>> {
         .transpose()
         .context("Invalid traceId format")?
         .unwrap_or_default();
-    
+
     let span_id = record
         .get("spanId")
         .and_then(Value::as_str)
@@ -156,7 +156,7 @@ pub fn convert_span_to_otlp_protobuf(record: Value) -> Result<Vec<u8>> {
         .transpose()
         .context("Invalid spanId format")?
         .unwrap_or_default();
-    
+
     let parent_span_id = record
         .get("parentSpanId")
         .and_then(Value::as_str)
@@ -207,19 +207,19 @@ pub fn convert_span_to_otlp_protobuf(record: Value) -> Result<Vec<u8>> {
                             .get("timeUnixNano")
                             .and_then(Value::as_u64)
                             .unwrap_or(0);
-                        
+
                         let name = event_obj
                             .get("name")
                             .and_then(Value::as_str)
                             .unwrap_or("")
                             .to_string();
-                        
+
                         let attrs = event_obj
                             .get("attributes")
                             .and_then(Value::as_object)
                             .map(convert_attributes)
                             .unwrap_or_default();
-                        
+
                         Some(Event {
                             time_unix_nano: time,
                             name,
@@ -268,12 +268,14 @@ pub fn convert_span_to_otlp_protobuf(record: Value) -> Result<Vec<u8>> {
                 dropped_attributes_count: 0,
             }),
             scope_spans: vec![ScopeSpans {
-                scope: Some(opentelemetry_proto::tonic::common::v1::InstrumentationScope {
-                    name: scope_name,
-                    version: scope_version,
-                    attributes: Vec::new(),
-                    dropped_attributes_count: 0,
-                }),
+                scope: Some(
+                    opentelemetry_proto::tonic::common::v1::InstrumentationScope {
+                        name: scope_name,
+                        version: scope_version,
+                        attributes: Vec::new(),
+                        dropped_attributes_count: 0,
+                    },
+                ),
                 spans: vec![span],
                 schema_url: String::new(),
             }],
@@ -296,22 +298,34 @@ mod tests {
         // Test valid hex string
         let result = decode_hex("0123456789abcdef");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+        assert_eq!(
+            result.unwrap(),
+            vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]
+        );
 
         // Test with 0x prefix
         let result = decode_hex("0x0123456789abcdef");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+        assert_eq!(
+            result.unwrap(),
+            vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]
+        );
 
         // Test with hyphens
         let result = decode_hex("01-23-45-67-89-ab-cd-ef");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+        assert_eq!(
+            result.unwrap(),
+            vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]
+        );
 
         // Test invalid hex string
         let result = decode_hex("0123456789abcdefg");
         assert!(result.is_ok()); // Now it should be ok because we filter out non-hex chars
-        assert_eq!(result.unwrap(), vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+        assert_eq!(
+            result.unwrap(),
+            vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]
+        );
     }
 
     #[test]
@@ -347,25 +361,37 @@ mod tests {
 
         let result = convert_span_to_otlp_protobuf(span);
         assert!(result.is_ok());
-        
+
         // Verify we can decode it back
         let bytes = result.unwrap();
         let decoded = ExportTraceServiceRequest::decode(bytes.as_slice());
         assert!(decoded.is_ok());
-        
+
         let request = decoded.unwrap();
         assert_eq!(request.resource_spans.len(), 1);
         assert_eq!(request.resource_spans[0].scope_spans.len(), 1);
         assert_eq!(request.resource_spans[0].scope_spans[0].spans.len(), 1);
-        
+
         let span = &request.resource_spans[0].scope_spans[0].spans[0];
         assert_eq!(span.name, "test-span");
         assert_eq!(span.kind, SpanKind::Server as i32);
-        
+
         // Verify IDs were properly decoded
-        assert_eq!(span.trace_id, vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
-        assert_eq!(span.span_id, vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
-        assert_eq!(span.parent_span_id, vec![0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10]);
+        assert_eq!(
+            span.trace_id,
+            vec![
+                0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
+                0xcd, 0xef
+            ]
+        );
+        assert_eq!(
+            span.span_id,
+            vec![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]
+        );
+        assert_eq!(
+            span.parent_span_id,
+            vec![0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10]
+        );
     }
 
     #[test]
@@ -428,17 +454,17 @@ mod tests {
 
         let result = convert_span_to_otlp_protobuf(span_record);
         assert!(result.is_ok());
-        
+
         // Verify we can decode it back
         let bytes = result.unwrap();
         let decoded = ExportTraceServiceRequest::decode(bytes.as_slice());
         assert!(decoded.is_ok());
-        
+
         let request = decoded.unwrap();
         assert_eq!(request.resource_spans.len(), 1);
         assert_eq!(request.resource_spans[0].scope_spans.len(), 1);
         assert_eq!(request.resource_spans[0].scope_spans[0].spans.len(), 1);
-        
+
         let span = &request.resource_spans[0].scope_spans[0].spans[0];
         assert_eq!(span.name, "test-span");
         assert_eq!(span.kind, SpanKind::Server as i32);
@@ -491,31 +517,32 @@ mod tests {
 
         let result = convert_span_to_otlp_protobuf(span_record);
         assert!(result.is_ok());
-        
+
         // Verify we can decode it back
         let bytes = result.unwrap();
         let decoded = ExportTraceServiceRequest::decode(bytes.as_slice());
         assert!(decoded.is_ok());
-        
+
         let request = decoded.unwrap();
         let span = &request.resource_spans[0].scope_spans[0].spans[0];
-        
+
         // Verify events were properly converted
         assert_eq!(span.events.len(), 2);
         assert_eq!(span.events[0].name, "Event 1");
         assert_eq!(span.events[0].time_unix_nano, 1619712000500000000_u64);
         assert_eq!(span.events[1].name, "Event 2");
         assert_eq!(span.events[1].time_unix_nano, 1619712000800000000_u64);
-        
+
         // Verify event attributes
         let event1_attrs = &span.events[0].attributes;
         assert!(!event1_attrs.is_empty());
-        
+
         // Find the event.key1 attribute
         let key1_attr = event1_attrs.iter().find(|attr| attr.key == "event.key1");
         assert!(key1_attr.is_some());
         if let Some(attr) = key1_attr {
-            if let Some(any_value::Value::StringValue(value)) = &attr.value.as_ref().unwrap().value {
+            if let Some(any_value::Value::StringValue(value)) = &attr.value.as_ref().unwrap().value
+            {
                 assert_eq!(value, "value1");
             } else {
                 panic!("event.key1 is not a string value");

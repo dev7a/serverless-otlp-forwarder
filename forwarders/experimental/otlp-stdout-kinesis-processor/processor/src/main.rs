@@ -15,25 +15,20 @@
 //! - OpenTelemetry instrumentation
 
 use anyhow::{Context, Result};
-use lambda_runtime::{
-    tower::ServiceBuilder,
-    Error as LambdaError, LambdaEvent, Runtime,
-};
+use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
 use std::sync::Arc;
 
 use aws_credential_types::provider::ProvideCredentials;
 use lambda_otlp_forwarder::{
-    collectors::Collectors, 
-    processing::process_telemetry_batch, 
-    telemetry::TelemetryData,
+    collectors::Collectors,
+    processing::process_telemetry_batch,
     span_compactor::{compact_telemetry_payloads, SpanCompactionConfig},
-    KinesisEventWrapper, AppState,
+    telemetry::TelemetryData,
+    AppState, KinesisEventWrapper,
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
 
-use lambda_otel_lite::{
-    init_telemetry, OtelTracingLayer, TelemetryConfig,
-};
+use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
 
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::trace::BatchSpanProcessor;
@@ -63,7 +58,7 @@ async fn function_handler(
     Collectors::init(&state.secrets_client).await?;
 
     let records = &event.payload.0.records;
-    
+
     // Convert all records to TelemetryData (sequentially)
     let telemetry_batch: Vec<TelemetryData> = records
         .iter()
@@ -79,17 +74,18 @@ async fn function_handler(
     // If we have telemetry data, process it
     if !telemetry_batch.is_empty() {
         tracing::info!("Processing {} telemetry records", telemetry_batch.len());
-        
+
         // Compact multiple payloads into a single one
         // This will also apply compression to the final result
-        let compacted_telemetry = match compact_telemetry_payloads(telemetry_batch, &SpanCompactionConfig::default()) {
-            Ok(telemetry) => vec![telemetry],
-            Err(e) => {
-                tracing::error!("Failed to compact telemetry payloads: {}", e);
-                return Err(e);
-            }
-        };
-        
+        let compacted_telemetry =
+            match compact_telemetry_payloads(telemetry_batch, &SpanCompactionConfig::default()) {
+                Ok(telemetry) => vec![telemetry],
+                Err(e) => {
+                    tracing::error!("Failed to compact telemetry payloads: {}", e);
+                    return Err(e);
+                }
+            };
+
         // Process the compacted telemetry (single POST request)
         process_telemetry_batch(
             compacted_telemetry,
@@ -126,10 +122,7 @@ async fn main() -> Result<(), LambdaError> {
         .with_service("xray")
         .with_signing_predicate(Box::new(|request| {
             // Only sign requests to AWS endpoints
-            request
-                .uri()
-                .host()
-                .map_or(false, |host| host.ends_with(".amazonaws.com"))
+            request.uri().host().is_some_and(|host| host.ends_with(".amazonaws.com"))
         }))
         .build()?;
 
@@ -144,7 +137,6 @@ async fn main() -> Result<(), LambdaError> {
     let (_, completion_handler) = init_telemetry(
         TelemetryConfig::builder()
             .with_span_processor(BatchSpanProcessor::builder(batch_exporter).build())
-            // .enable_fmt_layer(true)
             .build(),
     )
     .await?;
@@ -224,17 +216,19 @@ mod tests {
         assert_eq!(telemetry.content_type, "application/x-protobuf");
         assert_eq!(telemetry.content_encoding, None); // No compression at this stage
     }
-    
+
     #[test]
     fn test_convert_kinesis_record_invalid_json() {
         use aws_lambda_events::encodings::SecondTimestamp;
         use chrono::{TimeZone, Utc};
-        
+
         let invalid_record_str = "invalid json";
 
         let record = KinesisEventRecord {
             kinesis: KinesisRecord {
-                data: aws_lambda_events::encodings::Base64Data(invalid_record_str.as_bytes().to_vec()),
+                data: aws_lambda_events::encodings::Base64Data(
+                    invalid_record_str.as_bytes().to_vec(),
+                ),
                 partition_key: "test-key".to_string(),
                 sequence_number: "test-sequence".to_string(),
                 kinesis_schema_version: Some("1.0".to_string()),

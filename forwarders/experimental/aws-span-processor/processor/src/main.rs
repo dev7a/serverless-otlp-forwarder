@@ -15,23 +15,18 @@
 mod otlp;
 
 use anyhow::Result;
-use aws_lambda_events::event::cloudwatch_logs::LogEntry;
-use lambda_runtime::{
-    tower::ServiceBuilder,
-    Error as LambdaError, LambdaEvent, Runtime,
-};
-use std::sync::Arc;
 use aws_credential_types::provider::ProvideCredentials;
+use aws_lambda_events::event::cloudwatch_logs::LogEntry;
 use lambda_otlp_forwarder::{
     collectors::Collectors, processing::process_telemetry_batch, telemetry::TelemetryData,
-    LogsEventWrapper, AppState,
+    AppState, LogsEventWrapper,
 };
+use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
 use otlp_sigv4_client::SigV4ClientBuilder;
 use serde_json::Value as JsonValue;
+use std::sync::Arc;
 
-use lambda_otel_lite::{
-    init_telemetry, OtelTracingLayer, TelemetryConfig,
-};
+use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
 
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::trace::BatchSpanProcessor;
@@ -77,7 +72,7 @@ async fn function_handler(
 
     let log_group = &event.payload.0.aws_logs.data.log_group;
     let log_events = &event.payload.0.aws_logs.data.log_events;
-    
+
     // Convert all events to TelemetryData (sequentially)
     let telemetry_records = log_events
         .iter()
@@ -315,7 +310,7 @@ mod tests {
         assert_eq!(telemetry.source, "aws/spans");
         assert_eq!(telemetry.content_type, "application/x-protobuf");
         assert_eq!(telemetry.content_encoding, None);
-        
+
         // Verify the payload is not empty
         assert!(!telemetry.payload.is_empty());
     }
