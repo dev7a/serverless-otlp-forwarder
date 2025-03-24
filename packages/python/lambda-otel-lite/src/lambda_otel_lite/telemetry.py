@@ -13,6 +13,7 @@ from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
+from opentelemetry.sdk.trace.id_generator import IdGenerator
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
 
 from . import ProcessorMode, __version__, processor_mode
@@ -119,6 +120,7 @@ def init_telemetry(
     resource: Resource | None = None,
     span_processors: Sequence[SpanProcessor] | None = None,
     propagators: Sequence[TextMapPropagator] | None = None,
+    id_generator: IdGenerator | None = None,
 ) -> tuple[trace.Tracer, TelemetryCompletionHandler]:
     """Initialize OpenTelemetry with manual OTLP stdout configuration.
 
@@ -135,6 +137,8 @@ def init_telemetry(
             global propagators (W3C TraceContext and Baggage) will be used. If provided,
             these propagators will be combined into a composite propagator and set as the
             global propagator.
+        id_generator: Optional ID generator. If None, the default W3C-compatible ID generator
+            will be used. Set to an XRayIdGenerator instance to use X-Ray compatible IDs.
 
     Returns:
         Tuple containing:
@@ -154,7 +158,7 @@ def init_telemetry(
         )
 
     # Create tracer provider
-    tracer_provider = TracerProvider(resource=resource)
+    tracer_provider = TracerProvider(resource=resource, id_generator=id_generator)
 
     # Setup processors with environment variables having precedence
     if span_processors is None:

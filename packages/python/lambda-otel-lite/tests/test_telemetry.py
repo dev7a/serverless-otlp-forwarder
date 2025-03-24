@@ -1,10 +1,12 @@
 """Tests for the telemetry module."""
 
 import os
+import re
 from unittest.mock import patch
 
 import pytest
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import IdGenerator
 
 from lambda_otel_lite.telemetry import (
     TelemetryCompletionHandler,
@@ -165,6 +167,62 @@ def test_init_telemetry_with_custom_processor(mock_env):
         pass
 
     assert custom_processor.was_used
+
+
+def test_init_telemetry_with_custom_id_generator(mock_env):
+    """Test telemetry initialization with a custom ID generator."""
+
+    class MockXRayIdGenerator(IdGenerator):
+        def __init__(self):
+            self.trace_id_called = False
+            self.span_id_called = False
+
+        def generate_trace_id(self):
+            self.trace_id_called = True
+            # Return a trace ID with a timestamp in the first 32 bits (8 hex chars)
+            # X-Ray format: <timestamp in seconds>-<random part>
+            import time
+
+            timestamp_hex = format(int(time.time()), "08x")
+            random_part = "a" * 24  # Use a fixed value to easily verify it
+            return int(timestamp_hex + random_part, 16)
+
+        def generate_span_id(self):
+            self.span_id_called = True
+            # Return a fixed span ID for testing
+            return 0x1234567890ABCDEF
+
+    # Create a custom X-Ray ID generator
+    id_generator = MockXRayIdGenerator()
+
+    # Initialize telemetry with the custom ID generator
+    tracer, handler = init_telemetry(id_generator=id_generator)
+
+    # Create a span to trigger ID generation
+    span = tracer.start_span("test_span")
+    span_context = span.get_span_context()
+
+    # Verify that the ID generator was used
+    assert id_generator.trace_id_called
+    assert id_generator.span_id_called
+
+    # Verify that the trace ID format matches X-Ray format
+    # X-Ray trace IDs have a timestamp in the first 8 hex characters
+    trace_id_hex = format(span_context.trace_id, "032x")
+
+    # The first 8 chars should be a valid timestamp (in the last day)
+    timestamp_chars = trace_id_hex[:8]
+    assert re.match(r"^[0-9a-f]{8}$", timestamp_chars) is not None
+
+    # The rest should match our fixed random part
+    random_part = trace_id_hex[8:]
+    assert random_part == "a" * 24
+
+    # Verify span ID
+    span_id_hex = format(span_context.span_id, "016x")
+    assert span_id_hex == "1234567890abcdef"
+
+    span.end()
 
 
 def test_get_lambda_resource_with_all_attributes(mock_env):

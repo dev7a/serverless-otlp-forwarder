@@ -22,6 +22,7 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
   - [Custom configuration with custom resource attributes](#custom-configuration-with-custom-resource-attributes)
   - [Custom configuration with custom span processors](#custom-configuration-with-custom-span-processors)
   - [Custom configuration with context propagators](#custom-configuration-with-context-propagators)
+  - [Custom configuration with ID generator](#custom-configuration-with-id-generator)
   - [Library specific Resource Attributes](#library-specific-resource-attributes)
 - [Event Extractors](#event-extractors)
   - [Automatic Attributes extraction](#automatic-attributes-extraction)
@@ -289,6 +290,26 @@ By default, OpenTelemetry Python uses W3C Trace Context and W3C Baggage propagat
 You can provide multiple propagators, and they will be combined into a composite propagator. The order matters - propagators are applied in the order they are provided.
 
 > **Note:** The OpenTelemetry SDK also supports configuring propagators via the `OTEL_PROPAGATORS` environment variable. If set, this environment variable takes precedence over programmatic configuration. See the [OpenTelemetry Python documentation](https://opentelemetry.io/docs/languages/python/instrumentation/) for more details.
+
+### Custom configuration with ID generator
+
+```python
+from opentelemetry.sdk.extension.aws.trace import AwsXRayIdGenerator
+from lambda_otel_lite import init_telemetry
+
+# Initialize with X-Ray compatible ID generator
+tracer, completion_handler = init_telemetry(
+    id_generator=AwsXRayIdGenerator()
+)
+```
+
+By default, OpenTelemetry uses a random ID generator that creates W3C-compatible trace and span IDs. The `id_generator` parameter allows you to customize the ID generation strategy. This is particularly useful when you need to integrate with AWS X-Ray, which requires a specific ID format.
+
+To use the X-Ray ID generator, you'll need to install the AWS X-Ray SDK for OpenTelemetry:
+
+```bash
+pip install opentelemetry-sdk-extension-aws
+```
 
 ### Library specific Resource Attributes
 
