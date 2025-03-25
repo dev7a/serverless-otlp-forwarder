@@ -187,7 +187,6 @@ The examples respect the following environment variables:
 - `OTEL_SERVICE_NAME`: Service name for spans
 - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Processing mode (sync/async/finalize)
 - `NODE_OPTIONS`: Used to load the extension
-- `LAMBDA_TRACING_ENABLE_FMT_LAYER`: Enable console output (default: false)
 
 ## Deployment
 

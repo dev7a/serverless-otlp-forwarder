@@ -1,5 +1,5 @@
 import { Resource } from '@opentelemetry/resources';
-import { SpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { SpanProcessor, IdGenerator } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter';
 import { propagation, TextMapPropagator } from '@opentelemetry/api';
@@ -51,6 +51,9 @@ export { getLambdaResource } from './resource';
  * @param options.propagators - Array of TextMapPropagator implementations to use.
  *                             If not provided, the default propagators from the SDK will be used
  *                             (W3C Trace Context and W3C Baggage).
+ * @param options.idGenerator - Optional ID generator to use for creating trace and span IDs.
+ *                            If not provided, the default random ID generator will be used.
+ *                            Use an AWS X-Ray compatible ID generator for X-Ray integration.
  *
  * @returns Object containing:
  *   - tracer: Tracer instance for manual instrumentation
@@ -91,6 +94,15 @@ export { getLambdaResource } from './resource';
  * });
  * ```
  *
+ * Custom configuration with X-Ray ID generator:
+ * ```typescript
+ * import { AWSXRayIdGenerator } from '@opentelemetry/id-generator-aws-xray';
+ *
+ * const { tracer, completionHandler } = initTelemetry({
+ *   idGenerator: new AWSXRayIdGenerator()
+ * });
+ * ```
+ *
  * Environment Variables:
  * - LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: Processing mode (sync, async, finalize)
  * - LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: Maximum spans to queue (default: 2048)
@@ -109,6 +121,7 @@ export function initTelemetry(options?: {
   resource?: Resource;
   spanProcessors?: SpanProcessor[];
   propagators?: TextMapPropagator[];
+  idGenerator?: IdGenerator;
 }): { tracer: Tracer; completionHandler: TelemetryCompletionHandler } {
   // Setup resource
   const baseResource = options?.resource || getLambdaResource();
@@ -134,6 +147,7 @@ export function initTelemetry(options?: {
   const provider = new NodeTracerProvider({
     resource: baseResource,
     spanProcessors: processors,
+    idGenerator: options?.idGenerator,
   });
 
   // Store in shared state for extension

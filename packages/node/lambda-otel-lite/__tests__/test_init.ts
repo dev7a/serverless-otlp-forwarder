@@ -8,7 +8,7 @@ import {
   Context,
 } from '@opentelemetry/api';
 import { Resource } from '@opentelemetry/resources';
-import { SpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { SpanProcessor, IdGenerator } from '@opentelemetry/sdk-trace-base';
 import { initTelemetry, isColdStart, setColdStart } from '../src/internal/telemetry/init';
 import { state } from '../src/internal/state';
 import { EnvVarManager } from './utils';
@@ -131,6 +131,68 @@ describe('telemetry/init', () => {
 
       // Clean up spy
       setGlobalPropagatorSpy.mockRestore();
+    });
+
+    it('should initialize telemetry with custom ID generator', () => {
+      // Create a mock X-Ray ID generator
+      class MockXRayIdGenerator implements IdGenerator {
+        traceIdCalled = false;
+        spanIdCalled = false;
+
+        generateTraceId(): string {
+          this.traceIdCalled = true;
+          // Generate a trace ID with a timestamp in the first 8 hex characters
+          // X-Ray format: <timestamp in seconds>-<random part>
+          const timestamp = Math.floor(Date.now() / 1000);
+          const timestampHex = timestamp.toString(16).padStart(8, '0');
+          const randomPart = 'a'.repeat(24); // Fixed value to verify later
+          return timestampHex + randomPart;
+        }
+
+        generateSpanId(): string {
+          this.spanIdCalled = true;
+          // Return a fixed span ID for testing
+          return '1234567890abcdef';
+        }
+      }
+
+      // Create an instance of our mock generator
+      const mockXRayIdGenerator = new MockXRayIdGenerator();
+
+      // Initialize telemetry with the custom ID generator
+      const { tracer, completionHandler } = initTelemetry({
+        idGenerator: mockXRayIdGenerator,
+      });
+
+      expect(completionHandler).toBeDefined();
+      expect(tracer).toBeDefined();
+
+      // Create a span to trigger ID generation
+      const testSpan = tracer.startSpan('test');
+
+      // Verify that the ID generator was used
+      expect(mockXRayIdGenerator.traceIdCalled).toBe(true);
+      expect(mockXRayIdGenerator.spanIdCalled).toBe(true);
+
+      // Get the trace and span IDs
+      const context = testSpan.spanContext();
+      const traceId = context.traceId;
+      const spanId = context.spanId;
+
+      // Verify trace ID format (should start with a timestamp)
+      const timestampPart = traceId.substring(0, 8);
+      const randomPart = traceId.substring(8);
+
+      // The first 8 chars should be a valid timestamp in hex (within last day)
+      expect(/^[0-9a-f]{8}$/.test(timestampPart)).toBe(true);
+
+      // The next 24 chars should be our fixed random part
+      expect(randomPart).toBe('a'.repeat(24));
+
+      // Verify span ID
+      expect(spanId).toBe('1234567890abcdef');
+
+      testSpan.end();
     });
 
     it('should initialize telemetry with custom exporter', () => {

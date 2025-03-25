@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2025-03-25
+
+### Added
+- Support for custom ID generators via the `idGenerator` option in `initTelemetry`
+- Added AWS X-Ray compatible ID generator documentation and examples
+- Comprehensive test coverage for ID generator functionality
+
+### Changed
+- Updated documentation to include X-Ray integration examples
+- Removed deprecated environment variable reference from examples documentation
+
 ## [0.11.1] - 2025-03-22
 
 ### Fixed
