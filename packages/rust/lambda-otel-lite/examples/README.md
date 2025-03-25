@@ -241,7 +241,10 @@ Both functions will:
 
 The examples respect the following environment variables:
 - `OTEL_SERVICE_NAME`: Service name for spans
-- `LAMBDA_TRACING_ENABLE_FMT_LAYER`: Enable console output (default: false)
+- `LAMBDA_TRACING_ENABLE_FMT_LAYER`: Control console output formatting
+  - Setting to "true" enables console output even if disabled in code
+  - Setting to "false" disables console output even if enabled in code
+  - Only accepts exact string values "true" or "false" (case-insensitive)
 - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Processing mode (sync/async/finalize)
 - `RUST_LOG`: Log level (e.g., "info", "debug")
 

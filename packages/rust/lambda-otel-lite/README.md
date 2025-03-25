@@ -22,6 +22,7 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
   - [Custom configuration with custom resource attributes](#custom-configuration-with-custom-resource-attributes)
   - [Custom configuration with context propagators](#custom-configuration-with-context-propagators)
   - [Custom configuration with custom span processors](#custom-configuration-with-custom-span-processors)
+  - [Custom configuration with ID generator](#custom-configuration-with-id-generator)
   - [Using the Tower Layer](#using-the-tower-layer)
   - [Using the handler wrapper function](#using-the-handler-wrapper-function)
   - [Library specific Resource Attributes](#library-specific-resource-attributes)
@@ -373,6 +374,39 @@ By default, the crate combines two propagators: W3C Trace Context (`TraceContext
 
 Multiple propagators are combined into a composite propagator that can handle various trace context formats.
 
+### Custom configuration with ID generator:
+
+```rust, no_run
+use lambda_otel_lite::{init_telemetry, TelemetryConfig};
+use opentelemetry_aws::trace::XrayIdGenerator;
+use lambda_runtime::Error;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let config = TelemetryConfig::builder()
+        // Use AWS X-Ray compatible ID generator for trace and span IDs
+        .with_id_generator(XrayIdGenerator::default())
+        .build();
+
+    let (_, completion_handler) = init_telemetry(config).await?;
+
+    // Use the tracer and completion handler as usual
+    
+    Ok(())
+}
+```
+
+By default, OpenTelemetry uses a random ID generator that creates W3C-compatible trace and span IDs. The `with_id_generator` method allows you to customize the ID generation strategy. This is particularly useful when integrating with AWS X-Ray, which requires a specific ID format.
+
+To use the X-Ray ID generator, you'll need to add the `opentelemetry-aws` crate to your dependencies:
+
+```toml
+[dependencies]
+opentelemetry-aws = "0.16.0"
+```
+
+The XrayIdGenerator formats trace IDs in a way that's compatible with AWS X-Ray, using a timestamp in the first part of the trace ID. This allows X-Ray to display and organize traces correctly, and enables correlation between OpenTelemetry traces and traces from other services that use X-Ray.
+
 ### Using the Tower Layer
 You can "wrap" your handler in the `OtelTracingLayer` using the `ServiceBuilder` from the `tower` crate:
 
@@ -674,12 +708,14 @@ Resource attributes from environment variables are only included in the resource
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 
 ### Logging and Debug
+- `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`: Configure log levels
+- `AWS_LAMBDA_LOG_FORMAT`: Set to "JSON" for JSON formatted logs
 - `LAMBDA_TRACING_ENABLE_FMT_LAYER`: Enable console output of spans for debugging (default: false)
-- `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`: Configure log level for the crate
-  - `RUST_LOG` takes precedence if both are set
-  - Example: `RUST_LOG=lambda_otel_lite=debug`
-  - Example: `AWS_LAMBDA_LOG_LEVEL=DEBUG` (used if RUST_LOG is not set)
-  - Can be customized via `TelemetryConfig::builder().env_var_name("CUSTOM_LOG_VAR")`
+  - Takes precedence over code configuration when set
+  - Setting to "true" enables console output even if disabled in code
+  - Setting to "false" disables console output even if enabled in code 
+  - Only accepts exact string values "true" or "false" (case-insensitive)
+  - Invalid values will log a warning and fall back to code configuration
 
 ## License
 

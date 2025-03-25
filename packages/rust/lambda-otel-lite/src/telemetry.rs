@@ -91,8 +91,6 @@
 //! - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Processing mode (sync/async/finalize)
 //! - `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`: Log level configuration
 
-use crate::constants::defaults;
-use crate::constants::env_vars;
 use crate::{
     constants, extension::register_extension, mode::ProcessorMode, processor::LambdaSpanProcessor,
     propagation::LambdaXrayPropagator, resource::get_lambda_resource,
@@ -104,7 +102,7 @@ use opentelemetry::{global, global::set_tracer_provider, trace::TracerProvider a
 use opentelemetry_aws::trace::XrayPropagator;
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
-    trace::{SdkTracerProvider, SpanProcessor, TracerProviderBuilder},
+    trace::{IdGenerator, SdkTracerProvider, SpanProcessor, TracerProviderBuilder},
     Resource,
 };
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
@@ -205,6 +203,7 @@ impl TelemetryCompletionHandler {
 /// * `set_global_provider` - Set as global tracer provider (default: true)
 /// * `resource` - Custom resource attributes (default: auto-detected from Lambda)
 /// * `env_var_name` - Environment variable name for log level configuration
+/// * `id_generator` - Custom ID generator for trace and span IDs
 ///
 /// # Examples
 ///
@@ -258,9 +257,13 @@ pub struct TelemetryConfig {
     /// to being exported through the configured span processors. This is useful
     /// for debugging but adds overhead and should be disabled in production.
     ///
-    /// This can also be controlled via the `LAMBDA_OTEL_ENABLE_FMT_LAYER` environment variable.
-    /// Setting this to "true" will enable console output even if this field is false in the code.
-    /// This allows toggling logging for debugging without code changes.
+    /// This can also be controlled via the `LAMBDA_TRACING_ENABLE_FMT_LAYER` environment variable,
+    /// which takes precedence over this setting when present:
+    /// - Setting the env var to "true" will enable console output even if this field is false
+    /// - Setting the env var to "false" will disable console output even if this field is true
+    /// - Invalid values will log a warning and fall back to this code setting
+    ///
+    /// This environment variable override allows toggling logging for debugging without code changes.
     ///
     /// Default: `false`
     #[builder(default = false)]
@@ -373,6 +376,35 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
                 self
             }
         }
+    }
+
+    /// Add a custom ID generator to the tracer provider.
+    ///
+    /// This method allows setting a custom ID generator for trace and span IDs.
+    /// This is particularly useful when integrating with AWS X-Ray, which requires
+    /// a specific ID format.
+    ///
+    /// # Arguments
+    ///
+    /// * `id_generator` - An ID generator implementing the [`IdGenerator`] trait
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lambda_otel_lite::TelemetryConfig;
+    /// use opentelemetry_aws::trace::XrayIdGenerator;
+    ///
+    /// // Configure with X-Ray compatible ID generator
+    /// let config = TelemetryConfig::builder()
+    ///     .with_id_generator(XrayIdGenerator::default())
+    ///     .build();
+    /// ```
+    pub fn with_id_generator<T>(mut self, id_generator: T) -> Self
+    where
+        T: IdGenerator + 'static,
+    {
+        self.provider_builder = self.provider_builder.with_id_generator(id_generator);
+        self
     }
 }
 
@@ -537,6 +569,7 @@ pub async fn init_telemetry(
 
     // Apply defaults and build the provider
     let resource = config.resource.unwrap_or_else(get_lambda_resource);
+
     let provider = Arc::new(config.provider_builder.with_resource(resource).build());
 
     // Register the extension if in async or finalize mode
@@ -574,15 +607,27 @@ pub async fn init_telemetry(
         ))
         .with(env_filter);
 
-    // Check if fmt layer should be enabled via environment variable
-    let enable_fmt = env::var(env_vars::ENABLE_FMT_LAYER)
-        .map(|v| v.to_lowercase() == "true")
-        .unwrap_or(defaults::ENABLE_FMT_LAYER);
+    // Determine if fmt layer should be enabled - environment variable takes precedence when set
+    let enable_fmt = if let Ok(env_value) = env::var(constants::env_vars::ENABLE_FMT_LAYER) {
+        match env_value.to_lowercase().as_str() {
+            "true" => true,
+            "false" => false,
+            other => {
+                tracing::warn!(
+                    "Invalid value '{}' for {}, expected 'true' or 'false'. Using code configuration.",
+                    other,
+                    constants::env_vars::ENABLE_FMT_LAYER
+                );
+                config.enable_fmt_layer
+            }
+        }
+    } else {
+        // If env var not set, use the configured value
+        config.enable_fmt_layer
+    };
 
-    // Enable fmt layer if either configured in code or enabled via environment
-    // This allows toggling logging via LAMBDA_TRACING_ENABLE_FMT_LAYER=true without code changes
-    // Log level is still controlled by AWS_LAMBDA_LOG_LEVEL or RUST_LOG as usual
-    if config.enable_fmt_layer || enable_fmt {
+    // Enable fmt layer based on the determined value
+    if enable_fmt {
         // Determine if the lambda logging configuration is set to output json logs
         let is_json = env::var("AWS_LAMBDA_LOG_FORMAT")
             .unwrap_or_default()
@@ -618,13 +663,16 @@ pub async fn init_telemetry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opentelemetry::trace::{Span, Tracer};
+    use opentelemetry_aws::trace::XrayIdGenerator;
     use opentelemetry_sdk::trace::SimpleSpanProcessor;
     use sealed_test::prelude::*;
+    use std::sync::Arc;
     use tokio::sync::mpsc;
 
     // Helper to clean up environment variables between tests
     fn cleanup_env() {
-        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
+        env::remove_var(constants::env_vars::ENABLE_FMT_LAYER);
         env::remove_var(constants::env_vars::PROPAGATORS);
         env::remove_var("_X_AMZN_TRACE_ID");
     }
@@ -757,30 +805,70 @@ mod tests {
 
     #[tokio::test]
     #[sealed_test]
-    async fn test_telemetry_config_env_fmt_layer() {
+    async fn test_telemetry_config_env_fmt_layer_true_override() {
         cleanup_env();
 
-        // Test that environment variable is respected
-        env::set_var("LAMBDA_TRACING_ENABLE_FMT_LAYER", "true");
-        let config = TelemetryConfig::default();
+        // Test: Env var "true" overrides code setting "false"
+        env::set_var(constants::env_vars::ENABLE_FMT_LAYER, "true");
+        let config = TelemetryConfig::default(); // code setting is false by default
         assert!(!config.enable_fmt_layer); // Config should not be affected by env var
-        let enable_fmt = env::var(env_vars::ENABLE_FMT_LAYER)
-            .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(defaults::ENABLE_FMT_LAYER);
-        assert!(enable_fmt); // But the env var should be true
 
-        // Test that code-level setting works independently
-        let config = TelemetryConfig::builder().enable_fmt_layer(true).build();
+        // Initialize telemetry - env var should override config
+        let result = init_telemetry(config).await;
+        assert!(result.is_ok());
+
+        // Clean up
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_fmt_layer_false_override() {
+        cleanup_env();
+
+        // Test: Env var "false" overrides code setting "true"
+        env::set_var(constants::env_vars::ENABLE_FMT_LAYER, "false");
+        let config = TelemetryConfig::builder()
+            .enable_fmt_layer(true) // code setting is true
+            .build();
         assert!(config.enable_fmt_layer);
 
-        // Test default behavior
-        env::remove_var("LAMBDA_TRACING_ENABLE_FMT_LAYER");
+        // Initialize telemetry - env var should override config
+        let result = init_telemetry(config).await;
+        assert!(result.is_ok());
+
+        // Clean up
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_fmt_layer_invalid() {
+        cleanup_env();
+
+        // Test: Invalid env var falls back to code setting
+        env::set_var(constants::env_vars::ENABLE_FMT_LAYER, "invalid");
+        let config = TelemetryConfig::builder().enable_fmt_layer(true).build();
+
+        // Initialize telemetry - should log a warning but use code setting
+        let result = init_telemetry(config).await;
+        assert!(result.is_ok());
+
+        // Clean up
+        cleanup_env();
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_telemetry_config_env_fmt_layer_not_set() {
+        cleanup_env();
+
+        // Test: No env var uses code setting
         let config = TelemetryConfig::default();
         assert!(!config.enable_fmt_layer);
-        let enable_fmt = env::var(env_vars::ENABLE_FMT_LAYER)
-            .map(|v| v.to_lowercase() == "true")
-            .unwrap_or(defaults::ENABLE_FMT_LAYER);
-        assert!(!enable_fmt);
+
+        let result = init_telemetry(config).await;
+        assert!(result.is_ok());
 
         // Clean up
         cleanup_env();
@@ -908,6 +996,58 @@ mod tests {
 
         // Test that complete() doesn't panic when receiver is dropped
         completion_handler.complete();
+    }
+
+    #[test]
+    #[sealed_test]
+    fn test_telemetry_config_with_id_generator() {
+        cleanup_env();
+
+        // Create a config with X-Ray ID generator
+        let config = TelemetryConfig::builder()
+            .with_id_generator(XrayIdGenerator::default())
+            .build();
+
+        // We can't directly check the ID generator type since it's boxed inside the provider,
+        // but we can verify it's applied by checking the generated trace IDs format
+        let provider = Arc::new(config.provider_builder.build());
+
+        // Create a scope with attributes
+        let scope = opentelemetry::InstrumentationScope::builder("test")
+            .with_version(Cow::Borrowed(env!("CARGO_PKG_VERSION")))
+            .build();
+
+        // Get a tracer using the correct API
+        let tracer = provider.tracer_with_scope(scope);
+
+        // Start a span using the tracer
+        let span = tracer.start_with_context("test span", &opentelemetry::Context::current());
+        let trace_id = span.span_context().trace_id();
+
+        // Verify X-Ray trace ID format:
+        // 1. Convert to hex string for easier checking
+        let trace_id_hex = format!("{:032x}", trace_id);
+
+        // 2. The first 8 characters of X-Ray trace IDs represent a timestamp in seconds
+        // This is the key characteristic of X-Ray trace IDs that we can verify
+        let timestamp_part = &trace_id_hex[0..8];
+
+        // 3. Parse the hex timestamp to ensure it's a valid timestamp (recent past)
+        let timestamp = u32::from_str_radix(timestamp_part, 16).unwrap();
+
+        // 4. Check that timestamp is reasonable (within the last day)
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as u32;
+
+        // The timestamp should be within the last day
+        assert!(timestamp <= now);
+        assert!(timestamp > now - 86400); // Within the last day
+
+        // Verify remaining 24 characters are not all zeros (random part)
+        let random_part = &trace_id_hex[8..];
+        assert_ne!(random_part, "000000000000000000000000");
     }
 }
 

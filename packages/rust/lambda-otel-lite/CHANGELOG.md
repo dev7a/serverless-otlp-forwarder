@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.11.3] - 2025-03-24
+### Enhanced
+- Improved `LAMBDA_TRACING_ENABLE_FMT_LAYER` environment variable handling:
+  - Now properly validates exact "true" or "false" values (case-insensitive)
+  - Added explicit precedence: environment variable overrides code configuration when present
+  - Added warning for invalid values with fallback to code configuration
+  - Updated documentation to reflect the new behavior
+
 ## [0.11.2] - 2025-03-23
 ### Added
 - Refactored support for the `LAMBDA_TRACING_ENABLE_FMT_LAYER` environment variable to control console logging output without code changes
