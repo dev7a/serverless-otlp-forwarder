@@ -22,6 +22,7 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
   - [Custom configuration with custom resource attributes](#custom-configuration-with-custom-resource-attributes)
   - [Custom configuration with custom span processors](#custom-configuration-with-custom-span-processors)
   - [Custom configuration with context propagators](#custom-configuration-with-context-propagators)
+  - [Custom configuration with ID generator](#custom-configuration-with-id-generator)
   - [Library specific Resource Attributes](#library-specific-resource-attributes)
 - [Event Extractors](#event-extractors)
   - [Automatic Attributes extraction](#automatic-attributes-extraction)
@@ -295,6 +296,26 @@ By default, OpenTelemetry Node.js uses W3C Trace Context and W3C Baggage propaga
 You can provide multiple propagators, and they will be combined into a composite propagator. The order matters - propagators are applied in the order they are provided.
 
 > **Note:** The OpenTelemetry SDK also supports configuring propagators via the `OTEL_PROPAGATORS` environment variable. If set, this environment variable takes precedence over programmatic configuration. See the [OpenTelemetry JavaScript documentation](https://opentelemetry.io/docs/languages/js/propagation/) for more details.
+
+### Custom configuration with ID generator
+
+```typescript
+import { initTelemetry } from '@dev7a/lambda-otel-lite';
+import { AWSXRayIdGenerator } from '@opentelemetry/id-generator-aws-xray';
+
+// Initialize with X-Ray compatible ID generator
+const { tracer, completionHandler } = initTelemetry({
+  idGenerator: new AWSXRayIdGenerator()
+});
+```
+
+By default, OpenTelemetry uses a random ID generator that creates W3C-compatible trace and span IDs. The `idGenerator` parameter allows you to customize the ID generation strategy. This is particularly useful when you need to integrate with AWS X-Ray, which requires a specific ID format.
+
+To use the X-Ray ID generator, you'll need to install the OpenTelemetry X-Ray ID generator package:
+
+```bash
+npm install --save @opentelemetry/id-generator-aws-xray
+```
 
 ### Library specific Resource Attributes
 

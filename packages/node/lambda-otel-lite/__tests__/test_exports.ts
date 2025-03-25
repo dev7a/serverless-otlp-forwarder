@@ -19,8 +19,12 @@ describe('Package exports', () => {
     expect(packageJson.exports['./telemetry'].types).toBe('./dist/telemetry/index.d.ts');
     expect(packageJson.exports['./telemetry'].default).toBe('./dist/telemetry/index.js');
 
-    expect(packageJson.exports['./extractors'].types).toBe('./dist/internal/telemetry/extractors.d.ts');
-    expect(packageJson.exports['./extractors'].default).toBe('./dist/internal/telemetry/extractors.js');
+    expect(packageJson.exports['./extractors'].types).toBe(
+      './dist/internal/telemetry/extractors.d.ts'
+    );
+    expect(packageJson.exports['./extractors'].default).toBe(
+      './dist/internal/telemetry/extractors.js'
+    );
   });
 
   it('should have extractors directory in source', () => {
@@ -33,15 +37,15 @@ describe('Package exports', () => {
   it('should expose all necessary extractors from the source files', async () => {
     // Import directly from source files which are available during tests
     const extractorsModule = await import('../src/extractors/index');
-    
+
     const expectedExports = [
       'apiGatewayV1Extractor',
       'apiGatewayV2Extractor',
       'albExtractor',
       'defaultExtractor',
-      'TriggerType'
+      'TriggerType',
     ];
-    
+
     for (const exportName of expectedExports) {
       expect(extractorsModule).toHaveProperty(exportName);
     }
