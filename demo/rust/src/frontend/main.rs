@@ -29,12 +29,16 @@ impl Config {
     fn from_env() -> Result<Self, LambdaError> {
         let target_url = env::var("TARGET_URL")
             .map_err(|_| "TARGET_URL environment variable must be set".to_string())?;
-            
+
         let mut templates = Tera::default();
-        templates.add_raw_template("quotes.html", QUOTES_TEMPLATE)
+        templates
+            .add_raw_template("quotes.html", QUOTES_TEMPLATE)
             .map_err(|e| format!("Failed to add template: {}", e))?;
-            
-        Ok(Self { target_url, templates })
+
+        Ok(Self {
+            target_url,
+            templates,
+        })
     }
 }
 
@@ -52,7 +56,7 @@ fn format_relative_time(timestamp: &str) -> Result<String, LambdaError> {
     let timestamp = DateTime::parse_from_rfc3339(timestamp)
         .or_else(|_| DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z"))
         .map_err(|e| format!("Invalid timestamp format: {}", e))?;
-    
+
     let now = Utc::now();
     let duration = now.signed_duration_since(timestamp.with_timezone(&Utc));
 
@@ -72,13 +76,10 @@ async fn get_all_quotes(
 ) -> Result<Value, LambdaError> {
     let target_url = format!("{}/quotes", target_url);
 
-    let request = client
-        .get(target_url.as_str())
-        .build()
-        .map_err(|e| format!("Failed to create request: {}", e))?;
-
+    // Use direct send() method instead of build() and execute() to allow middleware to inject headers
     let response = client
-        .execute(request)
+        .get(target_url.as_str())
+        .send()
         .await
         .map_err(|e| format!("Failed to execute request: {}", e))?;
 
@@ -103,10 +104,10 @@ async fn get_all_quotes(
 enum QuoteError {
     #[error("Quote {0} not found")]
     NotFound(String),
-    
+
     #[error("Backend error {0}: {1}")]
     BackendError(u16, String),
-    
+
     #[error("Request error: {0}")]
     RequestError(String),
 }
@@ -119,24 +120,22 @@ async fn get_quote(
 ) -> Result<Value, QuoteError> {
     let target_url = format!("{}/quotes/{}", target_url, id);
 
-    let request = client
-        .get(target_url.as_str())
-        .build()
-        .map_err(|e| QuoteError::RequestError(format!("Failed to create request: {}", e)))?;
-
+    // Use direct send() method instead of build() and execute()
     let response = client
-        .execute(request)
+        .get(target_url.as_str())
+        .send()
         .await
         .map_err(|e| QuoteError::RequestError(format!("Failed to execute request: {}", e)))?;
 
     match response.status() {
-        status if status.is_success() => response
-            .json::<Value>()
-            .await
-            .map_err(|e| QuoteError::RequestError(format!("Failed to parse response as JSON: {}", e))),
-        
-        reqwest::StatusCode::NOT_FOUND => Err(QuoteError::NotFound(format!("Quote {} not found", id))),
-        
+        status if status.is_success() => response.json::<Value>().await.map_err(|e| {
+            QuoteError::RequestError(format!("Failed to parse response as JSON: {}", e))
+        }),
+
+        reqwest::StatusCode::NOT_FOUND => {
+            Err(QuoteError::NotFound(format!("Quote {} not found", id)))
+        }
+
         status => {
             let error_body = response
                 .text()
@@ -214,7 +213,8 @@ async fn handle_root_redirect(_rctx: RouteContext) -> Result<Value, LambdaError>
         "statusCode": 301,
         "headers": {
             "Location": "/now",
-            "Content-Type": "text/html"
+            "Content-Type": "text/html",
+            "Cache-Control": "public, max-age=60"
         },
         "body": "<!DOCTYPE html><html><head><meta http-equiv=\"refresh\" content=\"0;url=/now\"></head><body>Redirecting to <a href=\"/now\">/now</a>...</body></html>"
     }))
@@ -235,7 +235,10 @@ async fn handle_home(rctx: RouteContext) -> Result<Value, LambdaError> {
         None => {
             return Ok(json!({
                 "statusCode": 404,
-                "headers": {"Content-Type": "text/plain"},
+                "headers": {
+                    "Content-Type": "text/plain",
+                    "Cache-Control": "public, max-age=60"
+                },
                 "body": "Invalid time frame"
             }));
         }
@@ -249,14 +252,13 @@ async fn handle_home(rctx: RouteContext) -> Result<Value, LambdaError> {
     tera_ctx.insert("quotes", &quotes);
     tera_ctx.insert("timeframe", &timeframe.name);
 
-    let html_content = rctx.state.templates.render("quotes.html", &tera_ctx)
+    let html_content = rctx
+        .state
+        .templates
+        .render("quotes.html", &tera_ctx)
         .map_err(|e| format!("Template rendering error: {}", e))?;
 
-    Ok(json!({
-        "statusCode": 200,
-        "headers": {"Content-Type": "text/html"},
-        "body": html_content
-    }))
+    Ok(html_response(200, html_content))
 }
 
 async fn get_and_process_quotes(
@@ -274,7 +276,11 @@ async fn get_and_process_quotes(
     let mut processed_quotes = quotes
         .into_iter()
         .filter_map(ProcessedQuote::from_value)
-        .filter(|quote| quote.timestamp().map_or(false, |t| timeframe.is_quote_in_range(t)))
+        .filter(|quote| {
+            quote
+                .timestamp()
+                .is_some_and(|t| timeframe.is_quote_in_range(t))
+        })
         .collect::<Vec<_>>();
 
     // Sort quotes by timestamp in descending order (newest first)
@@ -313,7 +319,10 @@ fn render_quotes_template(
 fn html_response(status_code: u16, html_content: String) -> Value {
     json!({
         "statusCode": status_code,
-        "headers": {"Content-Type": "text/html"},
+        "headers": {
+            "Content-Type": "text/html",
+            "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        },
         "body": html_content
     })
 }
@@ -397,7 +406,7 @@ async fn main() -> Result<(), LambdaError> {
 
     // Load configuration from environment
     let config = Config::from_env()?;
-    
+
     // Initialize application state
     let state = Arc::new(AppState {
         http_client: {

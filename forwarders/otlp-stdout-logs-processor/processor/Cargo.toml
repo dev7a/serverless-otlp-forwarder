@@ -17,10 +17,10 @@ reqwest.workspace = true
 aws-config.workspace = true
 serde.workspace = true
 lambda_runtime.workspace = true
-otlp-stdout-client.workspace = true
 otlp-sigv4-client.workspace = true
 lambda-otel-lite.workspace = true
 opentelemetry_sdk.workspace = true
+otlp-stdout-span-exporter.workspace = true
 
 opentelemetry-otlp.workspace = true
 aws-sdk-secretsmanager = { version = "1.48.0", features = ["behavior-version-latest"] }

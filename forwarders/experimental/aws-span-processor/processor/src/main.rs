@@ -46,7 +46,7 @@ fn convert_span_event(event: &LogEntry, log_group: &str) -> Option<TelemetryData
     let protobuf_bytes = match otlp::convert_span_to_otlp_protobuf(span) {
         Ok(bytes) => bytes,
         Err(e) => {
-            tracing::warn!("Failed to convert span to OTLP protobuf: {}", e);
+            tracing::debug!("Failed to convert span to OTLP protobuf: {}", e);
             return None;
         }
     };
@@ -73,20 +73,24 @@ async fn function_handler(
     let log_group = &event.payload.0.aws_logs.data.log_group;
     let log_events = &event.payload.0.aws_logs.data.log_events;
 
-    // Convert all events to TelemetryData (sequentially)
+    // Convert all events to TelemetryData
     let telemetry_records = log_events
         .iter()
         .filter_map(|event| convert_span_event(event, log_group))
-        .collect();
+        .collect::<Vec<_>>();
 
-    // Process all records in parallel
-    process_telemetry_batch(
-        telemetry_records,
-        &state.http_client,
-        &state.credentials,
-        &state.region,
-    )
-    .await?;
+    // Only process if we have records
+    if !telemetry_records.is_empty() {
+        process_telemetry_batch(
+            telemetry_records,
+            &state.http_client,
+            &state.credentials,
+            &state.region,
+        )
+        .await?;
+    } else {
+        tracing::debug!("No valid telemetry records to process");
+    }
 
     Ok(())
 }
@@ -115,7 +119,7 @@ async fn main() -> Result<(), LambdaError> {
             request
                 .uri()
                 .host()
-                .map_or(false, |host| host.ends_with(".amazonaws.com"))
+                .is_some_and(|host| host.ends_with(".amazonaws.com"))
         }))
         .build()?;
 
@@ -130,7 +134,6 @@ async fn main() -> Result<(), LambdaError> {
     let (_, completion_handler) = init_telemetry(
         TelemetryConfig::builder()
             .with_span_processor(BatchSpanProcessor::builder(batch_exporter).build())
-            // .enable_fmt_layer(true)
             .build(),
     )
     .await?;

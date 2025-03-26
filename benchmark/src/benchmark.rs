@@ -1,27 +1,26 @@
 use anyhow::{anyhow, Result};
 use aws_sdk_cloudformation::Client as CloudFormationClient;
+use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::{error::ProvideErrorMetadata, Client as LambdaClient};
 use base64::{engine::general_purpose, Engine};
 use chrono::Local;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
+use opentelemetry::trace::SpanKind;
+use opentelemetry_http::HeaderInjector;
+use reqwest::header::HeaderMap;
+use serde_json::Value;
+use statrs::statistics::{Data, Distribution, Max, Min, OrderStatistics};
 use std::{
     collections::HashMap,
     fs::{self, File},
     io::Write,
     path::PathBuf,
-    time::Duration,
     sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
-use opentelemetry::trace::SpanKind;
 use tracing::Span;
-use opentelemetry_http::HeaderInjector;
-use reqwest::header::HeaderMap;
-use serde_json::Value;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-use aws_sdk_lambda::primitives::Blob;
-use statrs::statistics::{Data, OrderStatistics, Distribution, Min, Max};
-
 
 use crate::types::*;
 
@@ -123,7 +122,7 @@ pub async fn invoke_function(
     opentelemetry::global::get_text_map_propagator(|propagator| {
         propagator.inject_context(&cx, &mut injector);
     });
-        
+
     let mut otel_context = serde_json::Map::new();
     let mut has_trace_context = false;
 
@@ -131,17 +130,18 @@ pub async fn invoke_function(
     for (header_name, header_types) in [
         ("traceparent", true),
         ("tracestate", false),
-        ("X-Amzn-Trace-Id", true)
+        ("X-Amzn-Trace-Id", true),
     ] {
         if let Some(header_value) = trace_headers.get(header_name) {
-            if header_types {  // If this header type indicates trace context presence
+            if header_types {
+                // If this header type indicates trace context presence
                 has_trace_context = true;
             }
-            
+
             if let Ok(value_str) = header_value.to_str() {
                 otel_context.insert(
                     header_name.to_string(),
-                    Value::String(value_str.to_string())
+                    Value::String(value_str.to_string()),
                 );
             }
         }
@@ -154,7 +154,7 @@ pub async fn invoke_function(
             let headers = payload_map
                 .entry("headers")
                 .or_insert_with(|| Value::Object(serde_json::Map::new()));
-                
+
             if let Value::Object(ref mut headers_map) = headers {
                 headers_map.extend(otel_context);
             }
@@ -162,10 +162,15 @@ pub async fn invoke_function(
     }
 
     // Start client-side timing only if we're measuring client metrics
-    let start = if client_metrics_mode { Some(std::time::Instant::now()) } else { None };
+    let start = if client_metrics_mode {
+        Some(std::time::Instant::now())
+    } else {
+        None
+    };
 
     // Get X-Ray header as a string if it exists
-    let xray_header_value = trace_headers.get("X-Amzn-Trace-Id")
+    let xray_header_value = trace_headers
+        .get("X-Amzn-Trace-Id")
         .and_then(|value| value.to_str().ok())
         .map(|s| s.to_string());
 
@@ -177,17 +182,18 @@ pub async fn invoke_function(
             payload: final_payload,
         };
 
-        let req_builder = req.function_name(proxy)
+        let req_builder = req
+            .function_name(proxy)
             .payload(Blob::new(serde_json::to_vec(&proxy_request)?));
-        
+
         // Add X-Ray header to the HTTP request if available
         if let Some(header_value) = xray_header_value.clone() {
-            req_builder.customize()
+            req_builder
+                .customize()
                 .mutate_request(move |http_req| {
-                    http_req.headers_mut().insert(
-                        "X-Amzn-Trace-Id",
-                        header_value.clone(),
-                    );
+                    http_req
+                        .headers_mut()
+                        .insert("X-Amzn-Trace-Id", header_value.clone());
                 })
                 .send()
                 .await
@@ -198,17 +204,18 @@ pub async fn invoke_function(
         // Direct invocation for:
         // 1. Server metrics (skip_logs = false)
         // 2. Client measurements without proxy
-        let req_builder = req.function_name(function_name)
+        let req_builder = req
+            .function_name(function_name)
             .payload(Blob::new(final_payload.to_string()));
-        
+
         // Add X-Ray header to the HTTP request if available
         if let Some(header_value) = xray_header_value {
-            req_builder.customize()
+            req_builder
+                .customize()
                 .mutate_request(move |http_req| {
-                    http_req.headers_mut().insert(
-                        "X-Amzn-Trace-Id",
-                        header_value.clone(),
-                    );
+                    http_req
+                        .headers_mut()
+                        .insert("X-Amzn-Trace-Id", header_value.clone());
                 })
                 .send()
                 .await
@@ -220,18 +227,26 @@ pub async fn invoke_function(
     match result {
         Ok(output) => {
             // Calculate client-side duration if we're measuring it
-            let client_duration = start.map(|s| s.elapsed().as_secs_f64() * 1000.0).unwrap_or(0.0);
-            
+            let client_duration = start
+                .map(|s| s.elapsed().as_secs_f64() * 1000.0)
+                .unwrap_or(0.0);
+
             // Record duration in span
             span.set_attribute("client.duration_ms", client_duration);
 
             if client_metrics_mode {
                 // When skipping logs, just return client duration with current timestamp
                 Ok(InvocationMetrics {
-                    timestamp: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+                    timestamp: chrono::Utc::now()
+                        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                        .to_string(),
                     client_duration: if proxy_function.is_some() {
-                        let proxy_response: ProxyResponse = serde_json::from_slice(output.payload()
-                            .ok_or_else(|| anyhow!("No response from proxy function"))?.as_ref())?;
+                        let proxy_response: ProxyResponse = serde_json::from_slice(
+                            output
+                                .payload()
+                                .ok_or_else(|| anyhow!("No response from proxy function"))?
+                                .as_ref(),
+                        )?;
                         proxy_response.invocation_time_ms
                     } else {
                         client_duration
@@ -267,7 +282,7 @@ pub async fn invoke_function(
 
                 // Get server-side metrics
                 let mut metrics = extract_metrics(&decoded_logs)?;
-                
+
                 // Add metrics to span
                 span.set_attribute("function.duration_ms", metrics.duration);
                 span.set_attribute("function.billed_duration_ms", metrics.billed_duration);
@@ -275,7 +290,7 @@ pub async fn invoke_function(
                 if let Some(init) = metrics.init_duration {
                     span.set_attribute("function.init_duration_ms", init);
                 }
-                
+
                 // Add client-side duration if we measured it
                 metrics.client_duration = client_duration;
                 Ok(metrics)
@@ -301,11 +316,8 @@ pub async fn invoke_function(
                     msg
                 }
             };
-            
-            Err(anyhow!(
-                "Failed to invoke function: {}",
-                error_details
-            ))
+
+            Err(anyhow!("Failed to invoke function: {}", error_details))
         }
     }
 }
@@ -336,7 +348,7 @@ pub fn extract_metrics(logs: &str) -> Result<InvocationMetrics> {
 
     Ok(InvocationMetrics {
         timestamp: report.time.clone(),
-        client_duration: 0.0,  // This will be set by invoke_function
+        client_duration: 0.0, // This will be set by invoke_function
         init_duration: report.record.metrics.init_duration_ms,
         duration,
         net_duration,
@@ -394,7 +406,7 @@ async fn run_benchmark_pass(
         let environment = config.environment.clone();
         let memory_size = config.memory_size;
         let proxy_function = config.proxy_function.clone();
-        
+
         handles.push(tokio::spawn(async move {
             invoke_function(
                 &client,
@@ -435,7 +447,9 @@ async fn run_benchmark_pass(
         let pb = ProgressBar::new(config.rounds as u64);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} rounds")
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} rounds",
+                )
                 .unwrap()
                 .progress_chars("#>-"),
         );
@@ -454,7 +468,7 @@ async fn run_benchmark_pass(
             let environment = config.environment.clone();
             let memory_size = config.memory_size;
             let proxy_function = config.proxy_function.clone();
-            
+
             handles.push(tokio::spawn(async move {
                 invoke_function(
                     &client,
@@ -524,7 +538,10 @@ async fn get_function_config(client: &LambdaClient, function_name: &str) -> Resu
         })?;
 
     let config = function.configuration().ok_or_else(|| {
-        anyhow!("Failed to get function configuration for '{}'", function_name)
+        anyhow!(
+            "Failed to get function configuration for '{}'",
+            function_name
+        )
     })?;
 
     Ok(OriginalConfig {
@@ -563,12 +580,17 @@ async fn update_function_config(
 
     // Get current configuration
     let current_config = function.configuration().ok_or_else(|| {
-        anyhow!("Failed to get function configuration for '{}'", function_name)
+        anyhow!(
+            "Failed to get function configuration for '{}'",
+            function_name
+        )
     })?;
 
     // Build update configuration
-    let mut update = client.update_function_configuration().function_name(function_name);
-    
+    let mut update = client
+        .update_function_configuration()
+        .function_name(function_name);
+
     // Add memory if specified
     if let Some(memory) = memory_size {
         update = update.memory_size(memory);
@@ -576,12 +598,12 @@ async fn update_function_config(
 
     // Prepare environment variables
     let mut env_vars = HashMap::new();
-    
+
     // First, copy existing environment variables
     if let Some(current_env) = current_config.environment().and_then(|e| e.variables()) {
         env_vars.extend(current_env.iter().map(|(k, v)| (k.clone(), v.clone())));
     }
-    
+
     // Then add/update new variables
     for (key, value) in environment {
         env_vars.insert(key.clone(), value.clone());
@@ -612,7 +634,7 @@ async fn update_function_config(
                 ),
                 other_err => format!("SDK error: {}", other_err),
             };
-            
+
             Err(anyhow!(
                 "Failed to update function configuration: {}",
                 error_details
@@ -632,8 +654,13 @@ async fn restore_function_config(
         client,
         function_name,
         Some(original.memory_size),
-        &original.environment.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>(),
-    ).await?;
+        &original
+            .environment
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect::<Vec<_>>(),
+    )
+    .await?;
     println!("✓ Function configuration restored");
     Ok(())
 }
@@ -651,9 +678,8 @@ pub async fn run_function_benchmark(
     client_metrics_mode: bool,
     proxy_function: Option<&str>,
 ) -> Result<()> {
-
     println!("\nStarting benchmark for: {}", function_name);
-    
+
     // Get function configuration to extract runtime and architecture
     let function = client
         .get_function()
@@ -672,14 +698,18 @@ pub async fn run_function_benchmark(
         })?;
 
     let config = function.configuration().ok_or_else(|| {
-        anyhow!("Failed to get function configuration for '{}'", function_name)
+        anyhow!(
+            "Failed to get function configuration for '{}'",
+            function_name
+        )
     })?;
 
     let runtime = config.runtime().map(|r| r.as_str().to_string());
     let architecture = if config.architectures().is_empty() {
         Some("x86_64".to_string())
     } else {
-        config.architectures()
+        config
+            .architectures()
             .first()
             .map(|arch| arch.as_str().to_string())
     };
@@ -687,7 +717,10 @@ pub async fn run_function_benchmark(
     println!("Configuration:");
     println!("  Memory: {} MB", memory_size.unwrap_or(128));
     println!("  Runtime: {}", runtime.as_deref().unwrap_or("unknown"));
-    println!("  Architecture: {}", architecture.as_deref().unwrap_or("unknown"));
+    println!(
+        "  Architecture: {}",
+        architecture.as_deref().unwrap_or("unknown")
+    );
     println!("  Concurrency: {}", concurrent);
     println!("  Rounds: {}", rounds);
     if let Some(proxy) = proxy_function {
@@ -704,16 +737,24 @@ pub async fn run_function_benchmark(
     println!("\nTelemetry:");
     if let (Ok(endpoint), Ok(service)) = (
         std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT"),
-        std::env::var("OTEL_SERVICE_NAME")
+        std::env::var("OTEL_SERVICE_NAME"),
     ) {
         println!("  Service: {}", service);
         println!("  Endpoint: {}", endpoint);
-        println!("  Protocol: {}", std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL").unwrap_or_else(|_| "http/protobuf (default)".to_string()));
-        
+        println!(
+            "  Protocol: {}",
+            std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
+                .unwrap_or_else(|_| "http/protobuf (default)".to_string())
+        );
+
         // Region is required for AWS endpoints
         if endpoint.contains(".amazonaws.com") {
             let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
-            println!("  Region: {}{}", region, if region == "us-east-1" { " *" } else { "" });
+            println!(
+                "  Region: {}{}",
+                region,
+                if region == "us-east-1" { " *" } else { "" }
+            );
         }
     } else {
         println!("  OpenTelemetry is not configured (OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_SERVICE_NAME are required)");
@@ -770,35 +811,47 @@ pub async fn run_function_benchmark(
         print_benchmark_results(&results);
 
         // Save results
-        save_report(BenchmarkReport {
-            config: BenchmarkConfig {
-                function_name: function_name.to_string(),
-                memory_size,
-                concurrent_invocations: concurrent,
-                rounds,
-                timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-                runtime,
-                architecture,
-                environment: environment.iter()
-                    .map(|(k, v)| EnvVar { 
-                        key: k.to_string(), 
-                        value: v.to_string() 
-                    })
+        save_report(
+            BenchmarkReport {
+                config: BenchmarkConfig {
+                    function_name: function_name.to_string(),
+                    memory_size,
+                    concurrent_invocations: concurrent,
+                    rounds,
+                    timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    runtime,
+                    architecture,
+                    environment: environment
+                        .iter()
+                        .map(|(k, v)| EnvVar {
+                            key: k.to_string(),
+                            value: v.to_string(),
+                        })
+                        .collect(),
+                },
+                cold_starts: results
+                    .cold_starts
+                    .iter()
+                    .filter_map(|m| m.to_cold_start())
+                    .collect(),
+                warm_starts: results
+                    .warm_starts
+                    .iter()
+                    .map(|m| m.to_warm_start())
+                    .collect(),
+                client_measurements: results
+                    .client_measurements
+                    .iter()
+                    .map(|m| m.to_client_metrics())
                     .collect(),
             },
-            cold_starts: results.cold_starts.iter()
-                .filter_map(|m| m.to_cold_start())
-                .collect(),
-            warm_starts: results.warm_starts.iter()
-                .map(|m| m.to_warm_start())
-                .collect(),
-            client_measurements: results.client_measurements.iter()
-                .map(|m| m.to_client_metrics())
-                .collect(),
-        }, output_dir).await?;
+            output_dir,
+        )
+        .await?;
 
         Ok(())
-    }.await;
+    }
+    .await;
 
     // Restore original configuration if we modified it
     if let Some(original) = original_config {
@@ -814,7 +867,12 @@ pub async fn run_function_benchmark(
 
 // Move the results printing to a separate function
 fn print_benchmark_results(results: &BenchmarkResults) {
-    if !results.cold_starts.is_empty() && results.cold_starts.iter().any(|m| m.init_duration.is_some()) {
+    if !results.cold_starts.is_empty()
+        && results
+            .cold_starts
+            .iter()
+            .any(|m| m.init_duration.is_some())
+    {
         println!(
             "\n🥶 Cold Start Metrics ({} invocations) | Memory Size: {} MB",
             results.cold_starts.len(),
@@ -901,7 +959,11 @@ fn print_benchmark_results(results: &BenchmarkResults) {
         );
         println!("{:-<87}", "");
 
-        let client_durations: Vec<f64> = results.client_measurements.iter().map(|m| m.client_duration).collect();
+        let client_durations: Vec<f64> = results
+            .client_measurements
+            .iter()
+            .map(|m| m.client_duration)
+            .collect();
         print_stats(&calculate_stats(&client_durations), "Client Duration");
     }
 }
@@ -985,7 +1047,10 @@ pub async fn run_stack_benchmark(
                 .output_value()
                 .map(|v| {
                     v.contains("arn:aws:lambda:")
-                        && config.pattern.as_ref().map_or(true, |pattern| v.contains(pattern))
+                        && config
+                            .pattern
+                            .as_ref()
+                            .map_or(true, |pattern| v.contains(pattern))
                 })
                 .unwrap_or(false)
         })
@@ -1030,7 +1095,9 @@ pub async fn run_stack_benchmark(
                         rounds,
                         payload,
                         &output_dir,
-                        &env.iter().map(|e| (e.key.as_str(), e.value.as_str())).collect::<Vec<_>>(),
+                        &env.iter()
+                            .map(|e| (e.key.as_str(), e.value.as_str()))
+                            .collect::<Vec<_>>(),
                         client_metrics_mode,
                         proxy_function,
                     )
@@ -1055,7 +1122,11 @@ pub async fn run_stack_benchmark(
                 config.rounds as u32,
                 config.payload.as_deref(),
                 &config.output_dir,
-                &config.environment.iter().map(|e| (e.key.as_str(), e.value.as_str())).collect::<Vec<_>>(),
+                &config
+                    .environment
+                    .iter()
+                    .map(|e| (e.key.as_str(), e.value.as_str()))
+                    .collect::<Vec<_>>(),
                 config.client_metrics_mode,
                 config.proxy_function.as_deref(),
             )

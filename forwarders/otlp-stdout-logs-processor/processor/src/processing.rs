@@ -108,7 +108,8 @@ pub async fn process_telemetry_batch(
 
             async move {
                 // Get all collectors with proper signal paths
-                let collectors = Collectors::get_signal_endpoints(&telemetry.endpoint, &source).await?;
+                let collectors =
+                    Collectors::get_signal_endpoints(&telemetry.endpoint, &source).await?;
 
                 // Create futures for sending to each collector
                 let collector_tasks: Vec<_> = collectors

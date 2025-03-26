@@ -10,6 +10,6 @@ description = "OpenTelemetry Lambda extension for sending otlp data to Kinesis"
 tokio.workspace = true
 tracing.workspace = true
 aws-config.workspace = true
-aws-sdk-kinesis = { version = "1", default-features = false, features = ["rt-tokio"] }
-lambda-extension = { version = "0.11.0" }
-uuid = { version = "1.0", features = ["v4"] }
+aws-sdk-kinesis.workspace = true
+lambda-extension.workspace = true
+uuid.workspace = true

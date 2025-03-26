@@ -121,7 +121,7 @@ use opentelemetry_sdk::{
     trace::{SpanData, SpanExporter},
 };
 use prost::Message;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 mod constants;
 use constants::{defaults, env_vars};
@@ -178,30 +178,30 @@ impl Output for StdOutput {
 ///
 /// This struct defines the JSON structure that will be written to stdout
 /// for each batch of spans.
-#[derive(Debug, Serialize)]
-struct ExporterOutput<'a> {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExporterOutput<'a> {
     /// Version identifier for the output format
     #[serde(rename = "__otel_otlp_stdout")]
-    version: &'a str,
+    pub version: &'a str,
     /// Service name that generated the spans
-    source: String,
+    pub source: String,
     /// OTLP endpoint (always http://localhost:4318/v1/traces)
-    endpoint: &'a str,
+    pub endpoint: &'a str,
     /// HTTP method (always POST)
-    method: &'a str,
+    pub method: &'a str,
     /// Content type (always application/x-protobuf)
     #[serde(rename = "content-type")]
-    content_type: &'a str,
+    pub content_type: &'a str,
     /// Content encoding (always gzip)
     #[serde(rename = "content-encoding")]
-    content_encoding: &'a str,
+    pub content_encoding: &'a str,
     /// Custom headers from environment variables
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    headers: HashMap<String, String>,
+    pub headers: HashMap<String, String>,
     /// Base64-encoded, gzipped, protobuf-serialized span data
-    payload: String,
+    pub payload: String,
     /// Whether the payload is base64 encoded (always true)
-    base64: bool,
+    pub base64: bool,
 }
 
 /// A span exporter that writes spans to stdout in OTLP format
@@ -837,8 +837,9 @@ mod tests {
         let explicit_output = Arc::new(TestOutput::new());
 
         // Create an exporter with the default() method which will use the environment variable
-        let mut explicit_exporter = OtlpStdoutSpanExporter::default();
-        explicit_exporter.output = explicit_output.clone() as Arc<dyn Output>;
+        let mut explicit_exporter = OtlpStdoutSpanExporter::builder()
+            .output(explicit_output.clone())
+            .build();
 
         // The environment variable should make it use compression level 0
         let _ = explicit_exporter.export(spans.clone()).await;

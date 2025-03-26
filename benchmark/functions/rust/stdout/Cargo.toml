@@ -11,11 +11,8 @@ tokio.workspace = true
 serde_json.workspace = true
 lambda_runtime.workspace = true
 tracing.workspace = true
-aws_lambda_events.workspace = true
 lambda-otel-lite.workspace = true
 tracing-opentelemetry.workspace = true
-opentelemetry.workspace = true
-serde.workspace = true
 [[bin]]
 name = "basic-rust-stdout"
 path = "src/main.rs"

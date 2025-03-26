@@ -1,13 +1,13 @@
 version = 0.1
 [default.global.parameters]
-stack_name = "serverless-otlp-forwarder-aws-span-processor"
+stack_name = "aws-span-processor"
 beta_features = "yes"
 
 [default.deploy.parameters]
 resolve_s3 = true
+s3_prefix = "aws-span-processor"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
 parameter_overrides = "CollectorsSecretsKeyPrefix=\"serverless-otlp-forwarder/keys\" CollectorsCacheTtlSeconds=\"300\" SpanLogGroupName=\"aws/spans\" VpcId=\"\" SubnetIds=\"\""
 image_repositories = []
-s3_prefix = "aws-span-processor"
-stack_name = "aws-span-processor"
+

@@ -7,8 +7,6 @@ Globals:
   Function:
     MemorySize: 128
     Timeout: 30
-    Architectures:
-      - arm64
     LoggingConfig:
       LogFormat: JSON
       ApplicationLogLevel: INFO
@@ -16,6 +14,8 @@ Globals:
     Tracing: Active
   
 Resources:
+  # SQS Queue - Message Queue for Quotes
+  # Receives quotes from the generator and provides them to the processor
   QuotesQueue:
     Type: AWS::SQS::Queue
     Properties:
@@ -23,14 +23,19 @@ Resources:
       VisibilityTimeout: 180
       MessageRetentionPeriod: 345600  # 4 days
 
+  # API Gateway - REST API for the backend
+  # Hosts the endpoints for the quote API
   BackendApi:
     Type: AWS::Serverless::Api
     Properties:
       Name: !Sub '${AWS::StackName}-api'
       StageName: prod
+      TracingEnabled: true
       EndpointConfiguration:
         Type: REGIONAL
 
+  # Lambda Function - Quote Storage API
+  # Backend service that handles CRUD operations for quotes in DynamoDB
   QuoteStorageAPIFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -42,6 +47,8 @@ Resources:
       CodeUri: ./rust
       Handler: bootstrap
       Runtime: provided.al2023
+      Architectures:
+        - arm64
       Description: 'Backend API for quote storage with CRUD operations'
       Policies:
         - DynamoDBCrudPolicy:
@@ -70,6 +77,9 @@ Resources:
             Method: get
             RestApiId: !Ref BackendApi
 
+  # Lambda Function - Quote UI
+  # Frontend web UI for viewing and interacting with quotes
+  # Secured with IAM auth and accessed via CloudFront
   QuoteUIFunction:
     Type: AWS::Serverless::Function
     Metadata:
@@ -81,21 +91,27 @@ Resources:
       CodeUri: ./rust
       Handler: bootstrap
       Runtime: provided.al2023
+      Architectures:
+        - arm64
       Description: 'User interface for viewing and interacting with quotes'
       FunctionUrlConfig:
-        AuthType: NONE
+        AuthType: AWS_IAM
       Environment:
         Variables:
           OTEL_SERVICE_NAME: !Sub '${AWS::StackName}-quote-ui'
           TARGET_URL: !Sub 'https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
 
+  # Lambda Function - Quote Processor
+  # Processes quotes from SQS queue and forwards them to the backend API
   QuoteProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-quote-processor'
-      CodeUri: ./python
+      CodeUri: ./python/processor
       Handler: main.lambda_handler
-      Runtime: python3.12
+      Runtime: python3.13
+      Architectures:
+        - arm64
       Description: 'Processes quotes from SQS and forwards them to the backend API'
       Environment:
         Variables:
@@ -109,13 +125,17 @@ Resources:
             BatchSize: 10
             MaximumBatchingWindowInSeconds: 10
 
+  # Lambda Function - Quote Generator
+  # Periodically generates quotes and sends them to the SQS queue
   QuoteGeneratorFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub '${AWS::StackName}-quote-generator'
       CodeUri: ./node
       Handler: index.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
       Description: 'Periodically fetches random quotes and sends them to SQS'
       Environment:
         Variables:
@@ -129,10 +149,12 @@ Resources:
         ScheduleEvent:
           Type: Schedule
           Properties:
-            Schedule: rate(5 minutes)
+            Schedule: rate(1 minute)
             Description: "Trigger the Lambda function every time period"
             Enabled: true
 
+  # DynamoDB Table - Quote Storage
+  # Stores quotes with pk as the hash key and includes TTL support
   Table:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -148,6 +170,138 @@ Resources:
         AttributeName: expiry
         Enabled: true
 
+  # CloudFront Origin Access Control - Quote UI Security
+  # Controls access to the Lambda function URL from CloudFront
+  QuoteUIOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-quote-ui-oac'
+        Description: 'OAC for Quote UI Lambda Function URL'
+        OriginAccessControlOriginType: lambda
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Lambda Permission - CloudFront Access
+  # Grants CloudFront permission to invoke the Quote UI Lambda function URL
+  QuoteUIFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !GetAtt QuoteUIFunction.Arn
+      Principal: cloudfront.amazonaws.com
+      SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${QuoteUICloudfrontDistribution}'
+      FunctionUrlAuthType: 'AWS_IAM'
+
+  # CloudFront Distribution - Quote UI CDN
+  # Low-cost CDN for serving the Quote UI globally with improved performance
+  # Uses OAC to securely access the Lambda function URL
+  QuoteUICloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Select [2, !Split ['/', !GetAtt QuoteUIFunctionUrl.FunctionUrl]]
+            Id: QuoteUIFunctionOrigin
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+            OriginAccessControlId: !GetAtt QuoteUIOAC.Id
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: QuoteUIFunctionOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: !Ref QuoteUICachePolicy
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader policy
+          LambdaFunctionAssociations:
+            - EventType: origin-request
+              LambdaFunctionARN: !Ref EdgeFunction.Version
+            - EventType: origin-response
+              LambdaFunctionARN: !Ref EdgeResponseFunction.Version
+        PriceClass: PriceClass_100  # Lowest cost option (North America and Europe only)
+        HttpVersion: http2
+        IPV6Enabled: true
+
+  # Lambda Function - Edge Function for CloudFront
+  # Simple passthrough function that can be extended for custom logic
+  # Lambda@Edge must be deployed in us-east-1 region
+  EdgeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-edge-origin-request'
+      CodeUri: ./python/edge
+      Handler: request.handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64  # Lambda@Edge only supports x86_64 architecture
+      Description: 'Lambda@Edge function for CloudFront request processing'
+      MemorySize: 128
+      Timeout: 5
+      AutoPublishAlias: live
+      Role: !GetAtt EdgeFunctionRole.Arn
+
+  # Lambda Function - Edge Response Function for CloudFront
+  # Handles origin responses and propagates trace context
+  # Lambda@Edge must be deployed in us-east-1 region
+  EdgeResponseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-edge-origin-response'
+      CodeUri: ./python/edge
+      Handler: response.handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64  # Lambda@Edge only supports x86_64 architecture
+      Description: 'Lambda@Edge function for CloudFront response processing'
+      MemorySize: 128
+      Timeout: 5
+      AutoPublishAlias: live
+      Role: !GetAtt EdgeFunctionRole.Arn
+
+  # IAM Role - Lambda@Edge Execution Role
+  # Special role that allows Lambda@Edge to be executed by CloudFront
+  EdgeFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+
+  # CloudFront Cache Policy - Quote UI
+  # Custom cache policy that respects origin Cache-Control headers but excludes Host header
+  QuoteUICachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub '${AWS::StackName}-lambda-function-url-cache-policy'
+        Comment: 'Cache policy that respects origin Cache-Control headers but excludes Host header'
+        DefaultTTL: 0
+        MinTTL: 0
+        MaxTTL: 31536000  # 1 year
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Origin
+              - X-HTTP-Method-Override
+              - X-HTTP-Method
+              - X-Method-Override
+            # Host header explicitly excluded
+          CookiesConfig:
+            CookieBehavior: all # Or "none" depending on your needs
+          QueryStringsConfig:
+            QueryStringBehavior: all # Or "none" depending on your needs
+
+# Outputs - Resource information exposed after deployment 
 Outputs:
   QuoteUIFunctionArn:
     Description: 'ARN of the Quote UI function'
@@ -164,3 +318,18 @@ Outputs:
   QuoteUIFunctionUrl:
     Description: 'URL of the Quote UI function'
     Value: !GetAtt QuoteUIFunctionUrl.FunctionUrl
+  CloudFrontUrl:
+    Description: 'CloudFront URL for accessing the Quote UI'
+    Value: !Sub 'https://${QuoteUICloudfrontDistribution.DomainName}'
+  EdgeFunctionArn:
+    Description: 'ARN of the Lambda@Edge function'
+    Value: !GetAtt EdgeFunction.Arn
+  EdgeFunctionVersionArn:
+    Description: 'ARN of the Lambda@Edge function version'
+    Value: !Ref EdgeFunction.Version
+  EdgeResponseFunctionArn:
+    Description: 'ARN of the Lambda@Edge response function'
+    Value: !GetAtt EdgeResponseFunction.Arn
+  EdgeResponseFunctionVersionArn:
+    Description: 'ARN of the Lambda@Edge response function version'
+    Value: !Ref EdgeResponseFunction.Version

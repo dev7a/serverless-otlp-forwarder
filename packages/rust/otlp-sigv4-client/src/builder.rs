@@ -240,7 +240,7 @@ mod tests {
             request
                 .uri()
                 .host()
-                .map_or(false, |host| host.ends_with(".amazonaws.com"))
+                .is_some_and(|host| host.ends_with(".amazonaws.com"))
         });
 
         let result = SigV4ClientBuilder::new()

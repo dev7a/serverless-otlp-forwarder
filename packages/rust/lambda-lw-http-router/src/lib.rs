@@ -223,7 +223,6 @@ pub use lambda_lw_http_router_macro::route;
 /// }
 /// # fn main() {}
 /// ```
-
 #[macro_export]
 macro_rules! define_router {
     (event = $event_type:ty, module = $module:ident, state = $state_type:ty) => {

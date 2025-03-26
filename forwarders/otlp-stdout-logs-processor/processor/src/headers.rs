@@ -15,13 +15,15 @@ use crate::collectors::Collector;
 use crate::telemetry::TelemetryData;
 use aws_credential_types::Credentials;
 use otlp_sigv4_client::signing::sign_request;
-use otlp_stdout_client::{LogRecord, CONTENT_ENCODING_HEADER, CONTENT_TYPE_HEADER};
-
+use otlp_stdout_span_exporter::ExporterOutput;
 /// Headers builder for outgoing log record requests.
 /// Uses the builder pattern to construct the final set of headers
 /// from various sources (log record, collector auth).
 #[derive(Debug)]
 pub struct LogRecordHeaders(HeaderMap);
+
+pub const CONTENT_TYPE_HEADER: &str = "content-type";
+pub const CONTENT_ENCODING_HEADER: &str = "content-encoding";
 
 impl LogRecordHeaders {
     /// Creates a new empty set of headers.
@@ -31,7 +33,7 @@ impl LogRecordHeaders {
 
     /// Adds headers from the log record itself.
     /// This includes both custom headers and content-type/encoding headers.
-    pub fn with_log_record(mut self, log_record: &LogRecord) -> Result<Self> {
+    pub fn with_log_record(mut self, log_record: &ExporterOutput) -> Result<Self> {
         self.extract_headers(&log_record.headers)?;
         self.add_content_headers(log_record)?;
         Ok(self)
@@ -114,40 +116,30 @@ impl LogRecordHeaders {
     }
 
     /// Helper method to extract and normalize custom headers from a HashMap
-    fn extract_headers(&mut self, headers: &Option<HashMap<String, String>>) -> Result<()> {
-        if let Some(headers) = headers {
-            for (key, value) in headers {
-                let normalized_key = key.to_lowercase();
-                let header_name = HeaderName::from_str(&normalized_key)
-                    .with_context(|| format!("Invalid header name: {}", normalized_key))?;
-                let header_value = HeaderValue::from_str(value).with_context(|| {
-                    format!("Invalid header value for {}: {}", normalized_key, value)
-                })?;
+    fn extract_headers(&mut self, headers: &HashMap<String, String>) -> Result<()> {
+        for (key, value) in headers {
+            let normalized_key = key.to_lowercase();
+            let header_name = HeaderName::from_str(&normalized_key)
+                .with_context(|| format!("Invalid header name: {}", normalized_key))?;
+            let header_value = HeaderValue::from_str(value).with_context(|| {
+                format!("Invalid header value for {}: {}", normalized_key, value)
+            })?;
 
-                self.0.insert(header_name, header_value);
-            }
+            self.0.insert(header_name, header_value);
         }
         Ok(())
     }
 
     /// Helper method to add content-type and content-encoding headers
-    fn add_content_headers(&mut self, log_record: &LogRecord) -> Result<()> {
-        if !log_record.content_type.is_empty() {
-            self.0.insert(
-                HeaderName::from_static(CONTENT_TYPE_HEADER),
-                HeaderValue::from_str(&log_record.content_type)?,
-            );
-            tracing::debug!(
-                "Added/Updated content-type header: {}",
-                log_record.content_type
-            );
-        }
-        if let Some(content_encoding) = &log_record.content_encoding {
-            self.0.insert(
-                HeaderName::from_static(CONTENT_ENCODING_HEADER),
-                HeaderValue::from_str(content_encoding)?,
-            );
-        }
+    fn add_content_headers(&mut self, log_record: &ExporterOutput) -> Result<()> {
+        self.0.insert(
+            HeaderName::from_static(CONTENT_TYPE_HEADER),
+            HeaderValue::from_str(log_record.content_type)?,
+        );
+        self.0.insert(
+            HeaderName::from_static(CONTENT_ENCODING_HEADER),
+            HeaderValue::from_str(log_record.content_encoding)?,
+        );
         Ok(())
     }
 }
@@ -164,21 +156,21 @@ mod tests {
     use aws_credential_types::Credentials;
     use std::collections::HashMap;
 
-    fn create_test_log_record() -> LogRecord {
+    fn create_test_log_record() -> ExporterOutput<'static> {
         let mut headers = HashMap::new();
         headers.insert("x-custom-header".to_string(), "custom-value".to_string());
         headers.insert("x-another-header".to_string(), "another-value".to_string());
 
-        LogRecord {
-            _otel: "test".to_string(),
+        ExporterOutput {
+            version: "test",
             source: "test-source".to_string(),
-            endpoint: "http://example.com".to_string(),
-            method: "POST".to_string(),
-            payload: serde_json::json!({"test": "data"}),
-            headers: Some(headers),
-            content_type: "application/json".to_string(),
-            content_encoding: Some("gzip".to_string()),
-            base64: None,
+            endpoint: "http://example.com",
+            method: "POST",
+            content_type: "application/json",
+            content_encoding: "gzip",
+            headers,
+            payload: "test-payload".to_string(),
+            base64: true,
         }
     }
 
@@ -303,16 +295,16 @@ mod tests {
         let mut headers = HashMap::new();
         headers.insert("invalid header name".to_string(), "value".to_string());
 
-        let log_record = LogRecord {
-            _otel: "test".to_string(),
+        let log_record = ExporterOutput {
+            version: "test",
             source: "test-source".to_string(),
-            endpoint: "http://example.com".to_string(),
-            method: "POST".to_string(),
-            payload: serde_json::json!({"test": "data"}),
-            headers: Some(headers),
-            content_type: "application/json".to_string(),
-            content_encoding: None,
-            base64: None,
+            endpoint: "http://example.com",
+            method: "POST",
+            content_type: "application/json",
+            content_encoding: "gzip",
+            headers,
+            payload: "test-payload".to_string(),
+            base64: true,
         };
 
         let result = LogRecordHeaders::default().with_log_record(&log_record);
@@ -326,16 +318,16 @@ mod tests {
         let mut headers = HashMap::new();
         headers.insert("x-test".to_string(), "invalid\u{0000}value".to_string());
 
-        let log_record = LogRecord {
-            _otel: "test".to_string(),
+        let log_record = ExporterOutput {
+            version: "test",
             source: "test-source".to_string(),
-            endpoint: "http://example.com".to_string(),
-            method: "POST".to_string(),
-            payload: serde_json::json!({"test": "data"}),
-            headers: Some(headers),
-            content_type: "application/json".to_string(),
-            content_encoding: None,
-            base64: None,
+            endpoint: "http://example.com",
+            method: "POST",
+            content_type: "application/json",
+            content_encoding: "gzip",
+            headers,
+            payload: "test-payload".to_string(),
+            base64: true,
         };
 
         let result = LogRecordHeaders::default().with_log_record(&log_record);

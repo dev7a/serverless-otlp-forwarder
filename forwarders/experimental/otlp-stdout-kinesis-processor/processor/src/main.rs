@@ -122,7 +122,10 @@ async fn main() -> Result<(), LambdaError> {
         .with_service("xray")
         .with_signing_predicate(Box::new(|request| {
             // Only sign requests to AWS endpoints
-            request.uri().host().is_some_and(|host| host.ends_with(".amazonaws.com"))
+            request
+                .uri()
+                .host()
+                .is_some_and(|host| host.ends_with(".amazonaws.com"))
         }))
         .build()?;
 
@@ -164,25 +167,53 @@ mod tests {
     use super::*;
     use aws_lambda_events::event::kinesis::{KinesisEventRecord, KinesisRecord};
     use aws_lambda_events::kinesis::KinesisEncryptionType;
+    use base64::{engine::general_purpose, Engine};
+    use flate2::{write::GzEncoder, Compression};
+    use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
+    use prost::Message;
+    use std::io::Write;
+
+    // Helper function to create gzipped, base64-encoded protobuf data
+    fn create_test_payload() -> String {
+        // Create a minimal valid OTLP protobuf payload
+        let request = ExportTraceServiceRequest {
+            resource_spans: vec![],
+        };
+
+        // Convert to protobuf bytes
+        let proto_bytes = request.encode_to_vec();
+
+        // Compress with gzip
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&proto_bytes).unwrap();
+        let compressed_bytes = encoder.finish().unwrap();
+
+        // Base64 encode
+        general_purpose::STANDARD.encode(compressed_bytes)
+    }
 
     #[test]
     fn test_convert_kinesis_record() {
         use aws_lambda_events::encodings::SecondTimestamp;
         use chrono::{TimeZone, Utc};
-        // This is the raw string that the extension sends to Kinesis
-        let record_str = r#"{
+        use serde_json::json;
+
+        // Create a valid test record with properly formatted payload
+        let log_record = json!({
             "__otel_otlp_stdout": "0.2.2",
             "source": "test-service",
             "endpoint": "http://example.com",
             "method": "POST",
-            "payload": {"resourceSpans": []},
+            "payload": create_test_payload(),
             "headers": {
-                "content-type": "application/json"
+                "content-type": "application/x-protobuf"
             },
-            "content-type": "application/json",
-            "content-encoding": null,
-            "base64": false
-        }"#;
+            "content-type": "application/x-protobuf",
+            "content-encoding": "gzip",
+            "base64": true
+        });
+
+        let record_str = serde_json::to_string(&log_record).unwrap();
 
         let record = KinesisEventRecord {
             kinesis: KinesisRecord {

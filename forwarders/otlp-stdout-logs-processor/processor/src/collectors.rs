@@ -115,14 +115,14 @@ impl Collectors {
         if COLLECTORS.get().is_some() {
             let cache_lock = COLLECTORS.get().unwrap();
             let mut cache = cache_lock.lock().await;
-            
+
             if cache.is_stale() {
                 tracing::info!("Cache expired, refreshing collectors configuration");
                 let items = fetch_collectors(client).await?;
-                
+
                 // Update the existing cache in-place
                 *cache = CollectorsCache::new(Collectors::new(items));
-                
+
                 tracing::info!("Refreshed collectors configuration");
             }
             return Ok(());
@@ -132,7 +132,7 @@ impl Collectors {
         let items = fetch_collectors(client).await?;
         let cache = CollectorsCache::new(Collectors::new(items));
         let mutex_cache = Arc::new(Mutex::new(cache));
-        
+
         COLLECTORS
             .set(mutex_cache)
             .map_err(|_| anyhow::anyhow!("Collectors cache already initialized"))?;
@@ -146,7 +146,10 @@ impl Collectors {
 
     /// Returns all collectors with endpoints configured for the given signal path
     #[instrument(skip_all)]
-    pub async fn get_signal_endpoints(original_endpoint: &str, source: &str) -> Result<Vec<Collector>> {
+    pub async fn get_signal_endpoints(
+        original_endpoint: &str,
+        source: &str,
+    ) -> Result<Vec<Collector>> {
         let cache_lock = COLLECTORS.get().expect("Collectors cache not initialized");
         let cache = cache_lock.lock().await;
 
@@ -547,7 +550,7 @@ mod tests {
         // We'll simulate cache refresh by directly manipulating the cache
         // Set a short TTL for testing
         std::env::set_var("COLLECTORS_CACHE_TTL_SECONDS", "1");
-        
+
         // Create collectors for our test
         let collector1 = Collector {
             name: "collector1".to_string(),
@@ -555,33 +558,33 @@ mod tests {
             auth: None,
             exclude: None,
         };
-        
+
         let collector2 = Collector {
             name: "collector2".to_string(),
             endpoint: "https://collector2.example.com".to_string(),
             auth: None,
             exclude: None,
         };
-        
+
         // Create a cache with just collector1
         let collectors = Collectors::new(vec![collector1.clone()]);
         let cache = CollectorsCache::new(collectors);
-        
+
         // Verify the initial state
         assert_eq!(cache.inner.items.len(), 1);
         assert_eq!(cache.inner.items[0].name, "collector1");
         assert!(!cache.is_stale());
-        
+
         // Sleep for 2 seconds to exceed TTL
         sleep(Duration::from_secs(2)).await;
-        
+
         // Verify the cache is now stale
         assert!(cache.is_stale());
-        
+
         // Now simulate a refresh with two collectors
         let collectors_updated = Collectors::new(vec![collector1.clone(), collector2.clone()]);
         let cache_updated = CollectorsCache::new(collectors_updated);
-        
+
         // Verify the updated state
         assert_eq!(cache_updated.inner.items.len(), 2);
         assert_eq!(cache_updated.inner.items[0].name, "collector1");

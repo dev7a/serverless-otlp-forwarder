@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use serde_json;
-use std::fs;
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
+use serde_json;
+use std::collections::HashMap;
+use std::fs;
 
 /// Environment variable key-value pair
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,11 +19,12 @@ impl std::str::FromStr for EnvVar {
         match parts.as_slice() {
             [key, value] => {
                 // Validate key format
-                if !key.chars().next().map_or(false, |c| c.is_ascii_alphabetic()) 
-                    || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                if !key.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                    || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                {
                     anyhow::bail!("Invalid environment variable name: {}. Must start with a letter and contain only letters, numbers, and underscores", key);
                 }
-                
+
                 Ok(EnvVar {
                     key: key.to_string(),
                     value: value.to_string(),
@@ -334,7 +335,10 @@ pub struct BatchTestConfig {
 impl BatchTestConfig {
     /// Merge environment variables from global config with test-specific ones.
     /// Test-level variables take precedence over global ones.
-    pub fn merge_environment(&self, global_env: &HashMap<String, String>) -> HashMap<String, String> {
+    pub fn merge_environment(
+        &self,
+        global_env: &HashMap<String, String>,
+    ) -> HashMap<String, String> {
         let mut merged = global_env.clone();
         // Override/add test-specific environment variables
         merged.extend(self.environment.clone());
@@ -343,7 +347,9 @@ impl BatchTestConfig {
 
     /// Get the effective proxy function, considering both global and test-level settings
     pub fn get_proxy_function(&self, global: &GlobalConfig) -> Option<String> {
-        self.proxy_function.clone().or_else(|| global.proxy_function.clone())
+        self.proxy_function
+            .clone()
+            .or_else(|| global.proxy_function.clone())
     }
 }
 

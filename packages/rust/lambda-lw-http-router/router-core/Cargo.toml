@@ -16,9 +16,9 @@ tracing.workspace = true
 opentelemetry.workspace = true
 tracing-opentelemetry.workspace = true
 opentelemetry-http.workspace = true
-lazy_static = "1.4.0"
-ctor = "0.2.5"
-regex = "1.10"
+lazy_static.workspace = true
+ctor.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

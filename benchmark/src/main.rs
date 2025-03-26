@@ -1,17 +1,17 @@
 use otel_benchmark_cli::{
     benchmark::{self, run_function_benchmark, run_stack_benchmark},
-    types::{self, EnvVar, StackBenchmarkConfig},
-    telemetry::init_telemetry,
-    report::generate_reports,
     jekyll::generate_jekyll_docs,
+    report::generate_reports,
+    telemetry::init_telemetry,
+    types::{self, EnvVar, StackBenchmarkConfig},
 };
 
 use anyhow::{Context, Result};
 use aws_sdk_cloudformation::Client as CloudFormationClient;
 use aws_sdk_lambda::Client as LambdaClient;
+use chrono::Local;
 use clap::{Parser, Subcommand, ValueEnum};
 use std::fs;
-use chrono::Local;
 use std::path::PathBuf;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -129,7 +129,7 @@ enum Commands {
     },
 
     /// Run batch benchmarks from a configuration file
-    Batch { 
+    Batch {
         /// Path to the configuration file
         #[arg(short = 'c', long = "config", default_value = "benchmark-config.yaml")]
         config: String,
@@ -235,10 +235,14 @@ async fn run() -> Result<()> {
                 rounds,
                 payload.as_deref(),
                 &output_dir,
-                &environment.iter().map(|e| (e.key.as_str(), e.value.as_str())).collect::<Vec<_>>(),
+                &environment
+                    .iter()
+                    .map(|e| (e.key.as_str(), e.value.as_str()))
+                    .collect::<Vec<_>>(),
                 true,
                 proxy.as_deref(),
-            ).await
+            )
+            .await
         }
 
         Commands::Stack {
@@ -273,7 +277,8 @@ async fn run() -> Result<()> {
                 parallel,
                 environment,
                 proxy,
-            ).await
+            )
+            .await
         }
 
         Commands::Report {
@@ -297,14 +302,15 @@ async fn run() -> Result<()> {
             let batch_config: types::BatchConfig = serde_yaml::from_reader(
                 fs::File::open(&config)
                     .context(format!("Failed to open config file: {}", config))?,
-            ).context("Failed to parse config file")?;
+            )
+            .context("Failed to parse config file")?;
 
             // Generate Jekyll documentation
             generate_jekyll_docs(&input_dir, &output_dir, &batch_config).await
         }
 
-        Commands::Batch { 
-            config, 
+        Commands::Batch {
+            config,
             input_dir,
             output_dir,
             report,
@@ -314,7 +320,8 @@ async fn run() -> Result<()> {
             let batch_config: types::BatchConfig = serde_yaml::from_reader(
                 fs::File::open(&config)
                     .context(format!("Failed to open config file: {}", config))?,
-            ).context("Failed to parse config file")?;
+            )
+            .context("Failed to parse config file")?;
 
             // Create test index
             let mut test_index = types::TestIndex {
@@ -330,17 +337,18 @@ async fn run() -> Result<()> {
                 }
 
                 println!("\nProcessing test: {} ({})", test.title, test.description);
-                
+
                 // Resolve settings (test overrides take precedence over global settings)
-                let memory_sizes = test.memory_sizes.as_ref()
+                let memory_sizes = test
+                    .memory_sizes
+                    .as_ref()
                     .unwrap_or(&batch_config.global.memory_sizes);
-                let concurrent = test.concurrent
-                    .unwrap_or(batch_config.global.concurrent);
-                let rounds = test.rounds
-                    .unwrap_or(batch_config.global.rounds);
-                let parallel = test.parallel
-                    .unwrap_or(batch_config.global.parallel);
-                let stack_name: &String = test.stack_name.as_ref()
+                let concurrent = test.concurrent.unwrap_or(batch_config.global.concurrent);
+                let rounds = test.rounds.unwrap_or(batch_config.global.rounds);
+                let parallel = test.parallel.unwrap_or(batch_config.global.parallel);
+                let stack_name: &String = test
+                    .stack_name
+                    .as_ref()
                     .unwrap_or(&batch_config.global.stack_name);
 
                 // Create test metadata
@@ -365,15 +373,18 @@ async fn run() -> Result<()> {
                     .join(stack_name)
                     .join(&test.selector)
                     .join(&test.name);
-                fs::create_dir_all(&test_dir)
-                    .context(format!("Failed to create test directory: {}", test_dir.display()))?;
+                fs::create_dir_all(&test_dir).context(format!(
+                    "Failed to create test directory: {}",
+                    test_dir.display()
+                ))?;
 
                 // Save test metadata
                 serde_yaml::to_writer(
                     fs::File::create(test_dir.join("metadata.yaml"))
                         .context("Failed to create metadata file")?,
-                    &test_metadata
-                ).context("Failed to write test metadata")?;
+                    &test_metadata,
+                )
+                .context("Failed to write test metadata")?;
 
                 // Run test for each memory configuration
                 for memory in memory_sizes {
@@ -383,13 +394,13 @@ async fn run() -> Result<()> {
                     }
 
                     println!("\nTesting with {} MB memory", memory);
-                    
+
                     // Get payload
                     let payload = match &test.payload {
-                        types::PayloadConfig::Path(path) => {
-                            Some(fs::read_to_string(path)
-                                .context(format!("Failed to read payload file: {}", path))?)
-                        },
+                        types::PayloadConfig::Path(path) => Some(
+                            fs::read_to_string(path)
+                                .context(format!("Failed to read payload file: {}", path))?,
+                        ),
                         types::PayloadConfig::Inline(value) => Some(value.to_string()),
                     };
 
@@ -403,9 +414,13 @@ async fn run() -> Result<()> {
                         output_dir: test_dir.to_string_lossy().to_string(),
                         payload,
                         parallel,
-                        environment: test.merge_environment(&batch_config.global.environment)
+                        environment: test
+                            .merge_environment(&batch_config.global.environment)
                             .iter()
-                            .map(|(k, v)| types::EnvVar { key: k.clone(), value: v.clone() })
+                            .map(|(k, v)| types::EnvVar {
+                                key: k.clone(),
+                                value: v.clone(),
+                            })
                             .collect(),
                         client_metrics_mode: true,
                         proxy_function: test.get_proxy_function(&batch_config.global),
@@ -419,13 +434,15 @@ async fn run() -> Result<()> {
             serde_yaml::to_writer(
                 fs::File::create(format!("{}/index.yaml", input_dir))
                     .context("Failed to create index file")?,
-                &test_index
-            ).context("Failed to write test index")?;
+                &test_index,
+            )
+            .context("Failed to write test index")?;
 
             // Generate report if requested
             if report {
                 println!("\nGenerating report...");
-                let output_dir = output_dir.as_ref()
+                let output_dir = output_dir
+                    .as_ref()
                     .expect("Output directory is required when generating reports");
                 generate_reports(&input_dir, output_dir, None, None).await?;
             }
@@ -433,7 +450,8 @@ async fn run() -> Result<()> {
             // Generate Jekyll documentation if requested
             if jekyll {
                 println!("\nGenerating Jekyll documentation...");
-                let output_dir = output_dir.as_ref()
+                let output_dir = output_dir
+                    .as_ref()
                     .expect("Output directory is required when generating Jekyll documentation");
                 generate_jekyll_docs(&input_dir, output_dir, &batch_config).await?;
             }
@@ -445,7 +463,6 @@ async fn run() -> Result<()> {
     if let Err(e) = tracer_provider.force_flush() {
         tracing::error!("Failed to flush spans: {}", e);
     }
-
 
     Ok(())
 }
@@ -470,12 +487,9 @@ async fn execute_stack_command(
 
     // Handle payload options - payload takes precedence over payload_file
     let payload = if payload.is_some() {
-        payload  // Use the direct JSON string if provided
+        payload // Use the direct JSON string if provided
     } else if let Some(file) = payload_file {
-        Some(
-            fs::read_to_string(&file)
-                .context(format!("Failed to read payload file: {}", file))?,
-        )
+        Some(fs::read_to_string(&file).context(format!("Failed to read payload file: {}", file))?)
     } else {
         None
     };

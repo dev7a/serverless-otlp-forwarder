@@ -1,16 +1,16 @@
 use anyhow::Result;
-use opentelemetry_sdk::trace::SdkTracerProvider;
+use aws_credential_types::provider::ProvideCredentials;
+use opentelemetry::global;
+use opentelemetry::propagation::TextMapCompositePropagator;
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_aws::trace::{XrayIdGenerator, XrayPropagator};
 use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry::global;
-use opentelemetry::trace::TracerProvider;
-use opentelemetry::propagation::TextMapCompositePropagator;
-use aws_credential_types::provider::ProvideCredentials;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use otlp_sigv4_client::SigV4ClientBuilder;
 use tracing::Level;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use opentelemetry_aws::trace::{XrayPropagator, XrayIdGenerator};
 
 /// Initialize OpenTelemetry with configuration from environment variables
 ///
@@ -22,10 +22,8 @@ use opentelemetry_aws::trace::{XrayPropagator, XrayIdGenerator};
 /// - RUST_LOG: Log level (e.g. "info" to see telemetry data)
 pub async fn init_telemetry() -> Result<SdkTracerProvider> {
     let config = aws_config::load_from_env().await;
-    let region = config.region()
-        .expect("AWS region is required")
-        .to_string();
-    
+    let region = config.region().expect("AWS region is required").to_string();
+
     let credentials = config
         .credentials_provider()
         .expect("AWS credentials provider is required")
@@ -35,14 +33,14 @@ pub async fn init_telemetry() -> Result<SdkTracerProvider> {
     // Build HTTP client with AWS SigV4 signing
     let http_client = SigV4ClientBuilder::new()
         .with_client(
-                // This is a blocking call, so we need to spawn a thread to run it, and is required since otel 0.28.0
-                std::thread::spawn(move || {
-                    reqwest::blocking::Client::builder()
-                        .build()
-                        .expect("Failed to build HTTP client")
-                })
-                .join()
-                .expect("Failed to join HTTP client thread")
+            // This is a blocking call, so we need to spawn a thread to run it, and is required since otel 0.28.0
+            std::thread::spawn(move || {
+                reqwest::blocking::Client::builder()
+                    .build()
+                    .expect("Failed to build HTTP client")
+            })
+            .join()
+            .expect("Failed to join HTTP client thread"),
         )
         .with_credentials(credentials)
         .with_region(region)
@@ -52,7 +50,7 @@ pub async fn init_telemetry() -> Result<SdkTracerProvider> {
             request
                 .uri()
                 .host()
-                .map_or(false, |host| host.ends_with(".amazonaws.com"))
+                .is_some_and(|host| host.ends_with(".amazonaws.com"))
         }))
         .build()?;
 
@@ -78,13 +76,15 @@ pub async fn init_telemetry() -> Result<SdkTracerProvider> {
 
     // Create a composite propagator with both W3C and X-Ray propagators
     let composite_propagator = TextMapCompositePropagator::new(vec![
-        Box::new(TraceContextPropagator::new()) as Box<dyn opentelemetry::propagation::TextMapPropagator + Send + Sync>,
-        Box::new(XrayPropagator::default()) as Box<dyn opentelemetry::propagation::TextMapPropagator + Send + Sync>,
+        Box::new(TraceContextPropagator::new())
+            as Box<dyn opentelemetry::propagation::TextMapPropagator + Send + Sync>,
+        Box::new(XrayPropagator::default())
+            as Box<dyn opentelemetry::propagation::TextMapPropagator + Send + Sync>,
     ]);
 
     // Set the composite propagator as the global propagator
     global::set_text_map_propagator(composite_propagator);
-     
+
     // Initialize the OpenTelemetry subscriber
     Ok(tracer_provider)
-} 
+}

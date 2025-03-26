@@ -15,16 +15,16 @@ categories = ["web-programming::http-server", "network-programming"]
 [dependencies]
 lambda-lw-http-router-core.workspace = true
 lambda-lw-http-router-macro.workspace = true
-ctor = "0.2"
+ctor.workspace = true
 
 [dev-dependencies]
 lambda_runtime.workspace = true
 aws_lambda_events.workspace = true
 serde_json.workspace = true
-tower = "0.5.1"
+tower.workspace = true
 tokio.workspace = true
-tokio-test = "0.4.4"
-doc-comment = "0.3"
+tokio-test.workspace = true
+doc-comment.workspace = true
 
 [package.metadata.cargo-machete]
 ignored = ["ctor"]

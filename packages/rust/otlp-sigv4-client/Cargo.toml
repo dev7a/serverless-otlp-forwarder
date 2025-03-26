@@ -23,9 +23,9 @@ http.workspace = true
 opentelemetry.workspace = true
 opentelemetry-http.workspace = true
 thiserror.workspace = true
-aws-credential-types = "1.2.1"
-aws-sigv4 = "1.2.6"
-bytes = "1.7"
+aws-credential-types.workspace = true
+aws-sigv4.workspace = true
+bytes.workspace = true
 
 # Optional dependencies based on features
 reqwest = { workspace = true, optional = true }
@@ -39,7 +39,7 @@ aws-config.workspace = true
 tokio.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp = { workspace = true, features = ["reqwest-blocking-client", "http-proto", "trace"] }
-doc-comment = "0.3"
+doc-comment.workspace = true
 reqwest.workspace = true
 
 

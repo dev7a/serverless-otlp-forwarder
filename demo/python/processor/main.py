@@ -3,11 +3,11 @@ import json
 from requests import Session
 from lambda_otel_lite import init_telemetry, create_traced_handler
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.trace import Status, StatusCode, get_current_span, SpanKind, Link
-from opentelemetry import context, propagate, trace
+from opentelemetry.instrumentation.boto3sqs import Boto3SQSInstrumentor, boto3sqs_getter
+from opentelemetry.trace import get_current_span, SpanKind, Link
+from opentelemetry import propagate, trace
+from opentelemetry.propagators.aws import AwsXRayPropagator
 import logging
-from opentelemetry.propagate import get_global_textmap
-from opentelemetry.propagators.textmap import Getter
 from typing import Optional, List, Mapping, Any
 
 logger = logging.getLogger(__name__)
@@ -18,71 +18,82 @@ tracer, completion_handler = init_telemetry()
 # Instrument requests library
 RequestsInstrumentor().instrument()
 
+# Instrument boto3sqs library
+Boto3SQSInstrumentor().instrument()
+
 http_session = Session()
 target_url = os.environ.get("TARGET_URL")
 
 
-class Boto3SQSGetter(Getter[dict]):
+def extract_links_from_sqs_record(record: dict) -> List[Link]:
     """
-    Custom getter for extracting trace context from SQS message attributes.
-    Implements the OpenTelemetry Getter protocol for SQS message attributes format.
-
-    The SQS message attributes have the format:
-    {
-        "key": {
-            "stringValue": "value",
-            "dataType": "String"
-        }
-    }
-    """
-
-    def get(self, carrier: dict, key: str) -> Optional[List[str]]:
-        """Get value from SQS message attributes for a given key."""
-        msg_attr = carrier.get(key)
-        if not isinstance(msg_attr, Mapping):
-            return None
-
-        value = msg_attr.get("stringValue")
-        return [value] if value is not None else None
-
-    def keys(self, carrier: dict) -> List[str]:
-        """Get all keys from the carrier."""
-        return list(carrier.keys())
-
-
-# Create a single instance of the getter
-boto3sqs_getter = Boto3SQSGetter()
-
-
-def extract_links_from_sqs_records(records: List[dict]) -> List[Link]:
-    """
-    Extract trace context links from SQS records.
+    Extract trace context links from a single SQS record.
     
     Args:
-        records: List of SQS record dictionaries
+        record: SQS record dictionary
         
     Returns:
-        List of valid span links extracted from message attributes
+        List of valid span links extracted from the record
     """
     links = []
+    xray_propagator = AwsXRayPropagator()
     
-    for record in records:
-        message_attributes = record.get("messageAttributes", {})
-        if not message_attributes:
-            continue
-            
+    # First check user-provided message attributes 
+    message_attributes = record.get("messageAttributes", {})
+    if message_attributes:
         try:
-            # Extract context using our custom getter
+            # Extract context using the library's getter
             carrier_ctx = propagate.extract(message_attributes, getter=boto3sqs_getter)
             span_context = trace.get_current_span(carrier_ctx).get_span_context()
             
             # Only add valid span contexts as links
             if span_context.is_valid:
                 links.append(Link(context=span_context))
+                logger.info(f"Added link from message attributes for message {record.get('messageId')}")
+                return links  # Return early if we found a valid context
         except Exception as e:
             logger.warning(f"Failed to extract trace context from message attributes: {e}")
+    
+    # Then check system attributes as per spec (AWS-provided)
+    system_attributes = record.get("attributes", {})
+    trace_header = system_attributes.get("AWSTraceHeader")
+    
+    if trace_header:
+        try:
+            # Create carrier with the X-Ray trace header
+            carrier = {"X-Amzn-Trace-Id": trace_header}
             
+            # Extract context using the X-Ray propagator
+            carrier_ctx = xray_propagator.extract(carrier)
+            span_context = trace.get_current_span(carrier_ctx).get_span_context()
+            
+            # Only add valid span contexts as links
+            if span_context.is_valid:
+                links.append(Link(context=span_context))
+                logger.info(f"Added link from system attributes (AWSTraceHeader) for message {record.get('messageId')}")
+        except Exception as e:
+            logger.warning(f"Failed to extract trace context from AWSTraceHeader: {e}")
+    
     return links
+
+
+def extract_links_from_sqs_records(records: List[dict]) -> List[Link]:
+    """
+    Extract trace context links from all SQS records.
+    
+    Args:
+        records: List of SQS record dictionaries
+        
+    Returns:
+        List of valid span links extracted from all records
+    """
+    all_links = []
+    
+    for record in records:
+        links = extract_links_from_sqs_record(record)
+        all_links.extend(links)
+            
+    return all_links
 
 
 @tracer.start_as_current_span("save_quote")
@@ -158,13 +169,16 @@ def sqs_event_extractor(event, context):
             queue_arn = records[0]["eventSourceARN"]
             attributes["messaging.destination.name"] = queue_arn.split(":")[-1]
     
-    # Return span attributes with extracted links
     return SpanAttributes(
         trigger=TriggerType.PUBSUB,
         attributes=attributes,
         span_name="process-sqs-messages",
         kind=SpanKind.CONSUMER,
-        links=links
+        links=links,
+        carrier={
+            "X-Amzn-Trace-Id": os.environ.get("_X_AMZN_TRACE_ID")
+        }
+
     )
 
 
@@ -209,10 +223,29 @@ def lambda_handler(event, lambda_context):
         quote = json.loads(message_body)
         message_id = record.get("messageId")
 
+        # Extract links for this specific message
+        message_links = extract_links_from_sqs_record(record)
+
         with tracer.start_as_current_span(
-            "process-quote", kind=SpanKind.CONSUMER
+            f"process-quote-{message_id}", 
+            kind=SpanKind.CONSUMER,
+            links=message_links  # Add links directly to this span
         ) as record_span:
+            # Set messaging-specific attributes
             record_span.set_attribute("messaging.message_id", message_id)
+            record_span.set_attribute("messaging.system", "aws.sqs")
+            record_span.set_attribute("messaging.operation", "process")
+            
+            # Set quote-specific attributes to help identify the message content
+            if quote:
+                record_span.set_attribute("quote.id", str(quote.get("id", "")))
+                record_span.set_attribute("quote.author", quote.get("author", ""))
+                # Set a short preview of the quote text (first 50 chars)
+                quote_text = quote.get("quote", "")
+                if quote_text:
+                    preview = (quote_text[:47] + "...") if len(quote_text) > 50 else quote_text
+                    record_span.set_attribute("quote.text.preview", preview)
+            
             record_span.add_event(
                 "Processing quote",
                 {

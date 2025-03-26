@@ -6,16 +6,16 @@ Description: AWS Lambda function that processes CloudWatch Logs containing spans
 Parameters:
   CollectorsSecretsKeyPrefix:
     Type: String
-    Default: otlp-forwarder
+    Default: 'serverless-otlp-forwarder/keys'
     Description: Prefix for the collectors configuration secrets in AWS Secrets Manager 
   CollectorsCacheTtlSeconds:
     Type: Number
-    Default: 300
     Description: TTL in seconds for the collectors configuration cache
+    Default: 300
   SpanLogGroupName:
     Type: String
-    Description: Log group name for spans
     Default: 'aws/spans'
+    Description: Log group name for spans
   VpcId:
     Type: String
     Description: (Optional) VPC ID for VPC deployment
@@ -33,6 +33,8 @@ Resources:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: span_processor
     Properties:
       FunctionName: !Ref AWS::StackName
       Description: !Sub 'Processes aws/spans from AWS Account ${AWS::AccountId}'
@@ -42,14 +44,19 @@ Resources:
       Architectures:
         - arm64
       Timeout: 60
+      LoggingConfig:
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: INFO
       Environment:
         Variables:
-          RUST_LOG: info
           OTEL_EXPORTER_OTLP_ENDPOINT: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:endpoint}}'
           OTEL_EXPORTER_OTLP_HEADERS: !Sub '{{resolve:secretsmanager:${CollectorsSecretsKeyPrefix}/default:SecretString:auth}}'
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
           COLLECTORS_CACHE_TTL_SECONDS: !Ref CollectorsCacheTtlSeconds
           COLLECTORS_SECRETS_KEY_PREFIX: !Sub '${CollectorsSecretsKeyPrefix}/'
+          LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
+          LAMBDA_TRACING_ENABLE_FMT_LAYER: false
       Policies:
         - Version: '2012-10-17'
           Statement:
@@ -82,6 +89,14 @@ Resources:
         - IpProtocol: -1
           CidrIp: 0.0.0.0/0
 
+  SpanProcessorPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SpansProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: logs.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${SpanLogGroupName}:*'
+
   SpanProcessorSubscription:
     Type: AWS::Logs::SubscriptionFilter
     Properties:
@@ -89,19 +104,7 @@ Resources:
       FilterPattern: '' # Empty pattern to capture all logs
       DestinationArn: !GetAtt SpansProcessorFunction.Arn
 
-  SpanProcessorPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref SpansProcessorFunction
-      Principal: logs.amazonaws.com
-      SourceArn: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${SpanLogGroupName}:*'
-
 Outputs:
-  SpansProcessorFunctionName:
-    Description: Name of the Span processor Lambda function
-    Value: !Ref SpansProcessorFunction
-
   SpansProcessorFunctionArn:
     Description: ARN of the Span processor Lambda function
     Value: !GetAtt SpansProcessorFunction.Arn

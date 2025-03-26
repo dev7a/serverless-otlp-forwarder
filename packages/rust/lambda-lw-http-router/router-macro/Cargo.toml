@@ -12,15 +12,15 @@ repository = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packa
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "2.0", features = ["full"] }
-darling = "0.20"
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+darling.workspace = true
 
 [dev-dependencies]
 lambda_runtime.workspace = true
 aws_lambda_events.workspace = true
 serde_json.workspace = true
-tower = "0.5.1"
+tower.workspace = true
 tokio.workspace = true
-tokio-test = "0.4.4"
+tokio-test.workspace = true

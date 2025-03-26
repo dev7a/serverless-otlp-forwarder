@@ -18,22 +18,24 @@ version = "0.9.0"
 edition = "2021"
 authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
 license = "MIT"
-rust-version = "1.80"
+rust-version = "1.75"
 
 [workspace.dependencies]
 # Local packages
-otlp-stdout-client = { path = "packages/rust/otlp-stdout-client" }
 otlp-sigv4-client = { path = "packages/rust/otlp-sigv4-client" }
-lambda-otel-utils = { path = "packages/rust/lambda-otel-utils" }
 lambda-lw-http-router = { path = "packages/rust/lambda-lw-http-router" }
 lambda-lw-http-router-core = { path = "packages/rust/lambda-lw-http-router/router-core" }
 lambda-lw-http-router-macro = { path = "packages/rust/lambda-lw-http-router/router-macro" }
 otlp-stdout-span-exporter = { path = "packages/rust/otlp-stdout-span-exporter" }
 lambda-otel-lite = { path = "packages/rust/lambda-otel-lite" }
+
 # Runtime and async
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1.82"
 futures = "0.3.31"
+futures-util = "0.3.31"
+futures-executor = "0.3.31"
+tokio-test = "0.4.4"
 
 # OpenTelemetry and tracing
 opentelemetry = { version = "0.28.0", features = ["trace"] }
@@ -45,6 +47,8 @@ opentelemetry-aws = { version = "0.16.0", features = ["detector-aws-lambda"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-opentelemetry = "0.29.0"
+log = "0.4"
+reqwest-tracing = { version = "0.5.6", features = ["opentelemetry_0_28"] }
 
 # AWS related
 aws-config = { version = "1.5.7", features = ["behavior-version-latest"] }
@@ -53,16 +57,65 @@ aws_lambda_events = { version = "0.16.0", default-features = false, features = [
 lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
 aws-credential-types = "1.1.4"
 aws-sdk-secretsmanager = { version = "1.48.0", features = ["behavior-version-latest"] }
+aws-sigv4 = "1.2.6"
+lambda-extension = "0.11.0"
+serde_dynamo = { version = "4.2.14", features = ["aws-sdk-dynamodb+1"] }
+aws-sdk-lambda = "1.59.0"
+aws-sdk-cloudformation = "1.26.0"
+aws-sdk-dynamodb = "1.43.0"
+aws-sdk-kinesis = { version = "1", default-features = false, features = ["rt-tokio"] }
 
 # HTTP and networking
 reqwest = { version = "0.12.7", default-features = false, features = ["json", "rustls-tls"] }
 http = "1.1.0"
+reqwest-middleware = "0.4.1"
+tower = "0.5.2"
+url = "2.5.3"
 
-# Serialization and utils
+# Serialization and data formats
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.133"
+serde_yaml = "0.9"
+prost = "0.13.5"
+
+# Error handling
 thiserror = "2.0.4"
 anyhow = "1.0.94"
+
+# Utilities and helpers
+base64 = "0.22.1"
+flate2 = "1.0"
+regex = "1.11.1"
+pin-project = "1.1.8"
+bytes = "1.7"
+chrono = "0.4.39"
+uuid = { version = "1.0", features = ["v4"] }
+urlencoding = "2.1.3"
+bon = "3.5"
+lazy_static = "1.5.0"
+libc = "0.2"
+sha2 = "0.10.8"
+tera = "1.20.0"
+statrs = "0.18.0"
+clap = { version = "4.4.8", features = ["derive"] }
+indicatif = { version = "0.17", features = ["improved_unicode"] }
+headless_chrome = "1.0.9"
+
+# Macros and code generation
+proc-macro2 = "1.0"
+quote = "1.0"
+darling = "0.20"
+syn = { version = "2.0", features = ["full"] }
+ctor = "0.2.5"
+
+# Testing tools
+mockall = "0.13.1"
+sealed_test = "1.0"
+serial_test = "3.2.0"
+wiremock = "0.6"
+mockito = "1.2"
+doc-comment = "0.3"
+rand = "0.9.0"
 
 [profile.release]
 opt-level = "z"

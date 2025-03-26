@@ -46,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
         .with_service("xray") // AWS X-Ray service name
         .with_signing_predicate(Box::new(|request| {
             // Only sign requests to AWS endpoints
-            request.uri().host().map_or(false, |host| {
+            request.uri().host().is_some_and(|host| {
                 // Sign requests to AWS endpoints (*.amazonaws.com)
                 // You might want to be more specific based on your needs
                 host.ends_with(".amazonaws.com")

@@ -1,10 +1,13 @@
-use anyhow::{Context, Result};
-use std::{fs, path::Path};
-use crate::types::{BatchConfig, BatchTestConfig, BenchmarkReport, ColdStartMetrics, WarmStartMetrics, ClientMetrics};
 use crate::benchmark::calculate_stats;
-use serde_json::json;
-use tera::{Tera, Context as TeraContext};
+use crate::types::{
+    BatchConfig, BatchTestConfig, BenchmarkReport, ClientMetrics, ColdStartMetrics,
+    WarmStartMetrics,
+};
+use anyhow::{Context, Result};
 use serde::Serialize;
+use serde_json::json;
+use std::{fs, path::Path};
+use tera::{Context as TeraContext, Tera};
 
 #[derive(Debug, Serialize)]
 struct ChartSection {
@@ -114,94 +117,109 @@ fn generate_chart(
     // Create raw measurements data based on chart type
     let raw_data = match chart_type {
         ChartType::ColdStartInit => {
-            let measurements: Vec<_> = reports.iter().map(|(name, report)| {
-                json!({
-                    "name": name,
-                    "measurements": report.cold_starts.iter().map(|m| {
-                        json!({
-                            "init_duration": m.init_duration,
-                            "timestamp": m.timestamp
-                        })
-                    }).collect::<Vec<_>>()
+            let measurements: Vec<_> = reports
+                .iter()
+                .map(|(name, report)| {
+                    json!({
+                        "name": name,
+                        "measurements": report.cold_starts.iter().map(|m| {
+                            json!({
+                                "init_duration": m.init_duration,
+                                "timestamp": m.timestamp
+                            })
+                        }).collect::<Vec<_>>()
+                    })
                 })
-            }).collect();
+                .collect();
             json!({
                 "chart_type": chart_type.title(),
                 "memory_size": memory_size,
                 "function_title": function_title,
                 "measurements": measurements
             })
-        },
+        }
         ChartType::ColdStartServer => {
-            let measurements: Vec<_> = reports.iter().map(|(name, report)| {
-                json!({
-                    "name": name,
-                    "measurements": report.cold_starts.iter().map(|m| {
-                        json!({
-                            "duration": m.duration,
-                            "timestamp": m.timestamp
-                        })
-                    }).collect::<Vec<_>>()
+            let measurements: Vec<_> = reports
+                .iter()
+                .map(|(name, report)| {
+                    json!({
+                        "name": name,
+                        "measurements": report.cold_starts.iter().map(|m| {
+                            json!({
+                                "duration": m.duration,
+                                "timestamp": m.timestamp
+                            })
+                        }).collect::<Vec<_>>()
+                    })
                 })
-            }).collect();
+                .collect();
             json!({
                 "chart_type": chart_type.title(),
                 "memory_size": memory_size,
                 "function_title": function_title,
                 "measurements": measurements
             })
-        },
+        }
         ChartType::WarmStartClient => {
-            let measurements: Vec<_> = reports.iter().map(|(name, report)| {
-                json!({
-                    "name": name,
-                    "measurements": report.client_measurements.iter().map(|m| {
-                        json!({
-                            "client_duration": m.client_duration,
-                            "timestamp": m.timestamp
-                        })
-                    }).collect::<Vec<_>>()
+            let measurements: Vec<_> = reports
+                .iter()
+                .map(|(name, report)| {
+                    json!({
+                        "name": name,
+                        "measurements": report.client_measurements.iter().map(|m| {
+                            json!({
+                                "client_duration": m.client_duration,
+                                "timestamp": m.timestamp
+                            })
+                        }).collect::<Vec<_>>()
+                    })
                 })
-            }).collect();
+                .collect();
             json!({
                 "chart_type": chart_type.title(),
                 "memory_size": memory_size,
                 "function_title": function_title,
                 "measurements": measurements
             })
-        },
+        }
         ChartType::WarmStartServer | ChartType::WarmStartNet | ChartType::WarmStartNetOverTime => {
-            let measurements: Vec<_> = reports.iter().map(|(name, report)| {
-                json!({
-                    "name": name,
-                    "measurements": report.warm_starts.iter().map(|m| {
-                        json!({
-                            "duration": m.duration,
-                            "net_duration": m.net_duration,
-                            "timestamp": m.timestamp
-                        })
-                    }).collect::<Vec<_>>()
+            let measurements: Vec<_> = reports
+                .iter()
+                .map(|(name, report)| {
+                    json!({
+                        "name": name,
+                        "measurements": report.warm_starts.iter().map(|m| {
+                            json!({
+                                "duration": m.duration,
+                                "net_duration": m.net_duration,
+                                "timestamp": m.timestamp
+                            })
+                        }).collect::<Vec<_>>()
+                    })
                 })
-            }).collect();
+                .collect();
             json!({
                 "chart_type": chart_type.title(),
                 "memory_size": memory_size,
                 "function_title": function_title,
                 "measurements": measurements
             })
-        },
+        }
         ChartType::MemoryUsage => {
-            let measurements: Vec<_> = reports.iter().map(|(name, report)| {
-                json!({
-                    "name": name,
-                    "measurements": report.warm_starts.iter().map(|m| {
-                        json!({
-                            "max_memory_used": m.max_memory_used,
-                            "timestamp": m.timestamp
-                        })
-                    }).collect::<Vec<_>>()
+            let measurements: Vec<_> = reports
+                .iter()
+                .map(|(name, report)| {
+                    json!({
+                        "name": name,
+                        "measurements": report.warm_starts.iter().map(|m| {
+                            json!({
+                                "max_memory_used": m.max_memory_used,
+                                "timestamp": m.timestamp
+                            })
+                        }).collect::<Vec<_>>()
+                    })
                 })
-            }).collect();
+                .collect();
             json!({
                 "chart_type": chart_type.title(),
                 "memory_size": memory_size,
@@ -212,13 +230,14 @@ fn generate_chart(
     };
 
     // Build memory links
-    let memory_links: Vec<MemoryLink> = memory_sizes.iter().map(|&size| {
-        MemoryLink {
+    let memory_links: Vec<MemoryLink> = memory_sizes
+        .iter()
+        .map(|&size| MemoryLink {
             size: format!(" {}MB ", size),
             is_current: size == memory_size,
             anchor_id: format!("{}-{}", base_id, size),
-        }
-    }).collect();
+        })
+        .collect();
 
     // Build navigation data
     let navigation = NavigationData {
@@ -257,20 +276,22 @@ fn generate_chart(
                 },
                 NavigationLink {
                     title: ChartType::WarmStartNetOverTime.title().to_string(),
-                    anchor_id: format!("{}-{}", ChartType::WarmStartNetOverTime.base_id(), memory_size),
+                    anchor_id: format!(
+                        "{}-{}",
+                        ChartType::WarmStartNetOverTime.base_id(),
+                        memory_size
+                    ),
                     is_current: matches!(chart_type, ChartType::WarmStartNetOverTime),
                 },
             ],
         },
         resources: NavigationGroup {
             label: "Resources".to_string(),
-            links: vec![
-                NavigationLink {
-                    title: ChartType::MemoryUsage.title().to_string(),
-                    anchor_id: format!("{}-{}", ChartType::MemoryUsage.base_id(), memory_size),
-                    is_current: matches!(chart_type, ChartType::MemoryUsage),
-                },
-            ],
+            links: vec![NavigationLink {
+                title: ChartType::MemoryUsage.title().to_string(),
+                anchor_id: format!("{}-{}", ChartType::MemoryUsage.base_id(), memory_size),
+                is_current: matches!(chart_type, ChartType::MemoryUsage),
+            }],
         },
     };
 
@@ -288,7 +309,7 @@ fn generate_chart(
     // Save raw measurements data in the same directory as index.md
     fs::write(
         output_dir.join(&section.data_filename),
-        serde_json::to_string_pretty(&raw_data)?
+        serde_json::to_string_pretty(&raw_data)?,
     )?;
 
     let mut context = TeraContext::new();
@@ -300,7 +321,9 @@ fn generate_chart(
 }
 
 /// Calculate statistics for cold start init duration
-fn calculate_cold_start_init_stats(cold_starts: &[ColdStartMetrics]) -> Option<(f64, f64, f64, f64, f64)> {
+fn calculate_cold_start_init_stats(
+    cold_starts: &[ColdStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
     if cold_starts.is_empty() {
         return None;
     }
@@ -310,7 +333,9 @@ fn calculate_cold_start_init_stats(cold_starts: &[ColdStartMetrics]) -> Option<(
 }
 
 /// Calculate statistics for cold start server duration
-fn calculate_cold_start_server_stats(cold_starts: &[ColdStartMetrics]) -> Option<(f64, f64, f64, f64, f64)> {
+fn calculate_cold_start_server_stats(
+    cold_starts: &[ColdStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
     if cold_starts.is_empty() {
         return None;
     }
@@ -320,7 +345,10 @@ fn calculate_cold_start_server_stats(cold_starts: &[ColdStartMetrics]) -> Option
 }
 
 /// Calculate statistics for warm start metrics
-fn calculate_warm_start_stats(warm_starts: &[WarmStartMetrics], field: fn(&WarmStartMetrics) -> f64) -> Option<(f64, f64, f64, f64, f64)> {
+fn calculate_warm_start_stats(
+    warm_starts: &[WarmStartMetrics],
+    field: fn(&WarmStartMetrics) -> f64,
+) -> Option<(f64, f64, f64, f64, f64)> {
     if warm_starts.is_empty() {
         return None;
     }
@@ -330,11 +358,16 @@ fn calculate_warm_start_stats(warm_starts: &[WarmStartMetrics], field: fn(&WarmS
 }
 
 /// Calculate statistics for client metrics
-fn calculate_client_stats(client_measurements: &[ClientMetrics]) -> Option<(f64, f64, f64, f64, f64)> {
+fn calculate_client_stats(
+    client_measurements: &[ClientMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
     if client_measurements.is_empty() {
         return None;
     }
-    let durations: Vec<f64> = client_measurements.iter().map(|m| m.client_duration).collect();
+    let durations: Vec<f64> = client_measurements
+        .iter()
+        .map(|m| m.client_duration)
+        .collect();
     let stats = calculate_stats(&durations);
     Some((stats.mean, stats.min, stats.max, stats.p95, stats.p50))
 }
@@ -344,13 +377,20 @@ fn calculate_memory_stats(warm_starts: &[WarmStartMetrics]) -> Option<(f64, f64,
     if warm_starts.is_empty() {
         return None;
     }
-    let memory: Vec<f64> = warm_starts.iter().map(|m| m.max_memory_used as f64).collect();
+    let memory: Vec<f64> = warm_starts
+        .iter()
+        .map(|m| m.max_memory_used as f64)
+        .collect();
     let stats = calculate_stats(&memory);
     Some((stats.mean, stats.min, stats.max, stats.p95, stats.p50))
 }
 
 /// Create series data for bar charts
-fn create_bar_series(name: &str, stats: (f64, f64, f64, f64, f64), unit: &str) -> serde_json::Value {
+fn create_bar_series(
+    name: &str,
+    stats: (f64, f64, f64, f64, f64),
+    unit: &str,
+) -> serde_json::Value {
     let (avg, min, max, p95, p50) = stats;
     json!({
         "type": "bar",
@@ -372,12 +412,15 @@ fn create_bar_series(name: &str, stats: (f64, f64, f64, f64, f64), unit: &str) -
 
 /// Create line chart series for warm start net duration over time
 fn create_net_duration_time_series(report: &BenchmarkReport, name: &str) -> serde_json::Value {
-    let data: Vec<_> = report.warm_starts
+    let data: Vec<_> = report
+        .warm_starts
         .iter()
         .enumerate()
-        .map(|(index, m)| json!({
-            "value": [index + 1, m.net_duration.round()],
-        }))
+        .map(|(index, m)| {
+            json!({
+                "value": [index + 1, m.net_duration.round()],
+            })
+        })
         .collect();
 
     json!({
@@ -496,18 +539,19 @@ fn create_line_chart_options(series: Vec<serde_json::Value>, unit: &str) -> serd
 /// Load all benchmark reports from a directory
 fn load_benchmark_reports(data_dir: &Path) -> Result<Vec<(String, BenchmarkReport)>> {
     let mut reports = Vec::new();
-    
+
     for entry in fs::read_dir(data_dir)? {
         let entry = entry?;
         let path = entry.path();
-        
+
         // Skip non-JSON files
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
             continue;
         }
 
         // Get the function name from the filename (remove the .json extension)
-        let function_name = path.file_stem()
+        let function_name = path
+            .file_stem()
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?
             .to_string();
@@ -547,16 +591,20 @@ pub async fn generate_jekyll_docs(
 
     // Create directories and index files for each test
     for (index, test) in batch_config.tests.iter().enumerate() {
-        let stack_name = test.stack_name.as_ref()
+        let stack_name = test
+            .stack_name
+            .as_ref()
             .unwrap_or(&batch_config.global.stack_name);
-        
+
         // Create directory name in the format: <stack>-<selector>-<test-name>
         let test_dir_name = format!("{}-{}-{}", stack_name, test.selector, test.name);
         let test_dir = Path::new(output_dir).join(&test_dir_name);
 
         // Create the test directory
-        fs::create_dir_all(&test_dir)
-            .context(format!("Failed to create test directory: {}", test_dir.display()))?;
+        fs::create_dir_all(&test_dir).context(format!(
+            "Failed to create test directory: {}",
+            test_dir.display()
+        ))?;
 
         // Determine data directory path for reports
         let data_dir = Path::new(input_dir)
@@ -565,8 +613,18 @@ pub async fn generate_jekyll_docs(
             .join(&test.name);
 
         // Generate test index.md
-        generate_test_index(&test_dir, test, stack_name, batch_config, &data_dir, index + 1)
-            .context(format!("Failed to generate test index for {}", test_dir.display()))?;
+        generate_test_index(
+            &test_dir,
+            test,
+            stack_name,
+            batch_config,
+            &data_dir,
+            index + 1,
+        )
+        .context(format!(
+            "Failed to generate test index for {}",
+            test_dir.display()
+        ))?;
     }
 
     Ok(())
@@ -579,43 +637,71 @@ fn generate_main_index(output_dir: &str, batch_config: &BatchConfig) -> Result<(
     let mut context = TeraContext::new();
 
     // Add title and description
-    context.insert("title", batch_config.global.title.as_deref().unwrap_or("Benchmark Results"));
+    context.insert(
+        "title",
+        batch_config
+            .global
+            .title
+            .as_deref()
+            .unwrap_or("Benchmark Results"),
+    );
     context.insert("nav_order", &90);
-    context.insert("description", batch_config.global.description.as_deref().unwrap_or("Performance benchmarks for different OpenTelemetry instrumentation approaches."));
+    context.insert(
+        "description",
+        batch_config.global.description.as_deref().unwrap_or(
+            "Performance benchmarks for different OpenTelemetry instrumentation approaches.",
+        ),
+    );
     context.insert("function_title", "");
-    
+
     // Add global description if available
     if let Some(global_desc) = &batch_config.global.description {
         context.insert("global_description", global_desc);
     }
 
     // Create items for each test
-    let items: Vec<_> = batch_config.tests.iter().map(|test| {
-        let stack_name = test.stack_name.as_ref()
-            .unwrap_or(&batch_config.global.stack_name);
-        let dir_name = format!("{}-{}-{}", stack_name, test.selector, test.name);
-        
-        json!({
-            "title": test.title,
-            "path": dir_name,
-            "subtitle": test.description
+    let items: Vec<_> = batch_config
+        .tests
+        .iter()
+        .map(|test| {
+            let stack_name = test
+                .stack_name
+                .as_ref()
+                .unwrap_or(&batch_config.global.stack_name);
+            let dir_name = format!("{}-{}-{}", stack_name, test.selector, test.name);
+
+            json!({
+                "title": test.title,
+                "path": dir_name,
+                "subtitle": test.description
+            })
         })
-    }).collect();
+        .collect();
     context.insert("items", &items);
 
     // Render and write the file
-    let content = tera.render("index.jekyll.md", &context)
+    let content = tera
+        .render("index.jekyll.md", &context)
         .context("Failed to render main index template")?;
 
-    fs::write(&index_path, content)
-        .context(format!("Failed to write index file: {}", index_path.display()))?;
+    fs::write(&index_path, content).context(format!(
+        "Failed to write index file: {}",
+        index_path.display()
+    ))?;
 
     println!("- {}", index_path.display());
     Ok(())
 }
 
 /// Generate a test-specific index.md file
-fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str, batch_config: &BatchConfig, data_dir: &Path, nav_order: usize) -> Result<()> {
+fn generate_test_index(
+    test_dir: &Path,
+    test: &BatchTestConfig,
+    stack_name: &str,
+    batch_config: &BatchConfig,
+    data_dir: &Path,
+    nav_order: usize,
+) -> Result<()> {
     let tera = init_templates()?;
     let index_path = test_dir.join("index.md");
     let mut context = TeraContext::new();
@@ -643,20 +729,30 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
         json!({
             "label": "Function",
             "value": format!("{}", test.selector)
-        })
+        }),
     ];
 
     // Memory configurations
-    let memory_sizes = test.memory_sizes.as_ref()
+    let memory_sizes = test
+        .memory_sizes
+        .as_ref()
         .unwrap_or(&batch_config.global.memory_sizes);
-    let memory_sizes_str = format!("{} MB", memory_sizes.iter().map(|m| m.to_string()).collect::<Vec<String>>().join(", "));
+    let memory_sizes_str = format!(
+        "{} MB",
+        memory_sizes
+            .iter()
+            .map(|m| m.to_string())
+            .collect::<Vec<String>>()
+            .join(", ")
+    );
     metadata.push(json!({
         "label": "Memory Configurations",
         "value": memory_sizes_str
     }));
 
     // Concurrent invocations
-    let concurrent = test.concurrent
+    let concurrent = test
+        .concurrent
         .map(|c| c.to_string())
         .unwrap_or_else(|| batch_config.global.concurrent.to_string());
     metadata.push(json!({
@@ -665,7 +761,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
     }));
 
     // Warm start rounds
-    let rounds = test.rounds
+    let rounds = test
+        .rounds
         .map(|r| r.to_string())
         .unwrap_or_else(|| batch_config.global.rounds.to_string());
     metadata.push(json!({
@@ -674,8 +771,7 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
     }));
 
     // Parallel execution
-    let parallel = test.parallel
-        .unwrap_or(batch_config.global.parallel);
+    let parallel = test.parallel.unwrap_or(batch_config.global.parallel);
     metadata.push(json!({
         "label": "Parallel Execution",
         "value": if parallel { "yes" } else { "no" }
@@ -684,14 +780,14 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
     // Environment variables
     if !test.environment.is_empty() || !batch_config.global.environment.is_empty() {
         let mut env_vars = Vec::new();
-        
+
         // Add global environment variables
         for (key, value) in &batch_config.global.environment {
             if !test.environment.contains_key(key) {
                 env_vars.push(format!("{}={}", key, value));
             }
         }
-        
+
         // Add test-specific environment variables
         for (key, value) in &test.environment {
             env_vars.push(format!("{}={}", key, value));
@@ -711,7 +807,7 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
     let memory_sizes_ref: &[u32] = &memory_sizes_vec;
     for memory in memory_sizes.iter().map(|&m| m as u32) {
         let memory_dir = data_dir.join(format!("{}mb", memory));
-        
+
         let mut item = json!({
             "title": format!("{} MB Configuration", memory),
             "anchor_id": format!("{}-mb-configuration", memory)
@@ -729,7 +825,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                 let mut charts = Vec::new();
 
                 // Init Duration (Cold Start)
-                let series: Vec<_> = reports.iter()
+                let series: Vec<_> = reports
+                    .iter()
                     .filter_map(|(name, report)| {
                         calculate_cold_start_init_stats(&report.cold_starts)
                             .map(|stats| create_bar_series(name, stats, "ms"))
@@ -751,7 +848,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                 }
 
                 // Server Duration (Cold Start)
-                let series: Vec<_> = reports.iter()
+                let series: Vec<_> = reports
+                    .iter()
                     .filter_map(|(name, report)| {
                         calculate_cold_start_server_stats(&report.cold_starts)
                             .map(|stats| create_bar_series(name, stats, "ms"))
@@ -773,7 +871,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                 }
 
                 // Client Duration (Warm Start)
-                let series: Vec<_> = reports.iter()
+                let series: Vec<_> = reports
+                    .iter()
                     .filter_map(|(name, report)| {
                         calculate_client_stats(&report.client_measurements)
                             .map(|stats| create_bar_series(name, stats, "ms"))
@@ -795,7 +894,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                 }
 
                 // Server Duration (Warm Start)
-                let series: Vec<_> = reports.iter()
+                let series: Vec<_> = reports
+                    .iter()
                     .filter_map(|(name, report)| {
                         calculate_warm_start_stats(&report.warm_starts, |m| m.duration)
                             .map(|stats| create_bar_series(name, stats, "ms"))
@@ -817,7 +917,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                 }
 
                 // Net Duration (Warm Start)
-                let series: Vec<_> = reports.iter()
+                let series: Vec<_> = reports
+                    .iter()
                     .filter_map(|(name, report)| {
                         calculate_warm_start_stats(&report.warm_starts, |m| m.net_duration)
                             .map(|stats| create_bar_series(name, stats, "ms"))
@@ -839,7 +940,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                 }
 
                 // Net Duration Over Time (Warm Start)
-                let series: Vec<_> = reports.iter()
+                let series: Vec<_> = reports
+                    .iter()
                     .map(|(name, report)| create_net_duration_time_series(report, name))
                     .collect();
                 if !series.is_empty() {
@@ -858,7 +960,8 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                 }
 
                 // Memory Usage (Resources)
-                let series: Vec<_> = reports.iter()
+                let series: Vec<_> = reports
+                    .iter()
                     .filter_map(|(name, report)| {
                         calculate_memory_stats(&report.warm_starts)
                             .map(|stats| create_bar_series(name, stats, "MB"))
@@ -883,7 +986,7 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
                     item["charts"] = json!(charts);
                 }
                 items.push(item);
-            },
+            }
             Err(e) => {
                 item["subtitle"] = json!(format!("Failed to load benchmark data: {}", e));
                 items.push(item);
@@ -894,12 +997,15 @@ fn generate_test_index(test_dir: &Path, test: &BatchTestConfig, stack_name: &str
     context.insert("items", &items);
 
     // Render and write the file
-    let content = tera.render("index.chart.md", &context)
+    let content = tera
+        .render("index.chart.md", &context)
         .context("Failed to render test index template")?;
 
-    fs::write(&index_path, content)
-        .context(format!("Failed to write test index file: {}", index_path.display()))?;
+    fs::write(&index_path, content).context(format!(
+        "Failed to write test index file: {}",
+        index_path.display()
+    ))?;
 
     println!("- {}", index_path.display());
     Ok(())
-} 
+}

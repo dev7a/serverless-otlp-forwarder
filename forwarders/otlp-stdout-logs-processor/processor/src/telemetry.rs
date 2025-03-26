@@ -2,12 +2,11 @@ use anyhow::{Context, Result};
 use base64::{engine::general_purpose, Engine};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
-use otlp_stdout_client::LogRecord;
+use otlp_stdout_span_exporter::ExporterOutput;
 use prost::Message;
 use serde_json::Value;
 use std::io::{Read, Write};
 use tracing;
-
 /// Core structure representing telemetry data to be forwarded
 #[derive(Clone)]
 pub struct TelemetryData {
@@ -144,34 +143,29 @@ impl TelemetryData {
     }
 
     /// Creates a TelemetryData instance from a LogRecord
-    pub fn from_log_record(record: LogRecord) -> Result<Self> {
-        let payload = match &record.payload {
-            Value::String(s) => s.to_string(),
-            _ => serde_json::to_string(&record.payload)
-                .context("Failed to serialize JSON payload")?,
+    pub fn from_log_record(record: ExporterOutput<'_>) -> Result<Self> {
+        // Decode base64 payload
+        let raw_payload = if record.base64 {
+            general_purpose::STANDARD
+                .decode(&record.payload)
+                .context("Failed to decode base64 payload")?
+        } else {
+            record.payload.as_bytes().to_vec()
         };
 
-        let raw_payload = match record.base64 {
-            Some(true) => general_purpose::STANDARD
-                .decode(&payload)
-                .context("Failed to decode base64 payload"),
-            _ => Ok(payload.as_bytes().to_vec()),
-        }
-        .context("Failed to decode base64 payload")?;
-
-        // Convert to protobuf format (uncompressed)
+        // Convert to uncompressed protobuf format
         let protobuf_payload = Self::convert_to_protobuf(
             raw_payload,
-            &record.content_type,
-            record.content_encoding.as_deref(),
+            record.content_type,
+            Some(record.content_encoding),
         )?;
 
         Ok(Self {
-            source: record.source,
-            endpoint: record.endpoint,
+            source: record.source.clone(),
+            endpoint: record.endpoint.to_string(),
             payload: protobuf_payload,
             content_type: "application/x-protobuf".to_string(),
-            content_encoding: None, // No compression at this stage
+            content_encoding: None, // Decompressed at this stage
         })
     }
 
@@ -199,27 +193,51 @@ impl TelemetryData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{engine::general_purpose, Engine};
+    use flate2::{write::GzEncoder, Compression};
     use serde_json::json;
+    use std::collections::HashMap;
+    use std::io::Write;
+
+    // Helper function to create gzipped, base64-encoded protobuf data
+    fn create_test_payload() -> String {
+        // Create a minimal valid OTLP protobuf payload
+        let request = ExportTraceServiceRequest {
+            resource_spans: vec![],
+        };
+
+        // Convert to protobuf bytes
+        let proto_bytes = request.encode_to_vec();
+
+        // Compress with gzip
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&proto_bytes).unwrap();
+        let compressed_bytes = encoder.finish().unwrap();
+
+        // Base64 encode
+        general_purpose::STANDARD.encode(compressed_bytes)
+    }
 
     #[test]
     fn test_from_log_record() {
-        let record = LogRecord {
-            _otel: "test".to_string(),
+        let record = ExporterOutput {
+            version: "test",
             source: "test-service".to_string(),
-            endpoint: "http://example.com".to_string(),
-            method: "POST".to_string(),
-            payload: json!({"resourceSpans": []}), // Valid OTLP JSON structure
-            headers: Some(std::collections::HashMap::new()),
-            content_type: "application/json".to_string(),
-            content_encoding: None, // Not compressed in the test
-            base64: None,
+            endpoint: "http://example.com",
+            method: "POST",
+            payload: create_test_payload(),
+            headers: HashMap::new(),
+            content_type: "application/x-protobuf",
+            content_encoding: "gzip",
+            base64: true,
         };
 
         let telemetry = TelemetryData::from_log_record(record).unwrap();
         assert_eq!(telemetry.source, "test-service");
         assert_eq!(telemetry.endpoint, "http://example.com");
         assert_eq!(telemetry.content_type, "application/x-protobuf");
-        assert_eq!(telemetry.content_encoding, None); // No compression at this stage
+        // Since we're decompressing at from_log_record level, it should be None
+        assert_eq!(telemetry.content_encoding, None);
     }
 
     #[test]
