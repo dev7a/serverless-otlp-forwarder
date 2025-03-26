@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.4] - 2025-03-26
+### Changed
+- Updated dependencies to use workspace references for better consistency and maintainability
+- Fixed a missing comma in the Tower example JSON response
+
 ## [0.11.3] - 2025-03-24
 ### Enhanced
 - Improved `LAMBDA_TRACING_ENABLE_FMT_LAYER` environment variable handling:
