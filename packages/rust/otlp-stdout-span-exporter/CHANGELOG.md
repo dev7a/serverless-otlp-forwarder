@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2025-03-26
+
+### Changed
+- Updated dependencies to use workspace references for better consistency
+- Made `ExporterOutput` struct and fields public for improved API access
+- Improved test implementation using builder pattern
+
 ## [0.11.0] - 2024-03-18
 
 ### Added
