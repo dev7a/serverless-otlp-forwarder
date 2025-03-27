@@ -31,6 +31,7 @@ pub mod defaults {
 
     /// Default endpoint for OTLP export.
     pub const ENDPOINT: &str = "http://localhost:4318/v1/traces";
+    pub const LOGS_ENDPOINT: &str = "http://localhost:4318/v1/logs";
 }
 
 /// Resource attribute keys used in the Lambda resource.
