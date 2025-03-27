@@ -121,16 +121,6 @@ impl OtlpStdoutLogExporter {
             output: output.unwrap_or(Arc::new(StdOutput)),
         }
     }
-
-    #[cfg(test)]
-    fn with_test_output() -> (Self, Arc<crate::TestOutput>) {
-        let output = Arc::new(crate::TestOutput::new());
-
-        // Use the standard new() method to ensure environment variables are respected
-        let exporter = Self::builder().output(output.clone()).build();
-
-        (exporter, output)
-    }
 }
 
 impl LogExporter for OtlpStdoutLogExporter {
