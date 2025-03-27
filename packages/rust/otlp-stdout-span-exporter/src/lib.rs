@@ -126,6 +126,10 @@ use serde::{Deserialize, Serialize};
 mod constants;
 use constants::{defaults, env_vars};
 
+mod logs;
+mod utils;
+pub use logs::*;
+
 // Make the constants module and its sub-modules publicly available
 pub mod consts {
     //! Constants used by the exporter.
@@ -302,19 +306,6 @@ impl OtlpStdoutSpanExporter {
         }
     }
 
-    /// Get the service name from environment variables.
-    ///
-    /// The service name is determined in the following order:
-    ///
-    /// 1. OTEL_SERVICE_NAME
-    /// 2. AWS_LAMBDA_FUNCTION_NAME
-    /// 3. "unknown-service" (fallback)
-    fn get_service_name() -> String {
-        env::var(env_vars::SERVICE_NAME)
-            .or_else(|_| env::var(env_vars::AWS_LAMBDA_FUNCTION_NAME))
-            .unwrap_or_else(|_| defaults::SERVICE_NAME.to_string())
-    }
-
     #[cfg(test)]
     fn with_test_output() -> (Self, Arc<TestOutput>) {
         let output = Arc::new(TestOutput::new());
@@ -323,44 +314,6 @@ impl OtlpStdoutSpanExporter {
         let exporter = Self::builder().output(output.clone()).build();
 
         (exporter, output)
-    }
-
-    /// Parse headers from environment variables
-    ///
-    /// This function reads headers from both global and trace-specific
-    /// environment variables, with trace-specific headers taking precedence.
-    fn parse_headers() -> HashMap<String, String> {
-        let mut headers = HashMap::new();
-
-        // Parse global headers first
-        if let Ok(global_headers) = env::var("OTEL_EXPORTER_OTLP_HEADERS") {
-            Self::parse_header_string(&global_headers, &mut headers);
-        }
-
-        // Parse trace-specific headers (these take precedence)
-        if let Ok(trace_headers) = env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS") {
-            Self::parse_header_string(&trace_headers, &mut headers);
-        }
-
-        headers
-    }
-
-    /// Parse a header string in the format key1=value1,key2=value2
-    ///
-    /// # Arguments
-    ///
-    /// * `header_str` - The header string to parse
-    /// * `headers` - The map to store parsed headers in
-    fn parse_header_string(header_str: &str, headers: &mut HashMap<String, String>) {
-        for pair in header_str.split(',') {
-            if let Some((key, value)) = pair.split_once('=') {
-                let key = key.trim().to_lowercase();
-                // Skip content-type and content-encoding as they are fixed
-                if key != "content-type" && key != "content-encoding" {
-                    headers.insert(key, value.trim().to_string());
-                }
-            }
-        }
     }
 }
 
@@ -413,12 +366,12 @@ impl SpanExporter for OtlpStdoutSpanExporter {
             // Prepare the output
             let output_data = ExporterOutput {
                 version: VERSION,
-                source: Self::get_service_name(),
+                source: get_service_name(),
                 endpoint: defaults::ENDPOINT,
                 method: "POST",
                 content_type: "application/x-protobuf",
                 content_encoding: "gzip",
-                headers: Self::parse_headers(),
+                headers: parse_headers(),
                 payload,
                 base64: true,
             };
@@ -480,6 +433,7 @@ extern crate doc_comment;
 
 #[cfg(doctest)]
 use doc_comment::doctest;
+use utils::{get_service_name, parse_headers};
 
 #[cfg(doctest)]
 doctest!("../README.md", readme);
@@ -574,7 +528,7 @@ mod tests {
             "key2=override,key3=value3",
         );
 
-        let headers = OtlpStdoutSpanExporter::parse_headers();
+        let headers = parse_headers();
 
         assert_eq!(headers.get("key1").unwrap(), "value1");
         assert_eq!(headers.get("key2").unwrap(), "override");
@@ -590,21 +544,15 @@ mod tests {
         // Test OTEL_SERVICE_NAME priority
         std::env::set_var(env_vars::SERVICE_NAME, "otel-service");
         std::env::set_var(env_vars::AWS_LAMBDA_FUNCTION_NAME, "lambda-function");
-        assert_eq!(OtlpStdoutSpanExporter::get_service_name(), "otel-service");
+        assert_eq!(get_service_name(), "otel-service");
 
         // Test AWS_LAMBDA_FUNCTION_NAME fallback
         std::env::remove_var(env_vars::SERVICE_NAME);
-        assert_eq!(
-            OtlpStdoutSpanExporter::get_service_name(),
-            "lambda-function"
-        );
+        assert_eq!(get_service_name(), "lambda-function");
 
         // Test default fallback
         std::env::remove_var(env_vars::AWS_LAMBDA_FUNCTION_NAME);
-        assert_eq!(
-            OtlpStdoutSpanExporter::get_service_name(),
-            defaults::SERVICE_NAME
-        );
+        assert_eq!(get_service_name(), defaults::SERVICE_NAME);
     }
 
     #[test]

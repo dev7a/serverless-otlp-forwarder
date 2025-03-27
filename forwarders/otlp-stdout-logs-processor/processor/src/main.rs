@@ -25,8 +25,8 @@ use lambda_otlp_forwarder::{
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
 use otlp_stdout_span_exporter::ExporterOutput;
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
 
@@ -40,41 +40,47 @@ fn convert_log_event(event: &LogEntry) -> Result<TelemetryData> {
     let record = &event.message;
 
     tracing::debug!("Received log record: {}", record);
-    
+
     // Parse the JSON into a serde_json::Value first
     let json_value: Value = serde_json::from_str(record)
         .with_context(|| format!("Failed to parse log record as JSON: {}", record))?;
-    
+
     // Extract fields from the JSON, handling different field names and versions
-    let version = json_value.get("__otel_otlp_stdout")
+    let version = json_value
+        .get("__otel_otlp_stdout")
         .and_then(Value::as_str)
         .unwrap_or("unknown");
-        
-    let source = json_value.get("source")
+
+    let source = json_value
+        .get("source")
         .and_then(Value::as_str)
         .map(ToString::to_string)
         .unwrap_or_else(|| "unknown".to_string());
-        
-    let endpoint = json_value.get("endpoint")
+
+    let endpoint = json_value
+        .get("endpoint")
         .and_then(Value::as_str)
         .unwrap_or("http://localhost:4318/v1/traces");
-        
-    let method = json_value.get("method")
+
+    let method = json_value
+        .get("method")
         .and_then(Value::as_str)
         .unwrap_or("POST");
-        
+
     // Check both kebab-case and snake_case variants for content type
-    let content_type = json_value.get("content-type")
+    let content_type = json_value
+        .get("content-type")
         .or_else(|| json_value.get("content_type"))
         .and_then(Value::as_str)
         .unwrap_or("application/x-protobuf");
-        
+
     // Same for content encoding
-    let content_encoding = json_value.get("content-encoding")
+    let content_encoding = json_value
+        .get("content-encoding")
         .or_else(|| json_value.get("content_encoding"))
         .and_then(Value::as_str)
         .unwrap_or("gzip");
-    
+
     // Extract headers if present
     let mut headers = HashMap::new();
     if let Some(headers_obj) = json_value.get("headers").and_then(Value::as_object) {
@@ -84,17 +90,19 @@ fn convert_log_event(event: &LogEntry) -> Result<TelemetryData> {
             }
         }
     }
-    
+
     // Get payload and base64 flag
-    let payload = json_value.get("payload")
+    let payload = json_value
+        .get("payload")
         .and_then(Value::as_str)
         .map(ToString::to_string)
         .unwrap_or_default();
-        
-    let base64 = json_value.get("base64")
+
+    let base64 = json_value
+        .get("base64")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    
+
     // Create ExporterOutput with borrowed references where required
     let exporter_output = ExporterOutput {
         version,
@@ -107,7 +115,7 @@ fn convert_log_event(event: &LogEntry) -> Result<TelemetryData> {
         payload,
         base64,
     };
-    
+
     tracing::debug!("Successfully parsed log record with version: {}", version);
 
     // Convert to TelemetryData (will be in uncompressed protobuf format)
