@@ -179,29 +179,36 @@ impl Output for StdOutput {
 /// This struct defines the JSON structure that will be written to stdout
 /// for each batch of spans.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ExporterOutput<'a> {
+pub struct ExporterOutput {
     /// Version identifier for the output format
     #[serde(rename = "__otel_otlp_stdout")]
-    pub version: &'a str,
+    pub version: String,
     /// Service name that generated the spans
     pub source: String,
     /// OTLP endpoint (always http://localhost:4318/v1/traces)
-    pub endpoint: &'a str,
+    pub endpoint: String,
     /// HTTP method (always POST)
-    pub method: &'a str,
+    pub method: String,
     /// Content type (always application/x-protobuf)
     #[serde(rename = "content-type")]
-    pub content_type: &'a str,
+    pub content_type: String,
     /// Content encoding (always gzip)
     #[serde(rename = "content-encoding")]
-    pub content_encoding: &'a str,
+    pub content_encoding: String,
     /// Custom headers from environment variables
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    pub headers: HashMap<String, String>,
+    #[serde(skip_serializing_if = "ExporterOutput::is_headers_empty")]
+    pub headers: Option<HashMap<String, String>>,
     /// Base64-encoded, gzipped, protobuf-serialized span data
     pub payload: String,
     /// Whether the payload is base64 encoded (always true)
     pub base64: bool,
+}
+
+impl ExporterOutput {
+    /// Helper function for serde to skip serializing empty headers
+    fn is_headers_empty(headers: &Option<HashMap<String, String>>) -> bool {
+        headers.as_ref().map_or(true, |h| h.is_empty())
+    }
 }
 
 /// A span exporter that writes spans to stdout in OTLP format
@@ -231,10 +238,12 @@ pub struct ExporterOutput<'a> {
 pub struct OtlpStdoutSpanExporter {
     /// GZIP compression level (0-9)
     compression_level: u8,
-    /// Output implementation (stdout or test buffer)
-    output: Arc<dyn Output>,
     /// Optional resource to be included with all spans
     resource: Option<Resource>,
+    // Optional headers
+    headers: Option<HashMap<String, String>>,
+    /// Output implementation (stdout or test buffer)
+    output: Arc<dyn Output>,
 }
 
 impl Default for OtlpStdoutSpanExporter {
@@ -265,8 +274,9 @@ impl OtlpStdoutSpanExporter {
     #[builder]
     pub fn new(
         compression_level: Option<u8>,
-        output: Option<Arc<dyn Output>>,
         resource: Option<Resource>,
+        headers: Option<HashMap<String, String>>,
+        output: Option<Arc<dyn Output>>,
     ) -> Self {
         // Set gzip_level with proper precedence (env var > constructor param > default)
         let compression_level = match env::var(env_vars::COMPRESSION_LEVEL) {
@@ -295,9 +305,26 @@ impl OtlpStdoutSpanExporter {
             }
         };
 
+        // Combine constructor headers with environment headers, giving priority to env vars
+        let headers = match headers {
+            Some(constructor_headers) => {
+                if let Some(env_headers) = Self::parse_headers() {
+                    // Merge, with env headers taking precedence
+                    let mut merged = constructor_headers;
+                    merged.extend(env_headers);
+                    Some(merged)
+                } else {
+                    // No env headers, use constructor headers
+                    Some(constructor_headers)
+                }
+            },
+            None => Self::parse_headers(), // Use env headers only
+        };
+
         Self {
             compression_level,
             resource,
+            headers,
             output: output.unwrap_or(Arc::new(StdOutput)),
         }
     }
@@ -329,20 +356,44 @@ impl OtlpStdoutSpanExporter {
     ///
     /// This function reads headers from both global and trace-specific
     /// environment variables, with trace-specific headers taking precedence.
-    fn parse_headers() -> HashMap<String, String> {
-        let mut headers = HashMap::new();
+    fn parse_headers() -> Option<HashMap<String, String>> {
+        // Function to get and parse headers from an env var
+        let get_headers = |var_name: &str| -> Option<HashMap<String, String>> {
+            env::var(var_name).ok().map(|header_str| {
+                let mut map = HashMap::new();
+                Self::parse_header_string(&header_str, &mut map);
+                map
+            })
+        };
 
-        // Parse global headers first
-        if let Ok(global_headers) = env::var("OTEL_EXPORTER_OTLP_HEADERS") {
-            Self::parse_header_string(&global_headers, &mut headers);
+        // Try to get headers from both env vars
+        let global_headers = get_headers("OTEL_EXPORTER_OTLP_HEADERS");
+        let trace_headers = get_headers("OTEL_EXPORTER_OTLP_TRACES_HEADERS");
+        
+        // If no headers were found in either env var, return None
+        if global_headers.is_none() && trace_headers.is_none() {
+            return None;
         }
-
-        // Parse trace-specific headers (these take precedence)
-        if let Ok(trace_headers) = env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS") {
-            Self::parse_header_string(&trace_headers, &mut headers);
+        
+        // Create a merged map, with trace headers taking precedence
+        let mut result = HashMap::new();
+        
+        // Add global headers first (if any)
+        if let Some(headers) = global_headers {
+            result.extend(headers);
         }
-
-        headers
+        
+        // Add trace-specific headers (if any) - these will override any duplicates
+        if let Some(headers) = trace_headers {
+            result.extend(headers);
+        }
+        
+        // Return None for empty map, otherwise Some
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
+        }
     }
 
     /// Parse a header string in the format key1=value1,key2=value2
@@ -412,13 +463,13 @@ impl SpanExporter for OtlpStdoutSpanExporter {
 
             // Prepare the output
             let output_data = ExporterOutput {
-                version: VERSION,
+                version: VERSION.to_string(),
                 source: Self::get_service_name(),
-                endpoint: defaults::ENDPOINT,
-                method: "POST",
-                content_type: "application/x-protobuf",
-                content_encoding: "gzip",
-                headers: Self::parse_headers(),
+                endpoint: defaults::ENDPOINT.to_string(),
+                method: "POST".to_string(),
+                content_type: "application/x-protobuf".to_string(),
+                content_encoding: "gzip".to_string(),
+                headers: self.headers.clone(),
                 payload,
                 base64: true,
             };
@@ -575,6 +626,10 @@ mod tests {
         );
 
         let headers = OtlpStdoutSpanExporter::parse_headers();
+        
+        // Headers should be Some since we set environment variables
+        assert!(headers.is_some());
+        let headers = headers.unwrap();
 
         assert_eq!(headers.get("key1").unwrap(), "value1");
         assert_eq!(headers.get("key2").unwrap(), "override");
@@ -674,6 +729,7 @@ mod tests {
             compression_level: 0,
             resource: None,
             output: no_compression_output.clone() as Arc<dyn Output>,
+            headers: None,
         };
         let _ = no_compression_exporter.export(spans.clone()).await;
         let no_compression_size = extract_payload_size(&no_compression_output.get_output()[0]);
@@ -684,6 +740,7 @@ mod tests {
             compression_level: 9,
             resource: None,
             output: max_compression_output.clone() as Arc<dyn Output>,
+            headers: None,
         };
         let _ = max_compression_exporter.export(spans.clone()).await;
         let max_compression_size = extract_payload_size(&max_compression_output.get_output()[0]);
@@ -874,5 +931,91 @@ mod tests {
             .compression_level(9)
             .build();
         assert_eq!(exporter.compression_level, 9);
+    }
+
+    #[test]
+    fn test_exporter_output_deserialization() {
+        // Create a sample JSON string that would be produced by the exporter
+        let json_str = r#"{
+            "__otel_otlp_stdout": "0.11.1",
+            "source": "test-service",
+            "endpoint": "http://localhost:4318/v1/traces",
+            "method": "POST",
+            "content-type": "application/x-protobuf",
+            "content-encoding": "gzip",
+            "headers": {
+                "api-key": "test-key",
+                "custom-header": "test-value"
+            },
+            "payload": "SGVsbG8gd29ybGQ=",
+            "base64": true
+        }"#;
+
+        // Deserialize the JSON string into an ExporterOutput
+        let output: ExporterOutput = serde_json::from_str(json_str).unwrap();
+
+        // Verify that all fields are correctly deserialized
+        assert_eq!(output.version, "0.11.1");
+        assert_eq!(output.source, "test-service");
+        assert_eq!(output.endpoint, "http://localhost:4318/v1/traces");
+        assert_eq!(output.method, "POST");
+        assert_eq!(output.content_type, "application/x-protobuf");
+        assert_eq!(output.content_encoding, "gzip");
+        assert_eq!(output.headers.as_ref().unwrap().len(), 2);
+        assert_eq!(output.headers.as_ref().unwrap().get("api-key").unwrap(), "test-key");
+        assert_eq!(output.headers.as_ref().unwrap().get("custom-header").unwrap(), "test-value");
+        assert_eq!(output.payload, "SGVsbG8gd29ybGQ=");
+        assert!(output.base64);
+
+        // Verify that we can decode the base64 payload (if it's valid base64)
+        let decoded = base64_engine.decode(&output.payload).unwrap();
+        let payload_text = String::from_utf8(decoded).unwrap();
+        assert_eq!(payload_text, "Hello world");
+    }
+
+    #[test]
+    fn test_exporter_output_deserialization_dynamic() {
+        // Create a dynamic JSON string using String operations
+        let version = "0.11.1".to_string();
+        let service = "dynamic-service".to_string();
+        let payload = base64_engine.encode("Dynamic payload");
+        
+        // Build the JSON dynamically
+        let json_str = format!(
+            r#"{{
+                "__otel_otlp_stdout": "{}",
+                "source": "{}",
+                "endpoint": "http://localhost:4318/v1/traces",
+                "method": "POST",
+                "content-type": "application/x-protobuf",
+                "content-encoding": "gzip",
+                "headers": {{
+                    "dynamic-key": "dynamic-value"
+                }},
+                "payload": "{}",
+                "base64": true
+            }}"#,
+            version, service, payload
+        );
+
+        // Deserialize the dynamic JSON string
+        let output: ExporterOutput = serde_json::from_str(&json_str).unwrap();
+
+        // Verify fields
+        assert_eq!(output.version, version);
+        assert_eq!(output.source, service);
+        assert_eq!(output.endpoint, "http://localhost:4318/v1/traces");
+        assert_eq!(output.method, "POST");
+        assert_eq!(output.content_type, "application/x-protobuf");
+        assert_eq!(output.content_encoding, "gzip");
+        assert_eq!(output.headers.as_ref().unwrap().len(), 1);
+        assert_eq!(output.headers.as_ref().unwrap().get("dynamic-key").unwrap(), "dynamic-value");
+        assert_eq!(output.payload, payload);
+        assert!(output.base64);
+
+        // Verify payload decoding
+        let decoded = base64_engine.decode(&output.payload).unwrap();
+        let payload_text = String::from_utf8(decoded).unwrap();
+        assert_eq!(payload_text, "Dynamic payload");
     }
 }
