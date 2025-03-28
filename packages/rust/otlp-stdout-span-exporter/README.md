@@ -15,7 +15,8 @@ The message envelope carries some metadata about the spans, such as the service 
     "custom-header": "value"
   },
   "payload": "<base64-encoded-gzipped-protobuf>",
-  "base64": true
+  "base64": true,
+  "level": "DEBUG"
 }
 ```
 Outputting the telemetry data in this format directly to stdout makes the library easily usable in network constrained environments, or in enviroments that are particularly sensitive to the overhead of HTTP connections, such as AWS Lambda.
@@ -92,6 +93,7 @@ The exporter respects the following environment variables:
 - `OTEL_EXPORTER_OTLP_HEADERS`: Headers for OTLP export, used in the `headers` field
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
+- `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL`: Log level added to the output recordfor filtering (debug, info, warn, error)
 
 ## Configuration
 
@@ -115,13 +117,22 @@ export OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL=9
 The exporter provides two main ways to create and configure it:
 
 ```rust
-use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
+use otlp_stdout_span_exporter::{OtlpStdoutSpanExporter, LogLevel};
 
 // Create with default options (compression level 6)
 let default_exporter = OtlpStdoutSpanExporter::default();
 
 // Create with specific compression level
 let max_compression_exporter = OtlpStdoutSpanExporter::builder().compression_level(9).build();
+
+// Create with a specific log level
+let debug_level_exporter = OtlpStdoutSpanExporter::builder().level(LogLevel::Debug).build();
+
+// Create with both compression and log level
+let configured_exporter = OtlpStdoutSpanExporter::builder()
+    .compression_level(9)
+    .level(LogLevel::Trace)
+    .build();
 ```
 
 Note that even when using these constructor parameters, environment variables will still take precedence if they are set.

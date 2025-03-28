@@ -19,6 +19,9 @@ pub mod env_vars {
 
     /// Trace-specific headers (takes precedence over OTLP_HEADERS).
     pub const OTLP_TRACES_HEADERS: &str = "OTEL_EXPORTER_OTLP_TRACES_HEADERS";
+    
+    /// Log level for exported spans
+    pub const LOG_LEVEL: &str = "OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL";
 }
 
 /// Default values for configuration parameters.

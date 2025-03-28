@@ -122,6 +122,8 @@ use opentelemetry_sdk::{
 };
 use prost::Message;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+use std::fmt::Display;
 
 mod constants;
 use constants::{defaults, env_vars};
@@ -139,6 +141,50 @@ pub mod consts {
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Log level for the exported spans
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LogLevel {
+    /// Debug level (most verbose)
+    Debug,
+    /// Info level (default)
+    Info,
+    /// Warning level
+    Warn,
+    /// Error level (least verbose)
+    Error,
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        LogLevel::Info
+    }
+}
+
+impl FromStr for LogLevel {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "debug" => Ok(LogLevel::Debug),
+            "info" => Ok(LogLevel::Info),
+            "warn" | "warning" => Ok(LogLevel::Warn),
+            "error" => Ok(LogLevel::Error),
+            _ => Err(format!("Invalid log level: {}", s)),
+        }
+    }
+}
+
+impl Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Debug => write!(f, "DEBUG"),
+            LogLevel::Info => write!(f, "INFO"),
+            LogLevel::Warn => write!(f, "WARN"),
+            LogLevel::Error => write!(f, "ERROR"),
+        }
+    }
+}
 
 /// Trait for output handling
 ///
@@ -202,6 +248,9 @@ pub struct ExporterOutput {
     pub payload: String,
     /// Whether the payload is base64 encoded (always true)
     pub base64: bool,
+    /// Log level for filtering (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
 }
 
 impl ExporterOutput {
@@ -244,6 +293,8 @@ pub struct OtlpStdoutSpanExporter {
     headers: Option<HashMap<String, String>>,
     /// Output implementation (stdout or test buffer)
     output: Arc<dyn Output>,
+    /// Optional log level for the exported spans
+    level: Option<LogLevel>,
 }
 
 impl Default for OtlpStdoutSpanExporter {
@@ -277,6 +328,7 @@ impl OtlpStdoutSpanExporter {
         resource: Option<Resource>,
         headers: Option<HashMap<String, String>>,
         output: Option<Arc<dyn Output>>,
+        level: Option<LogLevel>,
     ) -> Self {
         // Set gzip_level with proper precedence (env var > constructor param > default)
         let compression_level = match env::var(env_vars::COMPRESSION_LEVEL) {
@@ -320,12 +372,32 @@ impl OtlpStdoutSpanExporter {
             },
             None => Self::parse_headers(), // Use env headers only
         };
+        
+        // Set log level with proper precedence (env var > constructor param > default)
+        let level = match env::var(env_vars::LOG_LEVEL) {
+            Ok(value) => match LogLevel::from_str(&value) {
+                Ok(log_level) => Some(log_level),
+                Err(e) => {
+                    log::warn!(
+                        "Invalid log level in {}: {}, using fallback",
+                        env_vars::LOG_LEVEL,
+                        e
+                    );
+                    level
+                }
+            },
+            Err(_) => {
+                // No environment variable, use parameter
+                level
+            }
+        };
 
         Self {
             compression_level,
             resource,
             headers,
             output: output.unwrap_or(Arc::new(StdOutput)),
+            level,
         }
     }
 
@@ -472,6 +544,7 @@ impl SpanExporter for OtlpStdoutSpanExporter {
                 headers: self.headers.clone(),
                 payload,
                 base64: true,
+                level: self.level.map(|l| l.to_string()),
             };
 
             // Write using the output implementation
@@ -730,6 +803,7 @@ mod tests {
             resource: None,
             output: no_compression_output.clone() as Arc<dyn Output>,
             headers: None,
+            level: None,
         };
         let _ = no_compression_exporter.export(spans.clone()).await;
         let no_compression_size = extract_payload_size(&no_compression_output.get_output()[0]);
@@ -741,6 +815,7 @@ mod tests {
             resource: None,
             output: max_compression_output.clone() as Arc<dyn Output>,
             headers: None,
+            level: None,
         };
         let _ = max_compression_exporter.export(spans.clone()).await;
         let max_compression_size = extract_payload_size(&max_compression_output.get_output()[0]);
@@ -1017,5 +1092,93 @@ mod tests {
         let decoded = base64_engine.decode(&output.payload).unwrap();
         let payload_text = String::from_utf8(decoded).unwrap();
         assert_eq!(payload_text, "Dynamic payload");
+    }
+
+    #[test]
+    fn test_log_level_from_str() {
+        assert_eq!(LogLevel::from_str("debug").unwrap(), LogLevel::Debug);
+        assert_eq!(LogLevel::from_str("DEBUG").unwrap(), LogLevel::Debug);
+        assert_eq!(LogLevel::from_str("info").unwrap(), LogLevel::Info);
+        assert_eq!(LogLevel::from_str("INFO").unwrap(), LogLevel::Info);
+        assert_eq!(LogLevel::from_str("warn").unwrap(), LogLevel::Warn);
+        assert_eq!(LogLevel::from_str("warning").unwrap(), LogLevel::Warn);
+        assert_eq!(LogLevel::from_str("WARN").unwrap(), LogLevel::Warn);
+        assert_eq!(LogLevel::from_str("error").unwrap(), LogLevel::Error);
+        assert_eq!(LogLevel::from_str("ERROR").unwrap(), LogLevel::Error);
+        
+        assert!(LogLevel::from_str("invalid").is_err());
+    }
+    
+    #[test]
+    fn test_log_level_display() {
+        assert_eq!(LogLevel::Debug.to_string(), "DEBUG");
+        assert_eq!(LogLevel::Info.to_string(), "INFO");
+        assert_eq!(LogLevel::Warn.to_string(), "WARN");
+        assert_eq!(LogLevel::Error.to_string(), "ERROR");
+    }
+    
+    #[test]
+    #[serial]
+    fn test_log_level_from_env() {
+        // Set environment variable
+        std::env::set_var(env_vars::LOG_LEVEL, "debug");
+        let exporter = OtlpStdoutSpanExporter::default();
+        assert_eq!(exporter.level, Some(LogLevel::Debug));
+        
+        // Test with invalid level
+        std::env::set_var(env_vars::LOG_LEVEL, "invalid");
+        let exporter = OtlpStdoutSpanExporter::default();
+        assert_eq!(exporter.level, None);
+        
+        // Test with constructor parameter
+        std::env::remove_var(env_vars::LOG_LEVEL);
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .level(LogLevel::Error)
+            .build();
+        assert_eq!(exporter.level, Some(LogLevel::Error));
+        
+        // Test env var takes precedence over constructor
+        std::env::set_var(env_vars::LOG_LEVEL, "warn");
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .level(LogLevel::Error)
+            .build();
+        assert_eq!(exporter.level, Some(LogLevel::Warn));
+        
+        // Clean up
+        std::env::remove_var(env_vars::LOG_LEVEL);
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_log_level_in_output() {
+        // Create a test exporter with a specific log level
+        let (mut exporter, output) = OtlpStdoutSpanExporter::with_test_output();
+        exporter.level = Some(LogLevel::Debug);
+        let span = create_test_span();
+        
+        let result = exporter.export(vec![span]).await;
+        assert!(result.is_ok());
+        
+        let output_lines = output.get_output();
+        assert_eq!(output_lines.len(), 1);
+        
+        // Parse the JSON to check the level field
+        let json: Value = serde_json::from_str(&output_lines[0]).unwrap();
+        assert_eq!(json["level"], "DEBUG");
+        
+        // Test with no level set
+        let (mut exporter, output) = OtlpStdoutSpanExporter::with_test_output();
+        exporter.level = None;
+        let span = create_test_span();
+        
+        let result = exporter.export(vec![span]).await;
+        assert!(result.is_ok());
+        
+        let output_lines = output.get_output();
+        assert_eq!(output_lines.len(), 1);
+        
+        // Parse the JSON to check level field is omitted
+        let json: Value = serde_json::from_str(&output_lines[0]).unwrap();
+        assert!(!json.as_object().unwrap().contains_key("level"));
     }
 }

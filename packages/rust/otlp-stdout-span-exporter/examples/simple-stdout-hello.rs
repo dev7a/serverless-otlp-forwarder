@@ -2,7 +2,7 @@ use opentelemetry::global;
 use opentelemetry::trace::{Tracer, get_active_span};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
+use otlp_stdout_span_exporter::{OtlpStdoutSpanExporter, LogLevel};
 use std::collections::HashMap;
 
 fn init_tracer() -> SdkTracerProvider {
@@ -11,6 +11,7 @@ fn init_tracer() -> SdkTracerProvider {
     
     let exporter = OtlpStdoutSpanExporter::builder()
         .headers(headers)
+        .level(LogLevel::Debug)
         .build();
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)

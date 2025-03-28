@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2025-03-28
+
+### Added
+- Added optional `level` field in the output for easier filtering in log aggregation systems
+- Added `LogLevel` enum with `Debug`, `Info`, `Warn`, and `Error` variants
+- Added `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL` environment variable to set the log level
+- Added builder method to set the log level programmatically
+
 ## [0.11.1] - 2025-03-26
 
 ### Changed
