@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `LogLevel` enum with `Debug`, `Info`, `Warn`, and `Error` variants
 - Added `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL` environment variable to set the log level
 - Added builder method to set the log level programmatically
+- Added support for configurable output destination (stdout, file, named pipe)
+- Added `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_PATH` environment variable to control output destination
+- Added support for URI-like scheme to specify output (stdout://, file://, pipe://)
 
 ## [0.11.1] - 2025-03-26
 

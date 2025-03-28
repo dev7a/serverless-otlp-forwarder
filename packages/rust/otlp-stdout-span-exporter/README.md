@@ -93,7 +93,8 @@ The exporter respects the following environment variables:
 - `OTEL_EXPORTER_OTLP_HEADERS`: Headers for OTLP export, used in the `headers` field
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
-- `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL`: Log level added to the output recordfor filtering (debug, info, warn, error)
+- `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL`: Log level for filtering (debug, info, warn, error)
+- `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_PATH`: Output destination URI (stdout://, file://, pipe://)
 
 ## Configuration
 
@@ -131,7 +132,17 @@ let debug_level_exporter = OtlpStdoutSpanExporter::builder().level(LogLevel::Deb
 // Create with both compression and log level
 let configured_exporter = OtlpStdoutSpanExporter::builder()
     .compression_level(9)
-    .level(LogLevel::Trace)
+    .level(LogLevel::Error)
+    .build();
+
+// Output to a file instead of stdout
+let file_exporter = OtlpStdoutSpanExporter::builder()
+    .output_path("file:///path/to/spans.jsonl".to_string())
+    .build();
+
+// Output to a named pipe
+let pipe_exporter = OtlpStdoutSpanExporter::builder()
+    .output_path("pipe:///tmp/spans-pipe".to_string())
     .build();
 ```
 

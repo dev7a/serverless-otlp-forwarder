@@ -122,8 +122,17 @@ use opentelemetry_sdk::{
 };
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
-use std::fmt::Display;
+use std::{
+    collections::HashMap,
+    env,
+    fmt::Display,
+    fs::OpenOptions,
+    io::{self, Write},
+    path::PathBuf,
+    result::Result,
+    str::FromStr,
+    sync::Arc,
+};
 
 mod constants;
 use constants::{defaults, env_vars};
@@ -189,7 +198,7 @@ impl Display for LogLevel {
 /// Trait for output handling
 ///
 /// This trait defines the interface for writing output lines. It is implemented
-/// by both the standard output handler and test output handler.
+/// by both the standard output handler and file/pipe output handlers.
 trait Output: Send + Sync + std::fmt::Debug {
     /// Writes a single line of output
     ///
@@ -201,6 +210,40 @@ trait Output: Send + Sync + std::fmt::Debug {
     ///
     /// Returns `Ok(())` if the write was successful, or a `TraceError` if it failed
     fn write_line(&self, line: &str) -> Result<(), OTelSdkError>;
+}
+
+/// Factory function to create the appropriate Output implementation based on the URI
+///
+/// # Arguments
+///
+/// * `uri` - The URI specifying the output destination (stdout://, file://, pipe://)
+///
+/// # Returns
+///
+/// Returns a Result containing either an Arc-wrapped Output implementation or an error
+fn create_output_from_uri(uri: &str) -> Result<Arc<dyn Output>, OTelSdkError> {
+    if uri.starts_with("stdout://") {
+        return Ok(Arc::new(StdOutput));
+    } else if uri.starts_with("file://") {
+        let path = uri.strip_prefix("file://").unwrap_or("");
+        return Ok(Arc::new(FileOutput::new(path)?));
+    } else if uri.starts_with("pipe://") {
+        let path = uri.strip_prefix("pipe://").unwrap_or("");
+        return Ok(Arc::new(NamedPipeOutput::new(path)?));
+    }
+    
+    Err(OTelSdkError::InternalFailure(format!("Unsupported output URI: {}", uri)))
+}
+
+/// Helper function to create output from path or fall back
+fn create_from_path_or_fallback(path: &str, fallback: Arc<dyn Output>) -> Arc<dyn Output> {
+    match create_output_from_uri(path) {
+        Ok(output) => output,
+        Err(e) => {
+            log::warn!("Failed to create output for path {}: {}, falling back", path, e);
+            fallback
+        }
+    }
 }
 
 /// Standard output implementation that writes to stdout
@@ -216,6 +259,79 @@ impl Output for StdOutput {
         // Write the line and a newline in one operation
         writeln!(handle, "{}", line).map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
 
+        Ok(())
+    }
+}
+
+/// Output implementation that writes to a file
+#[derive(Debug)]
+struct FileOutput {
+    path: PathBuf,
+}
+
+impl FileOutput {
+    fn new(path: &str) -> Result<Self, OTelSdkError> {
+        // Validate the path and ensure the directory exists
+        let path_buf = PathBuf::from(path);
+        if let Some(parent) = path_buf.parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to create directory: {}", e)))?;
+            }
+        }
+        
+        Ok(Self { path: path_buf })
+    }
+}
+
+impl Output for FileOutput {
+    fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
+        // Open file with append mode (create if doesn't exist)
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.path)
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open file: {}", e)))?;
+        
+        // Write line with newline
+        writeln!(file, "{}", line)
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to write to file: {}", e)))?;
+        
+        Ok(())
+    }
+}
+
+/// Output implementation that writes to a named pipe
+#[derive(Debug)]
+struct NamedPipeOutput {
+    path: PathBuf,
+}
+
+impl NamedPipeOutput {
+    fn new(path: &str) -> Result<Self, OTelSdkError> {
+        // Check if pipe exists, if not log a warning
+        let path_buf = PathBuf::from(path);
+        if !path_buf.exists() {
+            log::warn!("Named pipe does not exist: {}", path);
+            // On Unix systems we could create it with mkfifo but this would need cfg platform specifics
+        }
+        
+        Ok(Self { path: path_buf })
+    }
+}
+
+impl Output for NamedPipeOutput {
+    fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
+        // Open the pipe for writing
+        let mut file = OpenOptions::new()
+            .write(true)
+            .open(&self.path)
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open pipe: {}", e)))?;
+        
+        // Write line with newline
+        writeln!(file, "{}", line)
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to write to pipe: {}", e)))?;
+        
         Ok(())
     }
 }
@@ -329,6 +445,7 @@ impl OtlpStdoutSpanExporter {
         headers: Option<HashMap<String, String>>,
         output: Option<Arc<dyn Output>>,
         level: Option<LogLevel>,
+        output_path: Option<String>,
     ) -> Self {
         // Set gzip_level with proper precedence (env var > constructor param > default)
         let compression_level = match env::var(env_vars::COMPRESSION_LEVEL) {
@@ -391,12 +508,33 @@ impl OtlpStdoutSpanExporter {
                 level
             }
         };
+        
+        // Determine output with proper precedence (env var > constructor > default)
+        let output = if let Ok(env_path) = env::var(env_vars::OUTPUT_PATH) {
+            // Environment variable takes highest precedence
+            create_from_path_or_fallback(&env_path, output.unwrap_or_else(|| {
+                if let Some(path) = &output_path {
+                    create_from_path_or_fallback(path, Arc::new(StdOutput))
+                } else {
+                    Arc::new(StdOutput)
+                }
+            }))
+        } else if let Some(explicit_output) = output {
+            // Direct output parameter is next in precedence
+            explicit_output
+        } else if let Some(path) = output_path {
+            // Constructor path is next
+            create_from_path_or_fallback(&path, Arc::new(StdOutput))
+        } else {
+            // Default to stdout
+            Arc::new(StdOutput)
+        };
 
         Self {
             compression_level,
             resource,
             headers,
-            output: output.unwrap_or(Arc::new(StdOutput)),
+            output,
             level,
         }
     }
@@ -418,8 +556,10 @@ impl OtlpStdoutSpanExporter {
     fn with_test_output() -> (Self, Arc<TestOutput>) {
         let output = Arc::new(TestOutput::new());
 
-        // Use the standard new() method to ensure environment variables are respected
-        let exporter = Self::builder().output(output.clone()).build();
+        // Use the standard builder() method and explicitly set the output
+        let exporter = Self::builder()
+            .output(output.clone())
+            .build();
 
         (exporter, output)
     }
@@ -610,13 +750,6 @@ doctest!("../README.md", readme);
 
 #[cfg(test)]
 use std::sync::Mutex;
-use std::{
-    collections::HashMap,
-    env,
-    io::{self, Write},
-    result::Result,
-    sync::Arc,
-};
 
 /// Test output implementation that captures to a buffer
 #[cfg(test)]
@@ -1180,5 +1313,209 @@ mod tests {
         // Parse the JSON to check level field is omitted
         let json: Value = serde_json::from_str(&output_lines[0]).unwrap();
         assert!(!json.as_object().unwrap().contains_key("level"));
+    }
+
+    #[test]
+    fn test_create_output_from_uri_stdout() {
+        let result = create_output_from_uri("stdout://");
+        assert!(result.is_ok());
+        // Can't easily check the type, but we know it should succeed
+    }
+    
+    #[test]
+    fn test_create_output_from_uri_file() {
+        // Use a temporary file for testing
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("otlp_test_output.jsonl");
+        let uri = format!("file://{}", path.to_string_lossy());
+        
+        let result = create_output_from_uri(&uri);
+        assert!(result.is_ok());
+        
+        // Clean up - make sure we're removing our test file
+        if path.exists() && path.file_name().unwrap_or_default() == "otlp_test_output.jsonl" {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    
+    #[test]
+    fn test_create_output_from_uri_pipe() {
+        // This test might fail if the pipe doesn't exist
+        // But at least we can test that the function doesn't panic
+        let result = create_output_from_uri("pipe:///nonexistent/pipe");
+        // The function should return Ok since it just warns about non-existent pipes
+        assert!(result.is_ok());
+    }
+    
+    #[test]
+    fn test_create_output_from_uri_invalid() {
+        let result = create_output_from_uri("invalid://scheme");
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    #[serial]
+    fn test_file_output_write_line() {
+        // Create a temporary file
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("otlp_test_output.jsonl");
+        
+        // Create a FileOutput instance
+        let output = FileOutput::new(path.to_string_lossy().as_ref()).unwrap();
+        
+        // Write a test line
+        let result = output.write_line("test line");
+        assert!(result.is_ok());
+        
+        // Verify the file contains what we wrote
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(content, "test line\n");
+        
+        // Clean up - make sure we're removing our test file
+        if path.exists() && path.file_name().unwrap_or_default() == "otlp_test_output.jsonl" {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_output_path_from_env() {
+        // Create a temporary file
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("otlp_env_test.jsonl");
+        let uri = format!("file://{}", path.to_string_lossy());
+        
+        // Remove any existing file
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+        
+        // Make sure no other environment variables interfere
+        std::env::remove_var(env_vars::OUTPUT_PATH);
+        
+        // Set the environment variable
+        std::env::set_var(env_vars::OUTPUT_PATH, &uri);
+        
+        // Create the exporter
+        let mut exporter = OtlpStdoutSpanExporter::default();
+        
+        // Create a test span
+        let span = create_test_span();
+        
+        // Export it
+        let result = exporter.export(vec![span]).await;
+        assert!(result.is_ok());
+        
+        // Sleep briefly to ensure file operations complete
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        
+        // Verify the file exists and contains the exported span
+        assert!(path.exists(), "Output file should exist");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("payload"), "File should contain span data");
+        
+        // Clean up
+        std::env::remove_var(env_vars::OUTPUT_PATH);
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_output_path_from_constructor() {
+        // Create a temporary file
+        let temp_dir = std::env::temp_dir();
+        let path = temp_dir.join("otlp_constructor_test.jsonl");
+        let uri = format!("file://{}", path.to_string_lossy());
+        
+        // Remove any existing file
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+        
+        // Make sure the environment variable is not set
+        std::env::remove_var(env_vars::OUTPUT_PATH);
+        
+        // Create the exporter with the path
+        let mut exporter = OtlpStdoutSpanExporter::builder()
+            .output_path(uri)
+            .build();
+        
+        // Create a test span
+        let span = create_test_span();
+        
+        // Export it
+        let result = exporter.export(vec![span]).await;
+        assert!(result.is_ok());
+        
+        // Sleep briefly to ensure file operations complete
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        
+        // Verify the file exists and contains the exported span
+        assert!(path.exists(), "Output file should exist");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("payload"), "File should contain span data");
+        
+        // Clean up
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+    
+    #[tokio::test]
+    #[serial]
+    async fn test_env_path_precedence_over_constructor() {
+        // Create two temporary files
+        let temp_dir = std::env::temp_dir();
+        let env_path = temp_dir.join("otlp_env_precedence.jsonl");
+        let constructor_path = temp_dir.join("otlp_constructor_precedence.jsonl");
+        
+        // Remove any existing files
+        if env_path.exists() {
+            let _ = std::fs::remove_file(&env_path);
+        }
+        if constructor_path.exists() {
+            let _ = std::fs::remove_file(&constructor_path);
+        }
+        
+        let env_uri = format!("file://{}", env_path.to_string_lossy());
+        let constructor_uri = format!("file://{}", constructor_path.to_string_lossy());
+        
+        // Set the environment variable
+        std::env::set_var(env_vars::OUTPUT_PATH, &env_uri);
+        
+        // Create the exporter with a different path in the constructor
+        let mut exporter = OtlpStdoutSpanExporter::builder()
+            .output_path(constructor_uri)
+            .build();
+        
+        // Create a test span
+        let span = create_test_span();
+        
+        // Export it
+        let result = exporter.export(vec![span]).await;
+        assert!(result.is_ok());
+        
+        // Sleep briefly to ensure file operations complete
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        
+        // Verify the file from env var exists and contains the exported span
+        assert!(env_path.exists(), "Environment path file should exist");
+        let env_content = std::fs::read_to_string(&env_path).unwrap();
+        assert!(env_content.contains("payload"), "Environment path file should contain span data");
+        
+        // Verify the constructor file does not exist or is empty
+        assert!(!constructor_path.exists() || std::fs::read_to_string(&constructor_path).unwrap_or_default().is_empty(),
+                "Constructor path file should not exist or be empty");
+        
+        // Clean up
+        std::env::remove_var(env_vars::OUTPUT_PATH);
+        if env_path.exists() {
+            let _ = std::fs::remove_file(env_path);
+        }
+        if constructor_path.exists() {
+            let _ = std::fs::remove_file(constructor_path);
+        }
     }
 }
