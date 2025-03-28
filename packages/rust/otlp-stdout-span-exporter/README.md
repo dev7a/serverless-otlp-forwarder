@@ -29,6 +29,7 @@ Part of the [serverless-otlp-forwarder](https://github.com/dev7a/serverless-otlp
 - Applies GZIP compression with configurable levels
 - Detects service name from environment variables or AWS Lambda function name
 - Supports custom headers via standard OTEL environment variables
+- Supports writing to stdout or named pipe
 - Consistent JSON output format
 - Zero external HTTP dependencies
 - Lightweight and fast
@@ -50,7 +51,14 @@ use opentelemetry_sdk::trace::SdkTracerProvider;
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 
 fn init_tracer() -> SdkTracerProvider {
+    // Create an exporter that writes to stdout (default)
     let exporter = OtlpStdoutSpanExporter::default();
+
+    // Or create one that writes to a named pipe
+    let pipe_exporter = OtlpStdoutSpanExporter::builder()
+        .pipe(true)  // Will write to /tmp/otlp-stdout-span-exporter.pipe
+        .build();
+
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
         .build();
@@ -94,7 +102,7 @@ The exporter respects the following environment variables:
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
 - `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL`: Log level for filtering (debug, info, warn, error)
-- `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_PATH`: Output destination URI (stdout://, file://, pipe://)
+- `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE`: Output type ("pipe" or "stdout", default: "stdout")
 
 ## Configuration
 
@@ -111,6 +119,9 @@ Environment variables always take precedence over any programmatic configuration
 ```bash
 # Set GZIP compression level to 9 (maximum compression)
 export OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL=9
+
+# Write to a named pipe instead of stdout
+export OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE=pipe
 ```
 
 ### Using default or builder methods
@@ -120,29 +131,29 @@ The exporter provides two main ways to create and configure it:
 ```rust
 use otlp_stdout_span_exporter::{OtlpStdoutSpanExporter, LogLevel};
 
-// Create with default options (compression level 6)
+// Create with default options (compression level 6, stdout output)
 let default_exporter = OtlpStdoutSpanExporter::default();
 
 // Create with specific compression level
-let max_compression_exporter = OtlpStdoutSpanExporter::builder().compression_level(9).build();
+let max_compression_exporter = OtlpStdoutSpanExporter::builder()
+    .compression_level(9)
+    .build();
 
 // Create with a specific log level
-let debug_level_exporter = OtlpStdoutSpanExporter::builder().level(LogLevel::Debug).build();
+let debug_level_exporter = OtlpStdoutSpanExporter::builder()
+    .level(LogLevel::Debug)
+    .build();
 
-// Create with both compression and log level
+// Create with pipe output
+let pipe_exporter = OtlpStdoutSpanExporter::builder()
+    .pipe(true)  // Will write to /tmp/otlp-stdout-span-exporter.pipe
+    .build();
+
+// Create with multiple options
 let configured_exporter = OtlpStdoutSpanExporter::builder()
     .compression_level(9)
     .level(LogLevel::Error)
-    .build();
-
-// Output to a file instead of stdout
-let file_exporter = OtlpStdoutSpanExporter::builder()
-    .output_path("file:///path/to/spans.jsonl".to_string())
-    .build();
-
-// Output to a named pipe
-let pipe_exporter = OtlpStdoutSpanExporter::builder()
-    .output_path("pipe:///tmp/spans-pipe".to_string())
+    .pipe(true)
     .build();
 ```
 
@@ -155,6 +166,8 @@ When neither environment variables nor constructor parameters are provided, the 
 - Compression level: 6 (good balance between speed and compression)
 - Service name: "unknown-service" (unless AWS_LAMBDA_FUNCTION_NAME is available)
 - Endpoint: "http://localhost:4318/v1/traces"
+- Output type: stdout
+- Log level: None (no filtering)
 
 ## Development
 

@@ -5,8 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
 ## [0.13.0] - 2025-03-27
 
 ### Added
@@ -14,9 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `LogLevel` enum with `Debug`, `Info`, `Warn`, and `Error` variants
 - Added `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL` environment variable to set the log level
 - Added builder method to set the log level programmatically
-- Added support for configurable output destination (stdout, file, named pipe)
-- Added `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_PATH` environment variable to control output destination
-- Added support for URI-like scheme to specify output (stdout://, file://, pipe://)
+- Added support for named pipe output as an alternative to stdout
+- Added `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE` environment variable to control output type ("pipe" or "stdout")
+- Added builder method `pipe(bool)` to configure named pipe output programmatically
+
+### Changed
+- Named pipe output uses a fixed path at `/tmp/otlp-stdout-span-exporter.pipe` for consistency
 
 ## [0.11.1] - 2025-03-26
 

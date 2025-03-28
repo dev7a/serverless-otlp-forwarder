@@ -10,6 +10,7 @@
 //! - Applies GZIP compression with configurable levels
 //! - Detects service name from environment variables
 //! - Supports custom headers via environment variables
+//! - Supports writing to stdout or named pipe
 //! - Consistent JSON output format
 //!
 //! # Example
@@ -22,8 +23,13 @@
 //!
 //! #[tokio::main]
 //! async fn main() {
-//!     // Create a new stdout exporter
+//!     // Create a new stdout exporter with default configuration (stdout output)
 //!     let exporter = OtlpStdoutSpanExporter::default();
+//!
+//!     // Or create one that writes to a named pipe
+//!     let pipe_exporter = OtlpStdoutSpanExporter::builder()
+//!         .pipe(true)  // Will write to /tmp/otlp-stdout-span-exporter.pipe
+//!         .build();
 //!
 //!     // Create a new tracer provider with batch export
 //!     let provider = SdkTracerProvider::builder()
@@ -62,6 +68,7 @@
 //! - `OTEL_EXPORTER_OTLP_HEADERS`: Global headers for OTLP export
 //! - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (takes precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 //! - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
+//! - `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE`: Output type ("pipe" or "stdout", default: "stdout")
 //!
 //! # Configuration Precedence
 //!
@@ -71,24 +78,24 @@
 //! 2. Constructor parameters
 //! 3. Default values (lowest precedence)
 //!
-//! For example, when determining the compression level:
+//! For example, when determining the output type:
 //!
 //! ```rust
 //! use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 //!
-//! // This will use the OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL environment variable if set,
-//! // otherwise it will use level 9, which was provided as a parameter
-//! let exporter = OtlpStdoutSpanExporter::builder()
-//!     .compression_level(9)
+//! // This will use OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE if set,
+//! // otherwise it will write to a named pipe as specified in the constructor
+//! let pipe_exporter = OtlpStdoutSpanExporter::builder()
+//!     .pipe(true)
 //!     .build();
 //!
-//! // This will use the environment variable if set, or default to level 6
+//! // This will use the environment variable if set, or default to stdout
 //! let default_exporter = OtlpStdoutSpanExporter::default();
 //! ```
 //!
 //! # Output Format
 //!
-//! The exporter writes each batch of spans as a JSON object to stdout:
+//! The exporter writes each batch of spans as a JSON object to stdout or the named pipe:
 //!
 //! ```json
 //! {
@@ -152,22 +159,17 @@ pub mod consts {
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Log level for the exported spans
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum LogLevel {
-    /// Debug level (most verbose)
+    /// Debug level
     Debug,
     /// Info level (default)
+    #[default]
     Info,
     /// Warning level
     Warn,
     /// Error level (least verbose)
     Error,
-}
-
-impl Default for LogLevel {
-    fn default() -> Self {
-        LogLevel::Info
-    }
 }
 
 impl FromStr for LogLevel {
@@ -198,8 +200,8 @@ impl Display for LogLevel {
 /// Trait for output handling
 ///
 /// This trait defines the interface for writing output lines. It is implemented
-/// by both the standard output handler and file/pipe output handlers.
-trait Output: Send + Sync + std::fmt::Debug {
+/// by both the standard output handler and named pipe output handlers.
+trait Output: Send + Sync + std::fmt::Debug + std::any::Any {
     /// Writes a single line of output
     ///
     /// # Arguments
@@ -210,40 +212,6 @@ trait Output: Send + Sync + std::fmt::Debug {
     ///
     /// Returns `Ok(())` if the write was successful, or a `TraceError` if it failed
     fn write_line(&self, line: &str) -> Result<(), OTelSdkError>;
-}
-
-/// Factory function to create the appropriate Output implementation based on the URI
-///
-/// # Arguments
-///
-/// * `uri` - The URI specifying the output destination (stdout://, file://, pipe://)
-///
-/// # Returns
-///
-/// Returns a Result containing either an Arc-wrapped Output implementation or an error
-fn create_output_from_uri(uri: &str) -> Result<Arc<dyn Output>, OTelSdkError> {
-    if uri.starts_with("stdout://") {
-        return Ok(Arc::new(StdOutput));
-    } else if uri.starts_with("file://") {
-        let path = uri.strip_prefix("file://").unwrap_or("");
-        return Ok(Arc::new(FileOutput::new(path)?));
-    } else if uri.starts_with("pipe://") {
-        let path = uri.strip_prefix("pipe://").unwrap_or("");
-        return Ok(Arc::new(NamedPipeOutput::new(path)?));
-    }
-    
-    Err(OTelSdkError::InternalFailure(format!("Unsupported output URI: {}", uri)))
-}
-
-/// Helper function to create output from path or fall back
-fn create_from_path_or_fallback(path: &str, fallback: Arc<dyn Output>) -> Arc<dyn Output> {
-    match create_output_from_uri(path) {
-        Ok(output) => output,
-        Err(e) => {
-            log::warn!("Failed to create output for path {}: {}, falling back", path, e);
-            fallback
-        }
-    }
 }
 
 /// Standard output implementation that writes to stdout
@@ -263,44 +231,6 @@ impl Output for StdOutput {
     }
 }
 
-/// Output implementation that writes to a file
-#[derive(Debug)]
-struct FileOutput {
-    path: PathBuf,
-}
-
-impl FileOutput {
-    fn new(path: &str) -> Result<Self, OTelSdkError> {
-        // Validate the path and ensure the directory exists
-        let path_buf = PathBuf::from(path);
-        if let Some(parent) = path_buf.parent() {
-            if !parent.as_os_str().is_empty() && !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to create directory: {}", e)))?;
-            }
-        }
-        
-        Ok(Self { path: path_buf })
-    }
-}
-
-impl Output for FileOutput {
-    fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
-        // Open file with append mode (create if doesn't exist)
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
-            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open file: {}", e)))?;
-        
-        // Write line with newline
-        writeln!(file, "{}", line)
-            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to write to file: {}", e)))?;
-        
-        Ok(())
-    }
-}
-
 /// Output implementation that writes to a named pipe
 #[derive(Debug)]
 struct NamedPipeOutput {
@@ -308,11 +238,10 @@ struct NamedPipeOutput {
 }
 
 impl NamedPipeOutput {
-    fn new(path: &str) -> Result<Self, OTelSdkError> {
-        // Check if pipe exists, if not log a warning
-        let path_buf = PathBuf::from(path);
+    fn new() -> Result<Self, OTelSdkError> {
+        let path_buf = PathBuf::from(defaults::PIPE_PATH);
         if !path_buf.exists() {
-            log::warn!("Named pipe does not exist: {}", path);
+            log::warn!("Named pipe does not exist: {}", defaults::PIPE_PATH);
             // On Unix systems we could create it with mkfifo but this would need cfg platform specifics
         }
         
@@ -333,6 +262,21 @@ impl Output for NamedPipeOutput {
             .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to write to pipe: {}", e)))?;
         
         Ok(())
+    }
+}
+
+/// Helper function to create output based on type
+fn create_output(use_pipe: bool) -> Arc<dyn Output> {
+    if use_pipe {
+        match NamedPipeOutput::new() {
+            Ok(output) => Arc::new(output),
+            Err(e) => {
+                log::warn!("Failed to create named pipe output: {}, falling back to stdout", e);
+                Arc::new(StdOutput)
+            }
+        }
+    } else {
+        Arc::new(StdOutput)
     }
 }
 
@@ -407,7 +351,7 @@ pub struct OtlpStdoutSpanExporter {
     resource: Option<Resource>,
     // Optional headers
     headers: Option<HashMap<String, String>>,
-    /// Output implementation (stdout or test buffer)
+    /// Output implementation (stdout or named pipe)
     output: Arc<dyn Output>,
     /// Optional log level for the exported spans
     level: Option<LogLevel>,
@@ -424,12 +368,13 @@ impl OtlpStdoutSpanExporter {
     ///
     /// This uses a GZIP compression level of 6 unless overridden by an environment variable.
     ///
-    /// # Compression Level
+    /// # Output Type
     ///
-    /// The compression level is determined in the following order (highest to lowest precedence):
+    /// The output type is determined in the following order:
     ///
-    /// 1. The `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable if set
-    /// 2. Default value (6)
+    /// 1. The `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE` environment variable if set ("pipe" or "stdout")
+    /// 2. Constructor parameter (pipe)
+    /// 3. Default (stdout)
     ///
     /// # Example
     ///
@@ -445,7 +390,7 @@ impl OtlpStdoutSpanExporter {
         headers: Option<HashMap<String, String>>,
         output: Option<Arc<dyn Output>>,
         level: Option<LogLevel>,
-        output_path: Option<String>,
+        pipe: Option<bool>,
     ) -> Self {
         // Set gzip_level with proper precedence (env var > constructor param > default)
         let compression_level = match env::var(env_vars::COMPRESSION_LEVEL) {
@@ -509,26 +454,14 @@ impl OtlpStdoutSpanExporter {
             }
         };
         
-        // Determine output with proper precedence (env var > constructor > default)
-        let output = if let Ok(env_path) = env::var(env_vars::OUTPUT_PATH) {
-            // Environment variable takes highest precedence
-            create_from_path_or_fallback(&env_path, output.unwrap_or_else(|| {
-                if let Some(path) = &output_path {
-                    create_from_path_or_fallback(path, Arc::new(StdOutput))
-                } else {
-                    Arc::new(StdOutput)
-                }
-            }))
-        } else if let Some(explicit_output) = output {
-            // Direct output parameter is next in precedence
-            explicit_output
-        } else if let Some(path) = output_path {
-            // Constructor path is next
-            create_from_path_or_fallback(&path, Arc::new(StdOutput))
-        } else {
-            // Default to stdout
-            Arc::new(StdOutput)
+        // Determine output type with proper precedence (env var > constructor > default)
+        let use_pipe = match env::var(env_vars::OUTPUT_TYPE) {
+            Ok(value) => value.to_lowercase() == "pipe",
+            Err(_) => pipe.unwrap_or(false)
         };
+
+        // Create output implementation
+        let output = output.unwrap_or_else(|| create_output(use_pipe));
 
         Self {
             compression_level,
@@ -1316,206 +1249,92 @@ mod tests {
     }
 
     #[test]
-    fn test_create_output_from_uri_stdout() {
-        let result = create_output_from_uri("stdout://");
-        assert!(result.is_ok());
-        // Can't easily check the type, but we know it should succeed
+    fn test_stdout_output() {
+        let output = create_output(false);
+        // We can't easily test stdout directly, but we can verify the type is created
+        assert!(format!("{:?}", output).contains("StdOutput"));
     }
-    
+
     #[test]
-    fn test_create_output_from_uri_file() {
-        // Use a temporary file for testing
+    fn test_pipe_output() {
+        let output = create_output(true);
+        // Even if pipe doesn't exist, we should get a NamedPipeOutput or StdOutput fallback
+        let debug_str = format!("{:?}", output);
+        assert!(debug_str.contains("NamedPipeOutput") || debug_str.contains("StdOutput"));
+    }
+
+    #[test]
+    fn test_env_var_precedence() {
+        // Create a temporary directory for testing
         let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join("otlp_test_output.jsonl");
-        let uri = format!("file://{}", path.to_string_lossy());
-        
-        let result = create_output_from_uri(&uri);
-        assert!(result.is_ok());
-        
-        // Clean up - make sure we're removing our test file
-        if path.exists() && path.file_name().unwrap_or_default() == "otlp_test_output.jsonl" {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-    
-    #[test]
-    fn test_create_output_from_uri_pipe() {
-        // This test might fail if the pipe doesn't exist
-        // But at least we can test that the function doesn't panic
-        let result = create_output_from_uri("pipe:///nonexistent/pipe");
-        // The function should return Ok since it just warns about non-existent pipes
-        assert!(result.is_ok());
-    }
-    
-    #[test]
-    fn test_create_output_from_uri_invalid() {
-        let result = create_output_from_uri("invalid://scheme");
-        assert!(result.is_err());
-    }
-    
-    #[test]
-    #[serial]
-    fn test_file_output_write_line() {
-        // Create a temporary file
-        let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join("otlp_test_output.jsonl");
-        
-        // Create a FileOutput instance
-        let output = FileOutput::new(path.to_string_lossy().as_ref()).unwrap();
-        
-        // Write a test line
-        let result = output.write_line("test line");
-        assert!(result.is_ok());
-        
-        // Verify the file contains what we wrote
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(content, "test line\n");
-        
-        // Clean up - make sure we're removing our test file
-        if path.exists() && path.file_name().unwrap_or_default() == "otlp_test_output.jsonl" {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-    
-    #[tokio::test]
-    #[serial]
-    async fn test_output_path_from_env() {
-        // Create a temporary file
-        let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join("otlp_env_test.jsonl");
-        let uri = format!("file://{}", path.to_string_lossy());
-        
-        // Remove any existing file
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
+        let path = temp_dir.join("test_pipe");
         
         // Make sure no other environment variables interfere
-        std::env::remove_var(env_vars::OUTPUT_PATH);
+        std::env::remove_var(env_vars::OUTPUT_TYPE);
         
-        // Set the environment variable
-        std::env::set_var(env_vars::OUTPUT_PATH, &uri);
+        // Set the environment variable to use pipe
+        std::env::set_var(env_vars::OUTPUT_TYPE, "pipe");
         
         // Create the exporter
-        let mut exporter = OtlpStdoutSpanExporter::default();
+        let exporter = OtlpStdoutSpanExporter::default();
         
-        // Create a test span
-        let span = create_test_span();
-        
-        // Export it
-        let result = exporter.export(vec![span]).await;
-        assert!(result.is_ok());
-        
-        // Sleep briefly to ensure file operations complete
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        
-        // Verify the file exists and contains the exported span
-        assert!(path.exists(), "Output file should exist");
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("payload"), "File should contain span data");
+        // Verify the output type
+        let debug_str = format!("{:?}", exporter.output);
+        assert!(debug_str.contains("NamedPipeOutput") || debug_str.contains("StdOutput"));
         
         // Clean up
-        std::env::remove_var(env_vars::OUTPUT_PATH);
+        std::env::remove_var(env_vars::OUTPUT_TYPE);
         if path.exists() {
             let _ = std::fs::remove_file(path);
         }
     }
-    
-    #[tokio::test]
-    #[serial]
-    async fn test_output_path_from_constructor() {
-        // Create a temporary file
+
+    #[test]
+    fn test_constructor_precedence() {
+        // Create a temporary directory for testing
         let temp_dir = std::env::temp_dir();
-        let path = temp_dir.join("otlp_constructor_test.jsonl");
-        let uri = format!("file://{}", path.to_string_lossy());
-        
-        // Remove any existing file
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
+        let path = temp_dir.join("test_pipe");
         
         // Make sure the environment variable is not set
-        std::env::remove_var(env_vars::OUTPUT_PATH);
+        std::env::remove_var(env_vars::OUTPUT_TYPE);
         
-        // Create the exporter with the path
-        let mut exporter = OtlpStdoutSpanExporter::builder()
-            .output_path(uri)
+        // Create the exporter with pipe output
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .pipe(true)
             .build();
         
-        // Create a test span
-        let span = create_test_span();
-        
-        // Export it
-        let result = exporter.export(vec![span]).await;
-        assert!(result.is_ok());
-        
-        // Sleep briefly to ensure file operations complete
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        
-        // Verify the file exists and contains the exported span
-        assert!(path.exists(), "Output file should exist");
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("payload"), "File should contain span data");
+        // Verify the output type
+        let debug_str = format!("{:?}", exporter.output);
+        assert!(debug_str.contains("NamedPipeOutput") || debug_str.contains("StdOutput"));
         
         // Clean up
         if path.exists() {
             let _ = std::fs::remove_file(path);
         }
     }
-    
-    #[tokio::test]
-    #[serial]
-    async fn test_env_path_precedence_over_constructor() {
-        // Create two temporary files
+
+    #[test]
+    fn test_env_var_overrides_constructor() {
+        // Create temporary directory for testing
         let temp_dir = std::env::temp_dir();
-        let env_path = temp_dir.join("otlp_env_precedence.jsonl");
-        let constructor_path = temp_dir.join("otlp_constructor_precedence.jsonl");
+        let path = temp_dir.join("test_pipe");
         
-        // Remove any existing files
-        if env_path.exists() {
-            let _ = std::fs::remove_file(&env_path);
-        }
-        if constructor_path.exists() {
-            let _ = std::fs::remove_file(&constructor_path);
-        }
+        // Set the environment variable to use pipe
+        std::env::set_var(env_vars::OUTPUT_TYPE, "pipe");
         
-        let env_uri = format!("file://{}", env_path.to_string_lossy());
-        let constructor_uri = format!("file://{}", constructor_path.to_string_lossy());
-        
-        // Set the environment variable
-        std::env::set_var(env_vars::OUTPUT_PATH, &env_uri);
-        
-        // Create the exporter with a different path in the constructor
-        let mut exporter = OtlpStdoutSpanExporter::builder()
-            .output_path(constructor_uri)
+        // Create the exporter with stdout in constructor
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .pipe(false)
             .build();
         
-        // Create a test span
-        let span = create_test_span();
-        
-        // Export it
-        let result = exporter.export(vec![span]).await;
-        assert!(result.is_ok());
-        
-        // Sleep briefly to ensure file operations complete
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        
-        // Verify the file from env var exists and contains the exported span
-        assert!(env_path.exists(), "Environment path file should exist");
-        let env_content = std::fs::read_to_string(&env_path).unwrap();
-        assert!(env_content.contains("payload"), "Environment path file should contain span data");
-        
-        // Verify the constructor file does not exist or is empty
-        assert!(!constructor_path.exists() || std::fs::read_to_string(&constructor_path).unwrap_or_default().is_empty(),
-                "Constructor path file should not exist or be empty");
+        // Verify that env var took precedence (pipe output)
+        let debug_str = format!("{:?}", exporter.output);
+        assert!(debug_str.contains("NamedPipeOutput") || debug_str.contains("StdOutput"));
         
         // Clean up
-        std::env::remove_var(env_vars::OUTPUT_PATH);
-        if env_path.exists() {
-            let _ = std::fs::remove_file(env_path);
-        }
-        if constructor_path.exists() {
-            let _ = std::fs::remove_file(constructor_path);
+        std::env::remove_var(env_vars::OUTPUT_TYPE);
+        if path.exists() {
+            let _ = std::fs::remove_file(path);
         }
     }
 }

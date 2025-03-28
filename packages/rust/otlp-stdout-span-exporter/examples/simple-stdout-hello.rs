@@ -9,14 +9,14 @@ fn init_tracer() -> SdkTracerProvider {
     let mut headers: HashMap<String, String> = HashMap::new();
     headers.insert("test".to_string(), "test".to_string());
     
-    // Create exporter with the Debug log level and a file output path
+    // Create exporter with the Debug log level and named pipe output
     // You can also use environment variables:
     // OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL=debug
-    // OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_PATH=file:///path/to/output.jsonl
+    // OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE=pipe
     let exporter = OtlpStdoutSpanExporter::builder()
         .headers(headers)
         .level(LogLevel::Debug)
-        .output_path("file:///tmp/otlp-spans.jsonl".to_string())
+        .pipe(true)  // Will write to /tmp/otlp-stdout-span-exporter.pipe
         .build();
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
@@ -28,7 +28,8 @@ fn init_tracer() -> SdkTracerProvider {
 
 #[tokio::main]
 async fn main() {
-    println!("Writing spans to /tmp/otlp-spans.jsonl with DEBUG level");
+    eprintln!("Writing spans to /tmp/otlp-stdout-span-exporter.pipe with DEBUG level");
+    eprintln!("Note: Make sure the named pipe exists (create with `mkfifo /tmp/otlp-stdout-span-exporter.pipe`)");
     
     let provider = init_tracer();
     let tracer = global::tracer("example/simple");
@@ -42,12 +43,12 @@ async fn main() {
             get_active_span(|span| {
                 span.add_event("Not doing work".to_string(), vec![KeyValue::new("work", false)]);
             });
-            });
+        });
     });
 
     if let Err(err) = provider.force_flush() {
-        println!("Error flushing provider: {:?}", err);
+        eprintln!("Error flushing provider: {:?}", err);
     }
     
-    println!("Spans have been written to /tmp/otlp-spans.jsonl");
+    eprintln!("Spans have been written to /tmp/otlp-stdout-span-exporter.pipe");
 }

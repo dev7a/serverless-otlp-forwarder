@@ -23,8 +23,8 @@ pub mod env_vars {
     /// Log level for exported spans
     pub const LOG_LEVEL: &str = "OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL";
     
-    /// Output destination URI (stdout://, file://, pipe://)
-    pub const OUTPUT_PATH: &str = "OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_PATH";
+    /// Output type ("pipe" or "stdout", defaults to "stdout")
+    pub const OUTPUT_TYPE: &str = "OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE";
 }
 
 /// Default values for configuration parameters.
@@ -38,8 +38,11 @@ pub mod defaults {
     /// Default endpoint for OTLP export.
     pub const ENDPOINT: &str = "http://localhost:4318/v1/traces";
     
-    /// Default output destination
-    pub const OUTPUT_PATH: &str = "stdout://";
+    /// Default output type
+    pub const OUTPUT_TYPE: &str = "stdout";
+
+    /// Fixed path for named pipe
+    pub const PIPE_PATH: &str = "/tmp/otlp-stdout-span-exporter.pipe";
 }
 
 /// Resource attribute keys used in the Lambda resource.
