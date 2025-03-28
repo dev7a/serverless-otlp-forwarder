@@ -1,14 +1,14 @@
 use opentelemetry::global;
-use opentelemetry::trace::{Tracer, get_active_span};
+use opentelemetry::trace::{get_active_span, Tracer};
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use otlp_stdout_span_exporter::{OtlpStdoutSpanExporter, LogLevel};
+use otlp_stdout_span_exporter::{LogLevel, OtlpStdoutSpanExporter};
 use std::collections::HashMap;
 
 fn init_tracer() -> SdkTracerProvider {
     let mut headers: HashMap<String, String> = HashMap::new();
     headers.insert("test".to_string(), "test".to_string());
-    
+
     // Create exporter with the Debug log level and named pipe output
     // You can also use environment variables:
     // OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL=debug
@@ -16,7 +16,7 @@ fn init_tracer() -> SdkTracerProvider {
     let exporter = OtlpStdoutSpanExporter::builder()
         .headers(headers)
         .level(LogLevel::Debug)
-        .pipe(true)  // Will write to /tmp/otlp-stdout-span-exporter.pipe
+        .pipe(true) // Will write to /tmp/otlp-stdout-span-exporter.pipe
         .build();
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
@@ -30,7 +30,7 @@ fn init_tracer() -> SdkTracerProvider {
 async fn main() {
     eprintln!("Writing spans to /tmp/otlp-stdout-span-exporter.pipe with DEBUG level");
     eprintln!("Note: Make sure the named pipe exists (create with `mkfifo /tmp/otlp-stdout-span-exporter.pipe`)");
-    
+
     let provider = init_tracer();
     let tracer = global::tracer("example/simple");
     tracer.in_span("parent-operation", |_cx| {
@@ -41,7 +41,10 @@ async fn main() {
         // Create nested spans
         tracer.in_span("child-operation", |_cx| {
             get_active_span(|span| {
-                span.add_event("Not doing work".to_string(), vec![KeyValue::new("work", false)]);
+                span.add_event(
+                    "Not doing work".to_string(),
+                    vec![KeyValue::new("work", false)],
+                );
             });
         });
     });
@@ -49,6 +52,6 @@ async fn main() {
     if let Err(err) = provider.force_flush() {
         eprintln!("Error flushing provider: {:?}", err);
     }
-    
+
     eprintln!("Spans have been written to /tmp/otlp-stdout-span-exporter.pipe");
 }
