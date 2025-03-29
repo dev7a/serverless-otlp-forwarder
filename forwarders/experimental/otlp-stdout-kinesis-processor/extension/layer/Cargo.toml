@@ -1,10 +1,18 @@
 [package]
 name = "otlp-stdout-kinesis-extension-layer"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 authors.workspace = true
 license.workspace = true
 description = "OpenTelemetry Lambda extension for sending otlp data to Kinesis"
+
+[[bin]]
+name = "otlp-stdout-kinesis-extension-layer-arm64"
+path = "src/main.rs"
+
+[[bin]]
+name = "otlp-stdout-kinesis-extension-layer-amd64" 
+path = "src/main.rs"
 
 [dependencies]
 tokio.workspace = true
@@ -13,3 +21,5 @@ aws-config.workspace = true
 aws-sdk-kinesis.workspace = true
 lambda-extension.workspace = true
 uuid.workspace = true
+serde_json.workspace = true
+chrono.workspace = true

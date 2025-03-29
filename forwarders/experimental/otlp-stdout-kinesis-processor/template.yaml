@@ -53,8 +53,10 @@ Resources:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: kinesis_processor
     Properties:
-      FunctionName: !Ref 'AWS::StackName'
+      FunctionName: !Ref AWS::StackName
       Description: !Sub 'Processes OTLP data from Kinesis stream in AWS Account ${AWS::AccountId}'
       CodeUri: processor/
       Handler: bootstrap
@@ -133,3 +135,8 @@ Outputs:
     Condition: HasVpcConfig
     Value: !Ref KinesisProcessorSecurityGroup
 
+  KinesisStreamName:
+    Description: Name of the Kinesis stream
+    Value: !Ref OtlpKinesisStream
+    Export:
+      Name: !Sub '${AWS::StackName}:otlp-stream-name'

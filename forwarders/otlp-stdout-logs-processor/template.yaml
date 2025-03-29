@@ -34,7 +34,7 @@ Resources:
     Metadata:
       BuildMethod: rust-cargolambda
       BuildProperties:
-        Binary: stdout_processor
+        Binary: logs_processor
     Properties:
       FunctionName: !Ref AWS::StackName
       Description: !Sub "Processes logs from AWS Account ${AWS::AccountId}"

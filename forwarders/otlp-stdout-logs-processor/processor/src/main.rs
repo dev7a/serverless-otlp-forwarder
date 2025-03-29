@@ -13,10 +13,10 @@
 //! - Gzip compressed data
 //! - OpenTelemetry instrumentation
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use aws_credential_types::provider::ProvideCredentials;
 use aws_lambda_events::event::cloudwatch_logs::LogEntry;
-use lambda_otlp_forwarder::{
+use serverless_otlp_forwarder::{
     collectors::Collectors,
     processing::process_telemetry_batch,
     span_compactor::{compact_telemetry_payloads, SpanCompactionConfig},
@@ -25,8 +25,6 @@ use lambda_otlp_forwarder::{
 };
 use otlp_sigv4_client::SigV4ClientBuilder;
 use otlp_stdout_span_exporter::ExporterOutput;
-use std::collections::HashMap;
-use serde_json::Value;
 
 use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
 
@@ -37,81 +35,26 @@ use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, R
 use std::sync::Arc;
 /// Convert a CloudWatch log event into TelemetryData
 fn convert_log_event(event: &LogEntry) -> Result<TelemetryData> {
-    let record = &event.message;
+    let log_record = &event.message;
 
-    tracing::debug!("Received log record: {}", record);
+    tracing::debug!("Received log record: {}", log_record);
     
     // Parse the JSON into a serde_json::Value first
-    let json_value: Value = serde_json::from_str(record)
-        .with_context(|| format!("Failed to parse log record as JSON: {}", record))?;
-    
-    // Extract fields from the JSON, handling different field names and versions
-    let version = json_value.get("__otel_otlp_stdout")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-        
-    let source = json_value.get("source")
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .unwrap_or_else(|| "unknown".to_string());
-        
-    let endpoint = json_value.get("endpoint")
-        .and_then(Value::as_str)
-        .unwrap_or("http://localhost:4318/v1/traces");
-        
-    let method = json_value.get("method")
-        .and_then(Value::as_str)
-        .unwrap_or("POST");
-        
-    // Check both kebab-case and snake_case variants for content type
-    let content_type = json_value.get("content-type")
-        .or_else(|| json_value.get("content_type"))
-        .and_then(Value::as_str)
-        .unwrap_or("application/x-protobuf");
-        
-    // Same for content encoding
-    let content_encoding = json_value.get("content-encoding")
-        .or_else(|| json_value.get("content_encoding"))
-        .and_then(Value::as_str)
-        .unwrap_or("gzip");
-    
-    // Extract headers if present
-    let mut headers = HashMap::new();
-    if let Some(headers_obj) = json_value.get("headers").and_then(Value::as_object) {
-        for (key, value) in headers_obj {
-            if let Some(value_str) = value.as_str() {
-                headers.insert(key.clone(), value_str.to_string());
-            }
+    let record: ExporterOutput = match serde_json::from_str(log_record) {
+        Ok(output) => output,
+        Err(err) => {
+            return Err(anyhow::anyhow!(
+                "Failed to parse log record as JSON: {} - Error details: {}",
+                log_record,
+                err
+            ));
         }
-    }
-    
-    // Get payload and base64 flag
-    let payload = json_value.get("payload")
-        .and_then(Value::as_str)
-        .map(ToString::to_string)
-        .unwrap_or_default();
-        
-    let base64 = json_value.get("base64")
-        .and_then(Value::as_bool)
-        .unwrap_or(true);
-    
-    // Create ExporterOutput with borrowed references where required
-    let exporter_output = ExporterOutput {
-        version,
-        source,
-        endpoint,
-        method,
-        content_type,
-        content_encoding,
-        headers,
-        payload,
-        base64,
     };
     
-    tracing::debug!("Successfully parsed log record with version: {}", version);
+    tracing::debug!("Successfully parsed log record with version: {}", record.version);
 
     // Convert to TelemetryData (will be in uncompressed protobuf format)
-    TelemetryData::from_log_record(exporter_output)
+    TelemetryData::from_log_record(record)
 }
 
 async fn function_handler(
@@ -254,6 +197,15 @@ mod tests {
         general_purpose::STANDARD.encode(compressed_bytes)
     }
 
+    // Helper function to create a test log entry
+    fn create_test_log_entry(message: String) -> LogEntry {
+        LogEntry {
+            id: "test-id".to_string(),
+            timestamp: 1234567890,
+            message,
+        }
+    }
+
     #[test]
     fn test_convert_log_event() {
         // Test standard LogRecord with valid OTLP structure
@@ -286,5 +238,221 @@ mod tests {
         assert_eq!(telemetry.source, "test-service");
         assert_eq!(telemetry.content_type, "application/x-protobuf"); // Now converted to protobuf
         assert_eq!(telemetry.content_encoding, None); // No compression at this stage
+    }
+
+    #[test]
+    fn test_convert_uncompressed_payload() {
+        use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
+        
+        // Create a simple uncompressed protobuf payload
+        let request = ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                scope_spans: vec![ScopeSpans {
+                    spans: vec![Span {
+                        name: "test-span".to_string(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+        
+        // Convert to protobuf bytes without compression
+        let proto_bytes = request.encode_to_vec();
+        
+        // Base64 encode the uncompressed bytes
+        let uncompressed_payload = general_purpose::STANDARD.encode(&proto_bytes);
+        
+        // Create the log record
+        let log_record = json!({
+            "__otel_otlp_stdout": "otlp-stdout-span-exporter@0.2.2",
+            "source": "test-service",
+            "endpoint": "http://example.com",
+            "method": "POST",
+            "payload": uncompressed_payload,
+            "headers": {
+                "content-type": "application/x-protobuf"
+            },
+            "content-type": "application/x-protobuf",
+            "content-encoding": "identity", // indicates no compression
+            "base64": true
+        });
+        
+        let event = create_test_log_entry(serde_json::to_string(&log_record).unwrap());
+        
+        let result = convert_log_event(&event);
+        assert!(result.is_ok());
+        
+        let telemetry = result.unwrap();
+        assert_eq!(telemetry.source, "test-service");
+        assert_eq!(telemetry.content_type, "application/x-protobuf");
+        assert_eq!(telemetry.content_encoding, None); // No compression
+        
+        // Verify we can decode the payload
+        let decoded = ExportTraceServiceRequest::decode(telemetry.payload.as_slice()).unwrap();
+        assert_eq!(decoded.resource_spans.len(), 1);
+        
+        // Verify the span content is preserved
+        let span = &decoded.resource_spans[0].scope_spans[0].spans[0];
+        assert_eq!(span.name, "test-span");
+    }
+    
+    #[test]
+    fn test_convert_json_payload() {
+        // Create a JSON payload (not protobuf)
+        let json_payload = json!({
+            "resourceSpans": [{
+                "scopeSpans": [{
+                    "spans": [{
+                        "name": "json-test-span"
+                    }]
+                }]
+            }]
+        });
+        
+        let json_bytes = serde_json::to_vec(&json_payload).unwrap();
+        let encoded_json = general_purpose::STANDARD.encode(&json_bytes);
+        
+        // Create the log record with JSON content type
+        let log_record = json!({
+            "__otel_otlp_stdout": "otlp-stdout-span-exporter@0.2.2",
+            "source": "test-service",
+            "endpoint": "http://example.com",
+            "method": "POST",
+            "payload": encoded_json,
+            "headers": {
+                "content-type": "application/json"
+            },
+            "content-type": "application/json",
+            "content-encoding": "identity",
+            "base64": true
+        });
+        
+        let event = create_test_log_entry(serde_json::to_string(&log_record).unwrap());
+        
+        let result = convert_log_event(&event);
+        assert!(result.is_ok());
+        
+        let telemetry = result.unwrap();
+        assert_eq!(telemetry.content_type, "application/x-protobuf"); // Should be converted to protobuf
+        
+        // Verify we can decode the converted payload as protobuf
+        let decoded = ExportTraceServiceRequest::decode(telemetry.payload.as_slice()).unwrap();
+        assert_eq!(decoded.resource_spans.len(), 1);
+        
+        // Verify the span content is preserved after JSON->protobuf conversion
+        let span = &decoded.resource_spans[0].scope_spans[0].spans[0];
+        assert_eq!(span.name, "json-test-span");
+    }
+    
+    #[test]
+    fn test_end_to_end_data_integrity() {
+        use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
+        
+        // Create test data with specific identifiable content
+        let test_span_name = "unique-identifier-span-name-123";
+        let request = ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                scope_spans: vec![ScopeSpans {
+                    spans: vec![Span {
+                        name: test_span_name.to_string(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+        
+        // Convert to protobuf bytes
+        let proto_bytes = request.encode_to_vec();
+        
+        // Compress with gzip
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&proto_bytes).unwrap();
+        let compressed_bytes = encoder.finish().unwrap();
+        
+        // Base64 encode
+        let encoded_payload = general_purpose::STANDARD.encode(&compressed_bytes);
+        
+        // Create the log record
+        let log_record = json!({
+            "__otel_otlp_stdout": "otlp-stdout-span-exporter@0.2.2",
+            "source": "test-service",
+            "endpoint": "http://example.com",
+            "method": "POST",
+            "payload": encoded_payload,
+            "headers": {
+                "content-type": "application/x-protobuf"
+            },
+            "content-type": "application/x-protobuf",
+            "content-encoding": "gzip",
+            "base64": true
+        });
+        
+        let event = create_test_log_entry(serde_json::to_string(&log_record).unwrap());
+        
+        // Process through our conversion function
+        let result = convert_log_event(&event);
+        assert!(result.is_ok());
+        
+        let telemetry = result.unwrap();
+        
+        // Decode the output payload
+        let decoded = ExportTraceServiceRequest::decode(telemetry.payload.as_slice()).unwrap();
+        
+        // Verify the data integrity - the unique span name should be preserved
+        assert_eq!(decoded.resource_spans.len(), 1);
+        let output_span = &decoded.resource_spans[0].scope_spans[0].spans[0];
+        assert_eq!(output_span.name, test_span_name);
+    }
+    
+    #[test]
+    fn test_malformed_json() {
+        // Test with invalid JSON
+        let event = LogEntry {
+            id: "test-id".to_string(),
+            timestamp: 1234567890,
+            message: "This is not valid JSON".to_string(),
+        };
+        
+        let result = convert_log_event(&event);
+        assert!(result.is_err());
+        
+        // The error should contain a helpful message
+        let error_msg = result.err().unwrap().to_string();
+        assert!(error_msg.contains("Failed to parse log record as JSON"));
+    }
+    
+    #[test]
+    fn test_non_base64_payload() {
+        // Create a plain text payload that is not base64 encoded
+        let plain_text = "This is a test payload that is not base64 encoded";
+        
+        // Create the log record with base64 flag set to false
+        let log_record = json!({
+            "__otel_otlp_stdout": "otlp-stdout-span-exporter@0.2.2",
+            "source": "test-service",
+            "endpoint": "http://example.com",
+            "method": "POST",
+            "payload": plain_text,
+            "headers": {
+                "content-type": "text/plain"
+            },
+            "content-type": "text/plain",
+            "content-encoding": "identity",
+            "base64": false
+        });
+        
+        let event = create_test_log_entry(serde_json::to_string(&log_record).unwrap());
+        
+        let result = convert_log_event(&event);
+        // This should process without error even though it's not a protobuf format
+        assert!(result.is_ok());
+        
+        let telemetry = result.unwrap();
+        // The content type would still be set to protobuf as that's our standard format
+        assert_eq!(telemetry.content_type, "application/x-protobuf");
     }
 }

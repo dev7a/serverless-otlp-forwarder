@@ -1,6 +1,6 @@
 [package]
-name = "lambda-otlp-forwarder"
-version = "0.1.0"
+name = "serverless-otlp-forwarder"
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -40,5 +40,5 @@ chrono = "0.4.39"
 tokio = { version = "1.0", features = ["full"] }
 
 [[bin]]
-name = "stdout_processor"
+name = "logs_processor"
 path = "src/main.rs"

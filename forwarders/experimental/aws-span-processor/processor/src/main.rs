@@ -17,7 +17,7 @@ mod otlp;
 use anyhow::Result;
 use aws_credential_types::provider::ProvideCredentials;
 use aws_lambda_events::event::cloudwatch_logs::LogEntry;
-use lambda_otlp_forwarder::{
+use serverless_otlp_forwarder::{
     collectors::Collectors, processing::process_telemetry_batch, telemetry::TelemetryData,
     AppState, LogsEventWrapper,
 };

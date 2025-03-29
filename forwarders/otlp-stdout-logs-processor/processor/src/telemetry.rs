@@ -143,7 +143,7 @@ impl TelemetryData {
     }
 
     /// Creates a TelemetryData instance from a LogRecord
-    pub fn from_log_record(record: ExporterOutput<'_>) -> Result<Self> {
+    pub fn from_log_record(record: ExporterOutput) -> Result<Self> {
         // Decode base64 payload
         let raw_payload = if record.base64 {
             general_purpose::STANDARD
@@ -156,8 +156,8 @@ impl TelemetryData {
         // Convert to uncompressed protobuf format
         let protobuf_payload = Self::convert_to_protobuf(
             raw_payload,
-            record.content_type,
-            Some(record.content_encoding),
+            &record.content_type,
+            Some(&record.content_encoding),
         )?;
 
         Ok(Self {
@@ -221,15 +221,16 @@ mod tests {
     #[test]
     fn test_from_log_record() {
         let record = ExporterOutput {
-            version: "test",
+            version: "test".to_string(),
             source: "test-service".to_string(),
-            endpoint: "http://example.com",
-            method: "POST",
+            endpoint: "http://example.com".to_string(),
+            method: "POST".to_string(),
             payload: create_test_payload(),
-            headers: HashMap::new(),
-            content_type: "application/x-protobuf",
-            content_encoding: "gzip",
+            headers: Some(HashMap::new()),
+            content_type: "application/x-protobuf".to_string(),
+            content_encoding: "gzip".to_string(),
             base64: true,
+            level: Some("info".to_string()),
         };
 
         let telemetry = TelemetryData::from_log_record(record).unwrap();

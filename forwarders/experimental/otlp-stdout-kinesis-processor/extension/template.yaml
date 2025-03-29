@@ -4,13 +4,51 @@ Transform: AWS::Serverless-2016-10-31
 Description: AWS Lambda Extension that forwards OTLP records to OpenTelemetry collectors
 
 Resources:
-  StdoutKinesisOTLPLayer:
+  ExtensionLayerARM64:
     Type: AWS::Serverless::LayerVersion
     Metadata:
       BuildMethod: makefile
       BuildArchitecture: arm64
     Properties:
-      LayerName: !Sub '${AWS::StackName}-rust-extension'
+      RetentionPolicy: Retain
+      LayerName: !Sub '${AWS::StackName}-layer-arm64'
       ContentUri: layer/
       CompatibleArchitectures:
         - arm64
+      CompatibleRuntimes:
+        - python3.13
+
+  ExtensionLayerAMD64:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: makefile
+      BuildArchitecture: arm64
+    Properties:
+      RetentionPolicy: Retain
+      LayerName: !Sub '${AWS::StackName}-layer-amd64'
+      ContentUri: layer/
+      CompatibleArchitectures:
+        - x86_64
+
+  ExampleFunctionARM64:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-function-arm64'
+      CodeUri: example/
+      Handler: app.handler
+      Runtime: python3.13
+      Tracing: Active
+      Architectures:
+        - arm64
+      LoggingConfig:
+        LogFormat: JSON
+        ApplicationLogLevel: INFO
+        SystemLogLevel: WARN
+      Layers:
+        - !Ref ExtensionLayerARM64
+      Environment:
+        Variables:
+          OTLP_STDOUT_KINESIS_STREAM_NAME: !ImportValue serverless-otlp-forwarder-kinesis-processor:otlp-stream-name
+      Policies:
+        - KinesisCrudPolicy:
+            StreamName: !ImportValue serverless-otlp-forwarder-kinesis-processor:otlp-stream-name

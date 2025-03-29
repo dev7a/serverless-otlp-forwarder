@@ -1,11 +1,15 @@
 version = 0.1
+
+[default.global.parameters]
+stack_name = "otlp-stdout-kinesis-extension"
+beta_features = "yes"
+
 [default.build.parameters]
 build_in_source = true
 
 [default.deploy.parameters]
-stack_name = "kinesis-extension"
 resolve_s3 = true
-s3_prefix = "kinesis-extension"
+s3_prefix = "otlp-stdout-kinesis-extension"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
 image_repositories = []

@@ -1,20 +1,20 @@
 version = 0.1
 
 [default.global.parameters]
-stack_name = "otlp-stdout-kinesis-processor"
+stack_name = "otlp-stdout-logs-processor"
 beta_features = "yes"
 
 [default.deploy.parameters]
 resolve_s3 = true
-s3_prefix = "otlp-stdout-kinesis-processor"
+s3_prefix = "otlp-stdout-logs-processor"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
 parameter_overrides = [
   "CollectorsSecretsKeyPrefix=serverless-otlp-forwarder/keys",
   "CollectorsCacheTtlSeconds=300",
-  "SubnetIds=",
+  "RouteAllLogs=yes",
   "VpcId=",
-  "KinesisStreamMode=PROVISIONED",
-  "ShardCount=1"
+  "SubnetIds="
 ]
 image_repositories = []
+confirm_changeset = true
