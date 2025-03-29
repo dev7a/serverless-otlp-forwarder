@@ -54,6 +54,11 @@ Resources:
       Environment:
         Variables:
           LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
+          OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL: DEBUG
+          OTLP_STDOUT_KINESIS_STREAM_NAME: !ImportValue serverless-otlp-forwarder-kinesis-processor:otlp-stream-name
+      Policies:
+        - KinesisCrudPolicy:
+            StreamName: !ImportValue serverless-otlp-forwarder-kinesis-processor:otlp-stream-name
 
 Outputs:
   HandlerExampleFunctionUrl:

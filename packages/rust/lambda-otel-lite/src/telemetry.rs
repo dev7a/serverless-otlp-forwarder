@@ -92,8 +92,9 @@
 //! - `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`: Log level configuration
 
 use crate::{
-    constants, extension::register_extension, mode::ProcessorMode, processor::LambdaSpanProcessor,
-    propagation::LambdaXrayPropagator, resource::get_lambda_resource,
+    constants, extension::register_extension, logger::Logger, mode::ProcessorMode,
+    processor::LambdaSpanProcessor, propagation::LambdaXrayPropagator,
+    resource::get_lambda_resource,
 };
 use bon::Builder;
 use lambda_runtime::Error;
@@ -109,6 +110,9 @@ use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 use std::{borrow::Cow, env, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing_subscriber::layer::SubscriberExt;
+
+// Add module-specific logger
+static LOGGER: Logger = Logger::const_new("telemetry");
 
 /// Manages the lifecycle of span export based on the processing mode.
 ///
@@ -175,13 +179,16 @@ impl TelemetryCompletionHandler {
         match self.mode {
             ProcessorMode::Sync => {
                 if let Err(e) = self.provider.force_flush() {
-                    tracing::warn!(error = ?e, "Error flushing telemetry");
+                    LOGGER.warn(format!("Error flushing telemetry: {:?}", e));
                 }
             }
             ProcessorMode::Async => {
                 if let Some(sender) = &self.sender {
                     if let Err(e) = sender.send(()) {
-                        tracing::warn!(error = ?e, "Failed to send completion signal to extension");
+                        LOGGER.warn(format!(
+                            "Failed to send completion signal to extension: {:?}",
+                            e
+                        ));
                     }
                 }
             }
@@ -204,6 +211,7 @@ impl TelemetryCompletionHandler {
 /// * `resource` - Custom resource attributes (default: auto-detected from Lambda)
 /// * `env_var_name` - Environment variable name for log level configuration
 /// * `id_generator` - Custom ID generator for trace and span IDs
+/// * `processor_mode` - Span processing mode (sync/async/finalize)
 ///
 /// # Examples
 ///
@@ -296,6 +304,14 @@ pub struct TelemetryConfig {
     ///
     /// Default: `None` (uses `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`)
     pub env_var_name: Option<String>,
+
+    /// Span processing mode (sync/async/finalize)
+    ///
+    /// Controls how spans are exported from the processor. This can be overridden by the
+    /// LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE environment variable, which takes precedence.
+    ///
+    /// Default: `None` (uses environment variable or defaults to `ProcessorMode::Sync`)
+    pub processor_mode: Option<ProcessorMode>,
 }
 
 impl Default for TelemetryConfig {
@@ -372,7 +388,10 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
             "xray-lambda" => self.with_propagator(LambdaXrayPropagator::new()),
             "none" => self.with_propagator(NoopPropagator::new()),
             _ => {
-                tracing::warn!("Unknown propagator: {}, using default propagators", name);
+                LOGGER.warn(format!(
+                    "Unknown propagator: {}, using default propagators",
+                    name
+                ));
                 self
             }
         }
@@ -523,7 +542,8 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
 pub async fn init_telemetry(
     mut config: TelemetryConfig,
 ) -> Result<(opentelemetry_sdk::trace::Tracer, TelemetryCompletionHandler), Error> {
-    let mode = ProcessorMode::from_env();
+    // Get mode from config or environment with environment taking precedence
+    let mode = ProcessorMode::resolve(config.processor_mode);
 
     if let Ok(env_propagators) = env::var(constants::env_vars::PROPAGATORS) {
         let propagators: Vec<&str> = env_propagators.split(',').map(|s| s.trim()).collect();
@@ -538,10 +558,10 @@ pub async fn init_telemetry(
                     .propagators
                     .push(Box::new(LambdaXrayPropagator::new())),
                 "none" => config.propagators.push(Box::new(NoopPropagator::new())),
-                _ => tracing::warn!(
+                _ => LOGGER.warn(format!(
                     "Unknown propagator: {}, using default propagators",
                     propagator
-                ),
+                )),
             }
         }
     } else {
@@ -613,11 +633,11 @@ pub async fn init_telemetry(
             "true" => true,
             "false" => false,
             other => {
-                tracing::warn!(
+                LOGGER.warn(format!(
                     "Invalid value '{}' for {}, expected 'true' or 'false'. Using code configuration.",
                     other,
                     constants::env_vars::ENABLE_FMT_LAYER
-                );
+                ));
                 config.enable_fmt_layer
             }
         }

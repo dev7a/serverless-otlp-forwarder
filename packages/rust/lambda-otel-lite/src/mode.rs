@@ -1,9 +1,10 @@
+use crate::constants;
 use crate::logger::Logger;
 
 /// Module-specific logger
 static LOGGER: Logger = Logger::const_new("mode");
 
-use std::env;
+use std::{env, fmt};
 
 /// Controls how spans are processed and exported.
 ///
@@ -33,10 +34,23 @@ use std::env;
 ///
 /// # Configuration
 ///
-/// The mode can be configured using the `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` environment variable:
-/// - "sync" for Sync mode (default)
-/// - "async" for Async mode
-/// - "finalize" for Finalize mode
+/// The mode can be configured in two ways:
+///
+/// 1. Using the `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` environment variable:
+///    - "sync" for Sync mode (default)
+///    - "async" for Async mode
+///    - "finalize" for Finalize mode
+///
+/// 2. Programmatically through `TelemetryConfig`:
+///    ```no_run
+///    use lambda_otel_lite::{ProcessorMode, TelemetryConfig};
+///    
+///    let config = TelemetryConfig::builder()
+///        .processor_mode(ProcessorMode::Async)
+///        .build();
+///    ```
+///
+/// The environment variable takes precedence over programmatic configuration.
 ///
 /// # Example
 ///
@@ -48,8 +62,12 @@ use std::env;
 /// env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "async");
 ///
 /// // Get mode from environment
-/// let mode = ProcessorMode::from_env();
+/// let mode = ProcessorMode::resolve(None);
 /// assert!(matches!(mode, ProcessorMode::Async));
+///
+/// // Programmatically provide a default but let environment override it
+/// let mode = ProcessorMode::resolve(Some(ProcessorMode::Sync));
+/// assert!(matches!(mode, ProcessorMode::Async)); // Environment still takes precedence
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProcessorMode {
@@ -61,40 +79,50 @@ pub enum ProcessorMode {
     Finalize,
 }
 
+impl fmt::Display for ProcessorMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProcessorMode::Sync => write!(f, "sync"),
+            ProcessorMode::Async => write!(f, "async"),
+            ProcessorMode::Finalize => write!(f, "finalize"),
+        }
+    }
+}
+
 impl ProcessorMode {
-    /// Create ProcessorMode from environment variable.
+    /// Resolve processor mode from environment variable or provided configuration.
     ///
-    /// Uses LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE environment variable.
-    /// Defaults to Sync mode if not set or invalid.
-    pub fn from_env() -> Self {
-        match env::var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE")
+    /// If LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE environment variable is set, it takes precedence.
+    /// Otherwise, uses the provided mode or defaults to Sync mode if neither is set.
+    pub fn resolve(config_mode: Option<ProcessorMode>) -> Self {
+        // Environment variable takes precedence if set
+        let result = match env::var(constants::env_vars::PROCESSOR_MODE)
             .map(|s| s.to_lowercase())
             .as_deref()
         {
-            Ok("sync") => {
-                LOGGER.debug("ProcessorMode.from_env: using sync processor mode");
-                ProcessorMode::Sync
-            }
-            Ok("async") => {
-                LOGGER.debug("ProcessorMode.from_env: using async processor mode");
-                ProcessorMode::Async
-            }
-            Ok("finalize") => {
-                LOGGER.debug("ProcessorMode.from_env: using finalize processor mode");
-                ProcessorMode::Finalize
-            }
+            Ok("sync") => ProcessorMode::Sync,
+            Ok("async") => ProcessorMode::Async,
+            Ok("finalize") => ProcessorMode::Finalize,
             Ok(value) => {
                 LOGGER.warn(format!(
-                    "ProcessorMode.from_env: invalid processor mode: {}, defaulting to sync",
+                    "ProcessorMode.resolve: invalid processor mode in env: {}, using config or default",
                     value
                 ));
-                ProcessorMode::Sync
+                config_mode.unwrap_or(ProcessorMode::Sync)
             }
             Err(_) => {
-                LOGGER.debug("ProcessorMode.from_env: no processor mode set, defaulting to sync");
-                ProcessorMode::Sync
+                // No environment variable set, use config mode or default
+                config_mode.unwrap_or(ProcessorMode::Sync)
             }
-        }
+        };
+
+        // Log the resolved mode
+        LOGGER.debug(format!(
+            "ProcessorMode.resolve: using {} processor mode",
+            result
+        ));
+
+        result
     }
 }
 
@@ -104,29 +132,69 @@ mod tests {
     use serial_test::serial;
     use std::env;
 
-    /// Test-specific logger
+    // Helper function to set processor mode environment variable
+    fn set_processor_mode(value: Option<&str>) {
+        match value {
+            Some(v) => env::set_var(constants::env_vars::PROCESSOR_MODE, v),
+            None => env::remove_var(constants::env_vars::PROCESSOR_MODE),
+        }
+    }
 
     #[test]
     #[serial]
-    fn test_processor_mode_from_env() {
-        // Default to sync mode
-        env::remove_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE");
-        assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Sync));
+    fn test_processor_mode_env_only() {
+        // Default to sync mode (env var not set)
+        set_processor_mode(None);
+        assert!(matches!(ProcessorMode::resolve(None), ProcessorMode::Sync));
 
-        // Explicit sync mode
-        env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "sync");
-        assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Sync));
+        // Explicit mode tests
+        let test_cases = [
+            ("sync", ProcessorMode::Sync),
+            ("async", ProcessorMode::Async),
+            ("finalize", ProcessorMode::Finalize),
+            ("invalid", ProcessorMode::Sync), // Invalid mode defaults to sync
+        ];
 
-        // Async mode
-        env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "async");
-        assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Async));
+        for (env_value, expected_mode) in test_cases {
+            set_processor_mode(Some(env_value));
+            let result = ProcessorMode::resolve(None);
+            assert_eq!(result, expected_mode, "Failed for env value: {}", env_value);
+        }
+    }
 
-        // Finalize mode
-        env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "finalize");
-        assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Finalize));
+    #[test]
+    #[serial]
+    fn test_processor_mode_resolve() {
+        // Test environment variable precedence over config
+        let precedence_tests = [
+            // (env_value, config_value, expected)
+            (
+                Some("sync"),
+                Some(ProcessorMode::Async),
+                ProcessorMode::Sync,
+            ),
+            (
+                Some("async"),
+                Some(ProcessorMode::Sync),
+                ProcessorMode::Async,
+            ),
+            (
+                Some("invalid"),
+                Some(ProcessorMode::Finalize),
+                ProcessorMode::Finalize,
+            ),
+            (None, Some(ProcessorMode::Async), ProcessorMode::Async),
+            (None, None, ProcessorMode::Sync),
+        ];
 
-        // Invalid mode defaults to sync
-        env::set_var("LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE", "invalid");
-        assert!(matches!(ProcessorMode::from_env(), ProcessorMode::Sync));
+        for (env_value, config_mode, expected) in precedence_tests {
+            set_processor_mode(env_value);
+            let result = ProcessorMode::resolve(config_mode.clone());
+            assert_eq!(
+                result, expected,
+                "Failed for env: {:?}, config: {:?}",
+                env_value, config_mode
+            );
+        }
     }
 }

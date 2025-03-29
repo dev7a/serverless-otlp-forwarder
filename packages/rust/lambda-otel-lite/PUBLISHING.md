@@ -27,6 +27,7 @@ Before publishing a new version of `lambda-otel-lite`, ensure all these items ar
 - [ ] `CHANGELOG.md` is updated
 - [ ] Feature flags are documented
 - [ ] All public APIs have usage examples
+- [ ] All environment variables are documented
 
 ## Code Quality
 - [ ] All tests pass (`cargo test`)
@@ -47,20 +48,31 @@ Before publishing a new version of `lambda-otel-lite`, ensure all these items ar
 - [ ] Git tags are ready to be created
 - [ ] `.gitignore` is up-to-date
 
+## Version Management
+- [ ] Update version in `Cargo.toml` only (or in workspace Cargo.toml if using workspace version)
+- [ ] This is the single source of truth for the version
+
 ## Publishing Steps
 1. Update version in `Cargo.toml`
 2. Update `CHANGELOG.md`
-3. Format code: `cargo fmt`
-4. Run format check: `cargo fmt --check`
-5. Run clippy: `cargo clippy -- -D warnings`
-6. Run tests: `cargo test`
-7. Run doc tests: `cargo test --doc`
-8. Build in release mode: `cargo build --release`
-9. Verify documentation: `cargo doc --no-deps`
-10. Create a branch for the release following the pattern `release-<rust|node|python|>-<package-name>-v<version>`
-11. Commit changes to the release branch and push to GitHub, with a commit message of `release <rust|node|python|> <package-name> v<version>`
-12. Create a Pull Request to merge your changes to the main branch
-13. Once the PR is approved and merged, tagging and publishing is done automatically by the CI pipeline
+3. Run quality checks:
+   ```bash
+   cargo fmt
+   cargo fmt --check
+   cargo clippy -- -D warnings
+   cargo test
+   cargo test --doc
+   ```
+4. Build in release mode:
+   ```bash
+   cargo build --release
+   cargo doc --no-deps
+   cargo package # Verify package contents
+   ```
+5. Create a branch for the release following the pattern `release/rust/<package-name>-v<version>`
+6. Commit changes to the release branch and push to GitHub, with a commit message of `release: rust/lambda-otel-lite v<version>`
+7. Create a Pull Request to merge your changes to the main branch
+8. Once the PR is approved and merged, tagging and publishing is done automatically by the CI pipeline
 
 ## Post-Publishing
 - [ ] Verify package installation works: `cargo add lambda-otel-lite`
@@ -82,7 +94,6 @@ Before publishing a new version of `lambda-otel-lite`, ensure all these items ar
 - MSRV compatibility issues
 
 ## Notes
-- Always use `cargo package` first to verify the package contents
 - Test the package with different feature combinations
 - Consider cross-platform compatibility
 - Test with the minimum supported Rust version

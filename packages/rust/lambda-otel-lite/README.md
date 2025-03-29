@@ -696,6 +696,28 @@ The library uses environment variables for configuration, with a clear precedenc
 - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Maximum spans to queue (default: 2048)
 - `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Maximum batch size (default: 512)
 
+You can also set the processor mode programmatically through the `TelemetryConfig`:
+
+```rust,no_run
+use lambda_otel_lite::{init_telemetry, TelemetryConfig, ProcessorMode};
+use lambda_runtime::Error;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let config = TelemetryConfig::builder()
+        .processor_mode(ProcessorMode::Async)
+        .build();
+
+    let (_, completion_handler) = init_telemetry(config).await?;
+    
+    // Use the tracer and completion handler as usual
+    
+    Ok(())
+}
+```
+
+Note that the environment variable `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` will always take precedence over the programmatic setting if both are specified.
+
 ### Resource Configuration
 
 - `OTEL_SERVICE_NAME`: Service name for spans (falls back to `AWS_LAMBDA_FUNCTION_NAME`)

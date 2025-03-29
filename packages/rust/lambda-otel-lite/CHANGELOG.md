@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2025-03-28
+### Added
+- Added ability to programmatically set the processor mode via `TelemetryConfig.processor_mode`
+- Added `ProcessorMode::resolve()` method to handle both environment variable and programmatic configuration
+- Environment variable `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` still takes precedence over programmatic setting
+
 ## [0.11.4] - 2025-03-26
 ### Changed
 - Updated dependencies to use workspace references for better consistency and maintainability
