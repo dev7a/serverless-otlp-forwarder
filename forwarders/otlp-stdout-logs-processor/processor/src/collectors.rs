@@ -39,6 +39,9 @@ pub struct Collector {
     /// Optional regex pattern to exclude certain log groups
     #[serde(default, deserialize_with = "deserialize_regex")]
     pub exclude: Option<Regex>,
+    /// Optional flag to disable the collector without removing it
+    #[serde(default)]
+    pub disabled: bool,
 }
 
 fn deserialize_regex<'de, D>(deserializer: D) -> Result<Option<Regex>, D::Error>
@@ -160,16 +163,24 @@ impl Collectors {
         );
         tracing::debug!("Checking against {} collectors", cache.inner.items.len());
 
+        // Filter and transform collectors
         let result = cache
             .inner
             .items
             .iter()
             .filter_map(|collector| {
                 tracing::debug!(
-                    "Collector: {}, endpoint: {}",
+                    "Collector: {}, endpoint: {}, disabled: {}",
                     collector.name,
-                    collector.endpoint
+                    collector.endpoint,
+                    collector.disabled
                 );
+
+                // Skip disabled collectors
+                if collector.disabled {
+                    tracing::debug!("Collector {} is disabled, skipping", collector.name);
+                    return None;
+                }
 
                 if collector.should_exclude(source) {
                     tracing::debug!("Collector {} excluding source {}", collector.name, source);
@@ -188,6 +199,7 @@ impl Collectors {
                             endpoint,
                             auth: collector.auth.clone(),
                             exclude: collector.exclude.clone(),
+                            disabled: collector.disabled,
                         }))
                     }
                     Err(e) => {
@@ -202,7 +214,17 @@ impl Collectors {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        tracing::info!("Sending telemetry to {} collectors", result.len());
+        // If there are no collectors to send to, log a warning but don't return an error
+        if result.is_empty() {
+            tracing::warn!(
+                "No collectors available to send data to for source: {}, endpoint: {}",
+                source,
+                original_endpoint
+            );
+        } else {
+            tracing::info!("Sending telemetry to {} collectors", result.len());
+        }
+        
         Ok(result)
     }
 }
@@ -346,18 +368,25 @@ async fn fetch_collectors(client: &SecretsManagerClient) -> Result<Vec<Collector
 #[cfg(test)]
 pub(crate) mod test_utils {
     use super::*;
-    use std::sync::Once;
+    use std::cell::RefCell;
 
-    static INIT: Once = Once::new();
+    thread_local! {
+        static TEST_COLLECTOR: RefCell<Option<Collector>> = const { RefCell::new(None) };
+    }
 
     /// Initialize collectors with test data
     pub fn init_test_collectors(collector: Collector) {
-        INIT.call_once(|| {
+        TEST_COLLECTOR.with(|cell| {
+            *cell.borrow_mut() = Some(collector.clone());
+        });
+        
+        // If collectors are not initialized, do it now
+        if !Collectors::is_initialized() {
             let collectors = Collectors::new(vec![collector]);
             let cache = CollectorsCache::new(collectors);
             let mutex_cache = Arc::new(Mutex::new(cache));
             let _ = COLLECTORS.set(mutex_cache);
-        });
+        }
     }
 }
 
@@ -378,6 +407,25 @@ mod tests {
         });
         let collector: Collector = serde_json::from_value(valid_json).unwrap();
         assert_eq!(collector.auth, Some("x-api-key=your-api-key".to_string()));
+        assert!(!collector.disabled); // Default value
+
+        // Collector with disabled flag set
+        let disabled_json = json!({
+            "name": "disabled-collector",
+            "endpoint": "https://collector.example.com",
+            "disabled": true
+        });
+        let collector: Collector = serde_json::from_value(disabled_json).unwrap();
+        assert!(collector.disabled);
+
+        // Collector with disabled flag explicitly set to false
+        let enabled_json = json!({
+            "name": "enabled-collector",
+            "endpoint": "https://collector.example.com",
+            "disabled": false
+        });
+        let collector: Collector = serde_json::from_value(enabled_json).unwrap();
+        assert!(!collector.disabled);
 
         // Valid collector without auth
         let valid_no_auth = json!({
@@ -413,6 +461,7 @@ mod tests {
             endpoint: "https://collector.example.com".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
 
         // Test with simple path
@@ -427,6 +476,7 @@ mod tests {
             endpoint: "https://collector.example.com/base".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
         let result = collector_with_path
             .construct_signal_endpoint("https://original.com/v1/traces")
@@ -439,6 +489,7 @@ mod tests {
             endpoint: "https://collector.example.com/".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
         let result = collector_with_slash
             .construct_signal_endpoint("https://original.com/v1/traces")
@@ -451,6 +502,7 @@ mod tests {
             endpoint: "not a url".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
         assert!(collector
             .construct_signal_endpoint("https://original.com/v1/traces")
@@ -461,6 +513,7 @@ mod tests {
             endpoint: "https://collector.example.com".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
         assert!(collector.construct_signal_endpoint("not a url").is_err());
     }
@@ -474,6 +527,7 @@ mod tests {
             endpoint: "https://collector.example.com".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         }]);
 
         let cache = CollectorsCache::new(collectors);
@@ -557,6 +611,7 @@ mod tests {
             endpoint: "https://collector1.example.com".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
 
         let collector2 = Collector {
@@ -564,6 +619,7 @@ mod tests {
             endpoint: "https://collector2.example.com".to_string(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
 
         // Create a cache with just collector1

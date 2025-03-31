@@ -12,9 +12,6 @@ capabilities = "CAPABILITY_IAM"
 parameter_overrides = [
   "CollectorsSecretsKeyPrefix=serverless-otlp-forwarder/keys",
   "CollectorsCacheTtlSeconds=300",
-  "RouteAllLogs=yes",
-  "VpcId=",
-  "SubnetIds="
+  "RouteAllLogs=yes"
 ]
 image_repositories = []
-confirm_changeset = true

@@ -239,6 +239,7 @@ mod tests {
             endpoint: "http://example.com".to_string(),
             auth: Some("x-api-key=test-key".to_string()),
             exclude: None,
+            disabled: false,
         };
 
         let headers = LogRecordHeaders::default()
@@ -261,6 +262,7 @@ mod tests {
             endpoint: "http://example.com".to_string(),
             auth: Some("sigv4".to_string()),
             exclude: None,
+            disabled: false,
         };
 
         let telemetry = create_test_telemetry();
@@ -348,6 +350,7 @@ mod tests {
             endpoint: "http://example.com".to_string(),
             auth: Some("unknown".to_string()),
             exclude: None,
+            disabled: false,
         };
 
         let result = LogRecordHeaders::default().with_collector_auth(
@@ -369,6 +372,7 @@ mod tests {
             endpoint: "http://example.com".to_string(),
             auth: Some("invalid-format".to_string()),
             exclude: None,
+            disabled: false,
         };
 
         let result = LogRecordHeaders::default().with_collector_auth(

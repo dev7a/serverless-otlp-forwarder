@@ -23,6 +23,7 @@ serde_json.workspace = true
 opentelemetry-proto.workspace = true
 prost.workspace = true
 aws_lambda_events = { workspace = true, features = ["cloudwatch_logs"] }
+
 [[bin]]
 name = "span_processor"
 path = "src/main.rs"

@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use aws_credential_types::Credentials;
 use futures::future::join_all;
 use opentelemetry::trace::SpanKind;
@@ -6,6 +6,7 @@ use reqwest::{header::HeaderMap, Client as ReqwestClient};
 use tracing::{instrument, Instrument};
 
 use crate::{collectors::Collectors, headers::LogRecordHeaders, telemetry::TelemetryData};
+
 
 /// Sends telemetry data to a collector endpoint.
 /// Includes OpenTelemetry instrumentation for request tracking.
@@ -17,6 +18,8 @@ use crate::{collectors::Collectors, headers::LogRecordHeaders, telemetry::Teleme
     http.request.headers.content_type,
     http.request.headers.content_encoding,
     http.status_code,
+    error,
+    error.kind,
 ))]
 pub async fn send_telemetry(
     client: &ReqwestClient,
@@ -49,14 +52,42 @@ pub async fn send_telemetry(
         body = %base64_body,
         "Request details"
     );
-    // Send the request
-    let response = client
+    
+    // Send the request - handle errors explicitly rather than using ?
+    let response = match client
         .post(endpoint)
         .headers(headers)
         .body(telemetry.payload.clone())
         .send()
-        .await
-        .context("Failed to send POST request")?;
+        .await {
+            Ok(resp) => resp,
+            Err(e) => {
+                // Record essential error details in the span
+                current_span.record("otel.status_code", "ERROR");
+                current_span.record("error", true);
+                current_span.record("error.kind", if e.is_timeout() {
+                    "timeout"
+                } else if e.is_connect() {
+                    "connection_failed"
+                } else if e.is_request() {
+                    "request_failed"
+                } else {
+                    "network_error"
+                });
+                
+                // Log a concise error message
+                tracing::warn!(
+                    name = "error sending telemetry request",
+                    endpoint = %endpoint,
+                    error = %e,
+                    is_timeout = e.is_timeout(),
+                    is_connect = e.is_connect(),
+                    "Failed to send telemetry"
+                );
+                
+                return Err(anyhow::anyhow!("Failed to send telemetry request: {}", e));
+            }
+        };
 
     let status = response.status();
 
@@ -110,6 +141,17 @@ pub async fn process_telemetry_batch(
                 // Get all collectors with proper signal paths
                 let collectors =
                     Collectors::get_signal_endpoints(&telemetry.endpoint, &source).await?;
+
+                // If no collectors are available, log a message and return success
+                // (this is not an error condition, just means nothing needs to be done)
+                if collectors.is_empty() {
+                    tracing::info!(
+                        "No collectors available for source: {}, endpoint: {}. Skipping processing.",
+                        source,
+                        telemetry.endpoint
+                    );
+                    return Ok(());
+                }
 
                 // Create futures for sending to each collector
                 let collector_tasks: Vec<_> = collectors
@@ -216,7 +258,8 @@ pub async fn process_telemetry_batch(
         }
     }
 
-    if has_success {
+    if has_success || errors.is_empty() {
+        // Either we had a success, or we had no errors (which can happen if there were no collectors)
         Ok(())
     } else {
         let error_msg = errors
@@ -328,6 +371,7 @@ mod tests {
             endpoint: mock_server.uri(),
             auth: None,
             exclude: None,
+            disabled: false,
         };
         test_utils::init_test_collectors(collector);
 
@@ -362,6 +406,7 @@ mod tests {
             endpoint: mock_server.uri(), // Use base URI
             auth: None,
             exclude: None,
+            disabled: false,
         };
         test_utils::init_test_collectors(collector);
 
@@ -379,5 +424,44 @@ mod tests {
         let result = process_telemetry_batch(records, &client, &credentials, "us-west-2").await;
 
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_disabled_collector() {
+        let mock_server = MockServer::start().await;
+
+        // This endpoint should never be called because the collector is disabled
+        Mock::given(method("POST"))
+            .and(path("/v1/traces"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0) // Expect this endpoint to never be called
+            .mount(&mock_server)
+            .await;
+
+        // Initialize collector with the disabled flag
+        use crate::collectors::{test_utils, Collector};
+
+        let collector = Collector {
+            name: "disabled-collector".to_string(),
+            endpoint: mock_server.uri(),
+            auth: None,
+            exclude: None,
+            disabled: true,
+        };
+        test_utils::init_test_collectors(collector);
+
+        let client = setup_test_client();
+        let mut telemetry = create_test_telemetry();
+        telemetry.endpoint = format!("{}/v1/traces", mock_server.uri()); // Add signal path
+
+        let records = vec![telemetry];
+        let credentials = Credentials::new("test-key", "test-secret", None, None, "test-provider");
+
+        // Process the batch with a disabled collector
+        let result = process_telemetry_batch(records, &client, &credentials, "us-west-2").await;
+
+        // Now we expect this to succeed since we handle disabled collectors gracefully
+        // The processor should log a warning but not error
+        assert!(result.is_ok(), "Expected success when all collectors are disabled, but got error: {:?}", result);
     }
 }
