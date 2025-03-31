@@ -11,9 +11,7 @@ capabilities = "CAPABILITY_IAM"
 parameter_overrides = [
   "CollectorsSecretsKeyPrefix=serverless-otlp-forwarder/keys",
   "CollectorsCacheTtlSeconds=300",
-  "SpanLogGroupName=aws/spans",
-  "VpcId=",
-  "SubnetIds="
+  "SpanLogGroupName=aws/spans"
 ]
 image_repositories = []
 

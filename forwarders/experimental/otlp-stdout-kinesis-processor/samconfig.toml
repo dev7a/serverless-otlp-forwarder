@@ -12,8 +12,6 @@ capabilities = "CAPABILITY_IAM"
 parameter_overrides = [
   "CollectorsSecretsKeyPrefix=serverless-otlp-forwarder/keys",
   "CollectorsCacheTtlSeconds=300",
-  "SubnetIds=",
-  "VpcId=",
   "KinesisStreamMode=PROVISIONED",
   "ShardCount=1"
 ]
