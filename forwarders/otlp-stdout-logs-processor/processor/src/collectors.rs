@@ -224,7 +224,7 @@ impl Collectors {
         } else {
             tracing::info!("Sending telemetry to {} collectors", result.len());
         }
-        
+
         Ok(result)
     }
 }
@@ -379,7 +379,7 @@ pub(crate) mod test_utils {
         TEST_COLLECTOR.with(|cell| {
             *cell.borrow_mut() = Some(collector.clone());
         });
-        
+
         // If collectors are not initialized, do it now
         if !Collectors::is_initialized() {
             let collectors = Collectors::new(vec![collector]);

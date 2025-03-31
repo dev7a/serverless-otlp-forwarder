@@ -7,7 +7,6 @@ use tracing::{instrument, Instrument};
 
 use crate::{collectors::Collectors, headers::LogRecordHeaders, telemetry::TelemetryData};
 
-
 /// Sends telemetry data to a collector endpoint.
 /// Includes OpenTelemetry instrumentation for request tracking.
 #[instrument(skip_all, fields(
@@ -52,20 +51,23 @@ pub async fn send_telemetry(
         body = %base64_body,
         "Request details"
     );
-    
+
     // Send the request - handle errors explicitly rather than using ?
     let response = match client
         .post(endpoint)
         .headers(headers)
         .body(telemetry.payload.clone())
         .send()
-        .await {
-            Ok(resp) => resp,
-            Err(e) => {
-                // Record essential error details in the span
-                current_span.record("otel.status_code", "ERROR");
-                current_span.record("error", true);
-                current_span.record("error.kind", if e.is_timeout() {
+        .await
+    {
+        Ok(resp) => resp,
+        Err(e) => {
+            // Record essential error details in the span
+            current_span.record("otel.status_code", "ERROR");
+            current_span.record("error", true);
+            current_span.record(
+                "error.kind",
+                if e.is_timeout() {
                     "timeout"
                 } else if e.is_connect() {
                     "connection_failed"
@@ -73,21 +75,22 @@ pub async fn send_telemetry(
                     "request_failed"
                 } else {
                     "network_error"
-                });
-                
-                // Log a concise error message
-                tracing::warn!(
-                    name = "error sending telemetry request",
-                    endpoint = %endpoint,
-                    error = %e,
-                    is_timeout = e.is_timeout(),
-                    is_connect = e.is_connect(),
-                    "Failed to send telemetry"
-                );
-                
-                return Err(anyhow::anyhow!("Failed to send telemetry request: {}", e));
-            }
-        };
+                },
+            );
+
+            // Log a concise error message
+            tracing::warn!(
+                name = "error sending telemetry request",
+                endpoint = %endpoint,
+                error = %e,
+                is_timeout = e.is_timeout(),
+                is_connect = e.is_connect(),
+                "Failed to send telemetry"
+            );
+
+            return Err(anyhow::anyhow!("Failed to send telemetry request: {}", e));
+        }
+    };
 
     let status = response.status();
 
@@ -462,6 +465,10 @@ mod tests {
 
         // Now we expect this to succeed since we handle disabled collectors gracefully
         // The processor should log a warning but not error
-        assert!(result.is_ok(), "Expected success when all collectors are disabled, but got error: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Expected success when all collectors are disabled, but got error: {:?}",
+            result
+        );
     }
 }

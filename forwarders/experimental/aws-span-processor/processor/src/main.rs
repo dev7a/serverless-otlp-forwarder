@@ -17,13 +17,13 @@ mod otlp;
 use anyhow::Result;
 use aws_credential_types::provider::ProvideCredentials;
 use aws_lambda_events::event::cloudwatch_logs::LogEntry;
+use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
+use otlp_sigv4_client::SigV4ClientBuilder;
+use serde_json::Value as JsonValue;
 use serverless_otlp_forwarder::{
     collectors::Collectors, processing::process_telemetry_batch, telemetry::TelemetryData,
     AppState, LogsEventWrapper,
 };
-use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
-use otlp_sigv4_client::SigV4ClientBuilder;
-use serde_json::Value as JsonValue;
 use std::sync::Arc;
 
 use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};

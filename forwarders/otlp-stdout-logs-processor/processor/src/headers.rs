@@ -164,7 +164,7 @@ mod tests {
         headers.insert("x-another-header".to_string(), "another-value".to_string());
 
         ExporterOutput {
-            version: "test".to_string() ,
+            version: "test".to_string(),
             source: "test-source".to_string(),
             endpoint: "http://example.com".to_string(),
             method: "POST".to_string(),
