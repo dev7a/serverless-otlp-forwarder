@@ -10,7 +10,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExportResult
 
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
-from otlp_stdout_span_exporter.constants import EnvVars
+from otlp_stdout_span_exporter.constants import EnvVars, LogLevel, OutputType
 from otlp_stdout_span_exporter.version import VERSION
 
 
@@ -46,6 +46,19 @@ def mock_logger() -> Generator[Mock, None, None]:
         yield mock
 
 
+# Mock file operations for named pipe
+@pytest.fixture
+def mock_file_ops() -> Generator[tuple[Mock, Mock], None, None]:
+    with (
+        patch("pathlib.Path.exists") as mock_exists,
+        patch("builtins.open") as mock_open,
+    ):
+        mock_exists.return_value = True
+        mock_file = Mock()
+        mock_open.return_value.__enter__.return_value = mock_file
+        yield mock_exists, mock_file
+
+
 @pytest.fixture
 def clean_env() -> Generator[None, None, None]:
     """Clean environment variables before each test."""
@@ -58,6 +71,8 @@ def clean_env() -> Generator[None, None, None]:
         EnvVars.OTLP_HEADERS,
         EnvVars.OTLP_TRACES_HEADERS,
         EnvVars.COMPRESSION_LEVEL,
+        EnvVars.LOG_LEVEL,
+        EnvVars.OUTPUT_TYPE,
     ]
     for var in env_vars:
         if var in os.environ:
@@ -77,6 +92,8 @@ def test_default_values(clean_env: None, mock_print: Mock) -> None:
     assert exporter._endpoint == "http://localhost:4318/v1/traces"
     assert exporter._service_name == "unknown-service"
     assert exporter._headers == {}
+    assert exporter._log_level is None
+    assert exporter._output_type == OutputType.STDOUT
 
 
 def test_service_name_from_env(clean_env: None, mock_print: Mock) -> None:
@@ -327,3 +344,205 @@ def test_shutdown(clean_env: None) -> None:
     """Test shutdown operation."""
     exporter = OTLPStdoutSpanExporter()
     exporter.shutdown()  # Should not raise any exceptions
+
+
+# Tests for log level support
+def test_log_level_from_constructor(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+) -> None:
+    """Test log level from constructor parameter."""
+    exporter = OTLPStdoutSpanExporter(log_level=LogLevel.DEBUG)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    output = json.loads(mock_print.call_args[0][0])
+    assert output["level"] == LogLevel.DEBUG.value
+
+
+def test_log_level_from_env(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+) -> None:
+    """Test log level from environment variable."""
+    os.environ[EnvVars.LOG_LEVEL] = "warn"
+    exporter = OTLPStdoutSpanExporter()
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    output = json.loads(mock_print.call_args[0][0])
+    assert output["level"] == LogLevel.WARN.value
+
+
+def test_log_level_env_precedence(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+) -> None:
+    """Test that environment variable takes precedence for log level."""
+    os.environ[EnvVars.LOG_LEVEL] = "error"
+    exporter = OTLPStdoutSpanExporter(log_level=LogLevel.INFO)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    output = json.loads(mock_print.call_args[0][0])
+    assert output["level"] == LogLevel.ERROR.value
+
+
+def test_invalid_log_level_from_env(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_logger: Mock,
+) -> None:
+    """Test handling of invalid log level in environment variable."""
+    os.environ[EnvVars.LOG_LEVEL] = "invalid"
+    exporter = OTLPStdoutSpanExporter(log_level=LogLevel.INFO)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    output = json.loads(mock_print.call_args[0][0])
+    assert output["level"] == LogLevel.INFO.value
+    mock_logger.warning.assert_called_once()
+
+
+def test_no_log_level(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+) -> None:
+    """Test that level field is omitted when no log level is set."""
+    exporter = OTLPStdoutSpanExporter()
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    output = json.loads(mock_print.call_args[0][0])
+    assert "level" not in output
+
+
+# Tests for named pipe output
+def test_output_type_from_constructor(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_file_ops: tuple[Mock, Mock],
+) -> None:
+    """Test output type from constructor parameter."""
+    mock_exists, mock_file = mock_file_ops
+    exporter = OTLPStdoutSpanExporter(output_type=OutputType.PIPE)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    # Verify that print was not called (pipe was used instead)
+    mock_print.assert_not_called()
+    # Verify that file write was called
+    mock_file.write.assert_called_once()
+
+
+def test_output_type_from_env(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_file_ops: tuple[Mock, Mock],
+) -> None:
+    """Test output type from environment variable."""
+    mock_exists, mock_file = mock_file_ops
+    os.environ[EnvVars.OUTPUT_TYPE] = "pipe"
+    exporter = OTLPStdoutSpanExporter()
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    # Verify that print was not called (pipe was used instead)
+    mock_print.assert_not_called()
+    # Verify that file write was called
+    mock_file.write.assert_called_once()
+
+
+def test_output_type_env_precedence(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_file_ops: tuple[Mock, Mock],
+) -> None:
+    """Test that environment variable takes precedence for output type."""
+    mock_exists, mock_file = mock_file_ops
+    os.environ[EnvVars.OUTPUT_TYPE] = "pipe"
+    exporter = OTLPStdoutSpanExporter(output_type=OutputType.STDOUT)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    # Verify that print was not called (pipe was used instead)
+    mock_print.assert_not_called()
+    # Verify that file write was called
+    mock_file.write.assert_called_once()
+
+
+def test_pipe_fallback_when_not_exists(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_file_ops: tuple[Mock, Mock],
+) -> None:
+    """Test fallback to stdout when pipe does not exist."""
+    mock_exists, mock_file = mock_file_ops
+    mock_exists.return_value = False
+    exporter = OTLPStdoutSpanExporter(output_type=OutputType.PIPE)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    # Verify that print was called (fallback to stdout)
+    mock_print.assert_called_once()
+    # Verify that file write was not called
+    mock_file.write.assert_not_called()
+
+
+def test_pipe_fallback_on_error(
+    clean_env: None,
+    mock_gzip: Mock,
+    mock_encode_spans: Mock,
+    mock_print: Mock,
+    mock_file_ops: tuple[Mock, Mock],
+    mock_logger: Mock,
+) -> None:
+    """Test fallback to stdout when pipe write fails."""
+    mock_exists, mock_file = mock_file_ops
+    mock_file.write.side_effect = IOError("Write failed")
+    exporter = OTLPStdoutSpanExporter(output_type=OutputType.PIPE)
+    spans: list[ReadableSpan] = []
+
+    result = exporter.export(spans)
+    assert result == SpanExportResult.SUCCESS
+
+    # Verify that print was called (fallback to stdout)
+    mock_print.assert_called_once()
+    # Verify that warning was logged
+    mock_logger.warning.assert_called_once()

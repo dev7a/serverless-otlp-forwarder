@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2025-04-14
+
+### Added
+- Added `LogLevel` enum with `DEBUG`, `INFO`, `WARN`, and `ERROR` variants
+- Added optional `level` field in the output for easier filtering in log aggregation systems
+- Added `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL` environment variable to set the log level
+- Added support for named pipe output as an alternative to stdout
+- Added `OutputType` enum with `STDOUT` and `PIPE` variants
+- Added `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE` environment variable to control output type ("pipe" or "stdout")
+- Added `Output` abstract class with implementations for stdout and named pipe
+- Added comprehensive tests for log level and named pipe output features
+
+### Changed
+- Named pipe output uses a fixed path at `/tmp/otlp-stdout-span-exporter.pipe` for consistency
+- Improved error handling with fallback to stdout when pipe is unavailable
+- Optimized pipe existence check to happen only once during initialization
+
 ## [0.11.0] - 2025-03-18
 
 ### Added

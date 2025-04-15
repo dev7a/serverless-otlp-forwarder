@@ -17,15 +17,20 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
+from otlp_stdout_span_exporter.constants import LogLevel, OutputType
 
 
 def init_tracer() -> TracerProvider:
     """Initialize the tracer with OTLPStdoutSpanExporter."""
-    exporter = OTLPStdoutSpanExporter()
     provider = TracerProvider()
-    processor = BatchSpanProcessor(exporter)
-    provider.add_span_processor(processor)
-    
+    provider.add_span_processor(
+        BatchSpanProcessor(
+            OTLPStdoutSpanExporter(
+                gzip_level=9, log_level=LogLevel.INFO, output_type=OutputType.STDOUT
+            )
+        )
+    )
+
     # Set as global default tracer provider
     trace.set_tracer_provider(provider)
     return provider
@@ -36,16 +41,16 @@ def main() -> None:
     provider = init_tracer()
     tracer = trace.get_tracer("example/simple")
 
-    with tracer.start_as_current_span("parent-operation"):
-        print("Doing work...")
+    with tracer.start_as_current_span("parent-operation") as parent_span:
+        parent_span.add_event("Doing work...")
 
         # Create nested spans
-        with tracer.start_as_current_span("child-operation"):
-            print("Doing more work...")
+        with tracer.start_as_current_span("child-operation") as child_span:
+            child_span.add_event("Doing more work...")
 
     # Force flush before exit
     provider.force_flush()
 
 
 if __name__ == "__main__":
-    main() 
+    main()

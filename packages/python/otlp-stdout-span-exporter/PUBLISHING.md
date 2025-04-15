@@ -66,8 +66,8 @@ This approach ensures that:
 6. Run tests: `pytest`
 7. Run coverage: `pytest --cov`
 8. Build package: `python -m build` (this will automatically generate the version.py file)
-9. Create a branch for the release following the pattern `release-<rust|node|python|>-<package-name>-v<version>`
-10. Commit changes to the release branch and push to GitHub, with a commit message of `release <rust|node|python|> <package-name> v<version>`
+9. Create a branch for the release following the pattern `release/<rust|node|python|>/<package-name>-v<version>`
+10. Commit changes to the release branch and push to GitHub, with a commit message of `release: <rust|node|python|>/<package-name> v<version>`
 10. Tagging and publishing is done automatically by the CI pipeline
 
 ## Post-Publishing

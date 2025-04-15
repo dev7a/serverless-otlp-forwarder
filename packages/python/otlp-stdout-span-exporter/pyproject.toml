@@ -8,7 +8,7 @@ path = "src/otlp_stdout_span_exporter/version.py"
 
 [project]
 name = "otlp-stdout-span-exporter"
-version = "0.11.0"
+version = "0.13.0"
 description = "OpenTelemetry span exporter that writes to stdout in OTLP format"
 readme = "README.md"
 requires-python = ">=3.12"

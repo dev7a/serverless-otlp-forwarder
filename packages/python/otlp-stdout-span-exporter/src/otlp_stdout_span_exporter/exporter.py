@@ -4,18 +4,135 @@ import json
 import os
 import sys
 import logging
+from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
-from .constants import EnvVars, Defaults
+from .constants import EnvVars, Defaults, LogLevel, OutputType
 from .version import VERSION
 
 # Set up logger
 logger = logging.getLogger(__name__)
+
+
+class Output(ABC):
+    """Interface for output handling."""
+
+    @abstractmethod
+    def write_line(self, line: str) -> bool:
+        """
+        Write a line to the output.
+
+        Args:
+            line: The line to write
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        pass
+
+
+class StdOutput(Output):
+    """Standard output implementation that writes to stdout."""
+
+    def write_line(self, line: str) -> bool:
+        """
+        Write a line to stdout.
+
+        Args:
+            line: The line to write
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            print(line)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to write to stdout: {e}")
+            return False
+
+
+class NamedPipeOutput(Output):
+    """Output implementation that writes to a named pipe."""
+
+    def __init__(self) -> None:
+        """Initialize the named pipe output."""
+        self.pipe_path = Path(Defaults.PIPE_PATH)
+
+        # Check if pipe exists once during initialization
+        self.pipe_exists = self.pipe_path.exists()
+        if not self.pipe_exists:
+            logger.warning(
+                f"Named pipe does not exist: {self.pipe_path}, will fall back to stdout"
+            )
+
+    def write_line(self, line: str) -> bool:
+        """
+        Write a line to the named pipe.
+
+        Args:
+            line: The line to write
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not self.pipe_exists:
+            # Fall back to stdout if pipe doesn't exist
+            return StdOutput().write_line(line)
+
+        try:
+            with open(self.pipe_path, "w") as pipe:
+                pipe.write(line + "\n")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to write to pipe: {e}, falling back to stdout")
+            return StdOutput().write_line(line)
+
+
+def create_output(output_type: OutputType) -> Output:
+    """
+    Create an output implementation based on the specified type.
+
+    Args:
+        output_type: The output type (stdout or pipe)
+
+    Returns:
+        Output: The output implementation
+    """
+    if output_type == OutputType.PIPE:
+        return NamedPipeOutput()
+    return StdOutput()
+
+
+def parse_log_level(value: str) -> Optional[LogLevel]:
+    """
+    Parse log level from string.
+
+    Args:
+        value: The string value to parse
+
+    Returns:
+        Optional[LogLevel]: The parsed LogLevel or None if invalid
+    """
+    try:
+        normalized = value.lower()
+        if normalized == "debug":
+            return LogLevel.DEBUG
+        if normalized == "info":
+            return LogLevel.INFO
+        if normalized in ("warn", "warning"):
+            return LogLevel.WARN
+        if normalized == "error":
+            return LogLevel.ERROR
+    except Exception:
+        pass
+    return None
 
 
 class OTLPStdoutSpanExporter(SpanExporter):
@@ -30,6 +147,8 @@ class OTLPStdoutSpanExporter(SpanExporter):
     - Applies GZIP compression with configurable levels
     - Detects service name from environment variables
     - Supports custom headers via environment variables
+    - Supports log level for filtering in log aggregation systems
+    - Supports writing to stdout or named pipe
 
     Environment Variables:
     - OTEL_SERVICE_NAME: Service name to use in output
@@ -37,6 +156,8 @@ class OTLPStdoutSpanExporter(SpanExporter):
     - OTEL_EXPORTER_OTLP_HEADERS: Global headers for OTLP export
     - OTEL_EXPORTER_OTLP_TRACES_HEADERS: Trace-specific headers (takes precedence)
     - OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL: GZIP compression level (0-9). Defaults to 6.
+    - OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL: Log level (debug, info, warn, error)
+    - OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE: Output type (stdout, pipe)
 
     Output Format:
     ```json
@@ -52,17 +173,26 @@ class OTLPStdoutSpanExporter(SpanExporter):
         "custom-header": "value"
       },
       "payload": "<base64-encoded-gzipped-protobuf>",
-      "base64": true
+      "base64": true,
+      "level": "INFO"
     }
     ```
     """
 
-    def __init__(self, *, gzip_level: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        gzip_level: Optional[int] = None,
+        log_level: Optional[LogLevel] = None,
+        output_type: Optional[OutputType] = None,
+    ) -> None:
         """
         Creates a new OTLPStdoutSpanExporter
 
         Args:
             gzip_level: GZIP compression level (0-9). Defaults to 6.
+            log_level: Log level for the exported spans.
+            output_type: Output type (stdout or pipe).
         """
         super().__init__()
 
@@ -96,13 +226,43 @@ class OTLPStdoutSpanExporter(SpanExporter):
                 gzip_level if gzip_level is not None else Defaults.COMPRESSION_LEVEL
             )
 
+        # Set log level with proper precedence (env var > constructor param)
+        self._log_level = None
+        log_level_env = os.environ.get(EnvVars.LOG_LEVEL)
+        if log_level_env is not None:
+            parsed_log_level = parse_log_level(log_level_env)
+            if parsed_log_level is not None:
+                self._log_level = parsed_log_level
+            else:
+                logger.warning(
+                    f"Invalid log level in {EnvVars.LOG_LEVEL}: {log_level_env}, "
+                    f"log level will not be included in output"
+                )
+                self._log_level = log_level
+        else:
+            # No environment variable, use parameter
+            self._log_level = log_level
+
+        # Set output type with proper precedence (env var > constructor param > default)
+        output_type_env = os.environ.get(EnvVars.OUTPUT_TYPE)
+        if output_type_env is not None:
+            if output_type_env.lower() == "pipe":
+                self._output_type = OutputType.PIPE
+            else:
+                self._output_type = OutputType.STDOUT
+        elif output_type is not None:
+            self._output_type = output_type
+        else:
+            self._output_type = OutputType.STDOUT
+
         self._endpoint = Defaults.ENDPOINT
         self._service_name = os.environ.get(EnvVars.SERVICE_NAME) or os.environ.get(
             EnvVars.AWS_LAMBDA_FUNCTION_NAME, Defaults.SERVICE_NAME
         )
         self._headers = self._parse_headers()
+        self._output = create_output(self._output_type)
 
-    def _parse_headers(self) -> dict[str, str]:
+    def _parse_headers(self) -> Dict[str, str]:
         """
         Parse headers from environment variables.
         Headers should be in the format: key1=value1,key2=value2
@@ -113,7 +273,7 @@ class OTLPStdoutSpanExporter(SpanExporter):
         Returns:
             dict: Header key-value pairs
         """
-        headers: dict[str, str] = {}
+        headers: Dict[str, str] = {}
         header_vars = [
             os.environ.get(EnvVars.OTLP_HEADERS),  # General headers first
             os.environ.get(
@@ -127,7 +287,7 @@ class OTLPStdoutSpanExporter(SpanExporter):
 
         return headers
 
-    def _parse_header_string(self, header_str: str) -> dict[str, str]:
+    def _parse_header_string(self, header_str: str) -> Dict[str, str]:
         """
         Parse a header string in the format key1=value1,key2=value2
 
@@ -137,7 +297,7 @@ class OTLPStdoutSpanExporter(SpanExporter):
         Returns:
             dict: Header key-value pairs
         """
-        headers: dict[str, str] = {}
+        headers: Dict[str, str] = {}
         for pair in header_str.split(","):
             if "=" not in pair:
                 continue
@@ -150,7 +310,7 @@ class OTLPStdoutSpanExporter(SpanExporter):
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         """
         Exports the spans by serializing them to OTLP Protobuf format, compressing with GZIP,
-        and writing to stdout as a structured JSON object.
+        and writing to the configured output as a structured JSON object.
 
         Args:
             spans: The spans to export
@@ -170,7 +330,7 @@ class OTLPStdoutSpanExporter(SpanExporter):
             )
 
             # Create the output object with metadata and payload
-            output: dict[str, Any] = {
+            output: Dict[str, Any] = {
                 "__otel_otlp_stdout": VERSION,
                 "source": self._service_name,
                 "endpoint": self._endpoint,
@@ -185,9 +345,15 @@ class OTLPStdoutSpanExporter(SpanExporter):
             if self._headers:
                 output["headers"] = self._headers
 
-            # Write the formatted output to stdout
-            print(json.dumps(output))
-            return SpanExportResult.SUCCESS
+            # Add log level if configured
+            if self._log_level is not None:
+                output["level"] = self._log_level.value
+
+            # Write the formatted output to the configured output
+            if self._output.write_line(json.dumps(output)):
+                return SpanExportResult.SUCCESS
+            else:
+                return SpanExportResult.FAILURE
 
         except Exception as e:
             # Log the error but don't raise it
