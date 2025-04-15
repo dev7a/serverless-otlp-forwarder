@@ -2,10 +2,11 @@
 
 import { jest, describe, it, beforeEach, afterEach, expect } from '@jest/globals';
 import { SpyInstance } from 'jest-mock';
-import { OTLPStdoutSpanExporter } from '../otlp_stdout_span_exporter';
+import { OTLPStdoutSpanExporter, LogLevel, OutputType } from '../otlp_stdout_span_exporter';
 import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { ExportResultCode } from '@opentelemetry/core';
 import * as zlib from 'zlib';
+import * as fs from 'fs';
 
 jest.mock('zlib', () => ({
   gzipSync: jest.fn(() => Buffer.from('mock-compressed-data')),
@@ -19,6 +20,16 @@ jest.mock('@opentelemetry/otlp-transformer', () => ({
   ProtobufTraceSerializer: {
     serializeRequest: jest.fn(() => Buffer.from('mock-serialized-data'))
   }
+}));
+
+// Mock fs module
+jest.mock('fs', () => ({
+  existsSync: jest.fn().mockReturnValue(true),
+  writeFile: jest.fn((path, data, callback) => {
+    if (typeof callback === 'function') {
+      callback();
+    }
+  })
 }));
 
 describe('OTLPStdoutSpanExporter', () => {
@@ -45,6 +56,8 @@ describe('OTLPStdoutSpanExporter', () => {
     delete process.env.OTEL_EXPORTER_OTLP_HEADERS;
     delete process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS;
     delete process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL;
+    delete process.env.OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL;
+    delete process.env.OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE;
   });
 
   afterEach(() => {
@@ -194,6 +207,128 @@ describe('OTLPStdoutSpanExporter', () => {
       expect(output.headers).toBeUndefined();
     });
   });
+
+  // Tests for log level support
+  it('should not include level field when no log level is set', () => {
+    const _exporter = new OTLPStdoutSpanExporter();
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
+      expect(output.level).toBeUndefined();
+    });
+  });
+
+  it('should include log level from config', () => {
+    const _exporter = new OTLPStdoutSpanExporter({ logLevel: LogLevel.Debug });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
+      expect(output.level).toBe(LogLevel.Debug);
+    });
+  });
+
+  it('should use log level from environment variable', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL = 'warn';
+    const _exporter = new OTLPStdoutSpanExporter();
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
+      expect(output.level).toBe(LogLevel.Warn);
+    });
+  });
+
+  it('should use environment variable over explicit config for log level', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL = 'error';
+    const _exporter = new OTLPStdoutSpanExporter({ logLevel: LogLevel.Info });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
+      expect(output.level).toBe(LogLevel.Error);
+    });
+  });
+
+  it('should handle invalid log level in environment variable', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL = 'invalid';
+    const _exporter = new OTLPStdoutSpanExporter({ logLevel: LogLevel.Info });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
+      expect(output.level).toBe(LogLevel.Info);
+    });
+  });
+
+  // Tests for named pipe output
+  it('should use stdout by default', () => {
+    const _exporter = new OTLPStdoutSpanExporter();
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(mockWrite).toHaveBeenCalled();
+      expect(fs.writeFile).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should use named pipe when configured', () => {
+    const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(fs.writeFile).toHaveBeenCalled();
+      expect(mockWrite).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should use output type from environment variable', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE = 'pipe';
+    const _exporter = new OTLPStdoutSpanExporter();
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(fs.writeFile).toHaveBeenCalled();
+      expect(mockWrite).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should use environment variable over explicit config for output type', () => {
+    process.env.OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE = 'pipe';
+    const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Stdout });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(fs.writeFile).toHaveBeenCalled();
+      expect(mockWrite).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should fallback to stdout if pipe does not exist', () => {
+    jest.spyOn(fs, 'existsSync').mockReturnValueOnce(false);
+    const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(mockWrite).toHaveBeenCalled();
+    });
+  });
+
+  it('should fallback to stdout if pipe write fails', () => {
+    jest.spyOn(fs, 'writeFile').mockImplementationOnce((path, data, callback) => {
+      if (typeof callback === 'function') {
+        callback(new Error('Write to pipe failed'));
+      }
+    });
+    
+    const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
+    const spans: ReadableSpan[] = [];
+    
+    _exporter.export(spans, (_result) => {
+      expect(mockWrite).toHaveBeenCalled();
+    });
+  });
 });
 
 describe('OTLPStdoutSpanExporter Header Parsing', () => {
@@ -312,4 +447,4 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
       'api-key': 'secret=123=456'
     });
   });
-}); 
+});

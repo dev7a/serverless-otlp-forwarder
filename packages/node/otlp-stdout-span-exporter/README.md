@@ -14,7 +14,8 @@ A Node.js span exporter that writes OpenTelemetry spans to stdout, using a custo
     "custom-header": "value"
   },
   "payload": "<base64-encoded-gzipped-protobuf>",
-  "base64": true
+  "base64": true,
+  "level": "DEBUG"
 }
 ```
 
@@ -29,6 +30,8 @@ Outputting telemetry data in this format directly to stdout makes the library ea
 - Applies GZIP compression with configurable levels
 - Detects service name from environment variables
 - Supports custom headers via environment variables
+- Supports log level for filtering in log aggregation systems
+- Supports writing to stdout or named pipe
 - Consistent JSON output format
 - Zero external HTTP dependencies
 - Lightweight and fast
@@ -49,10 +52,22 @@ You can create a simple tracer provider with the BatchSpanProcessor and the OTLP
 import { trace } from '@opentelemetry/api';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter';
+import { OTLPStdoutSpanExporter, LogLevel, OutputType } from '@dev7a/otlp-stdout-span-exporter';
 
-// Initialize the exporter
+// Initialize the exporter with default options (stdout output)
 const exporter = new OTLPStdoutSpanExporter({ gzipLevel: 6 });
+
+// Or with log level for filtering
+const debugExporter = new OTLPStdoutSpanExporter({ 
+  gzipLevel: 6,
+  logLevel: LogLevel.Debug
+});
+
+// Or with named pipe output
+const pipeExporter = new OTLPStdoutSpanExporter({
+  outputType: OutputType.Pipe  // Will write to /tmp/otlp-stdout-span-exporter.pipe
+});
+
 // Use batching processor for efficiency
 const processor = new BatchSpanProcessor(exporter);
 // Create a tracer provider
@@ -82,6 +97,28 @@ interface OTLPStdoutSpanExporterConfig {
   // GZIP compression level (0-9, where 0 is no compression and 9 is maximum compression)
   // Defaults to 6 if not specified
   gzipLevel?: number;
+  
+  // Log level for filtering in log aggregation systems
+  // If not specified, no level field will be included in the output
+  logLevel?: LogLevel;
+  
+  // Output type (stdout or pipe)
+  // Defaults to OutputType.Stdout if not specified
+  outputType?: OutputType;
+}
+
+// Available log levels
+enum LogLevel {
+  Debug = "DEBUG",
+  Info = "INFO",
+  Warn = "WARN",
+  Error = "ERROR"
+}
+
+// Available output types
+enum OutputType {
+  Stdout = "stdout",
+  Pipe = "pipe"
 }
 ```
 
@@ -90,7 +127,7 @@ The exporter follows a strict configuration precedence:
 2. Constructor parameters in config object
 3. Default values (lowest precedence)
 
-This means that if the `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable is set, it will always take precedence over the configuration in the constructor.
+This means that if any of the environment variables are set, they will always take precedence over the configuration in the constructor.
 
 ### Environment Variables
 
@@ -101,6 +138,8 @@ The exporter respects the following environment variables:
 - `OTEL_EXPORTER_OTLP_HEADERS`: Headers for OTLP export, used in the `headers` field
 - `OTEL_EXPORTER_OTLP_TRACES_HEADERS`: Trace-specific headers (which take precedence if conflicting with `OTEL_EXPORTER_OTLP_HEADERS`)
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9). Defaults to 6. Takes precedence over the constructor parameter if set.
+- `OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL`: Log level for filtering (debug, info, warn, error). If set, adds a `level` field to the output.
+- `OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE`: Output type ("pipe" or "stdout"). Defaults to "stdout". If set to "pipe", writes to `/tmp/otlp-stdout-span-exporter.pipe`.
 
 >[!NOTE]
 >For security best practices, avoid including authentication credentials or sensitive information in headers. The serverless-otlp-forwarder infrastructure is designed to handle authentication at the destination, rather than embedding credentials in your telemetry data.
@@ -122,7 +161,8 @@ The exporter writes JSON objects to stdout with the following structure:
     "custom-header": "value"
   },
   "base64": true,
-  "payload": "<base64-encoded-gzipped-protobuf>"
+  "payload": "<base64-encoded-gzipped-protobuf>",
+  "level": "INFO"
 }
 ```
 
@@ -135,6 +175,13 @@ The exporter writes JSON objects to stdout with the following structure:
 - `headers` is the headers defined in the `OTEL_EXPORTER_OTLP_HEADERS` and `OTEL_EXPORTER_OTLP_TRACES_HEADERS` environment variables.
 - `payload` is the base64-encoded, gzipped, Protobuf-serialized span data in OTLP format.
 - `base64` is a boolean flag to indicate if the payload is base64-encoded (always `true`).
+- `level` is the log level (only present if configured via constructor or environment variable).
+
+## Named Pipe Output
+
+When configured to use named pipe output (either via constructor or environment variable), the exporter will write to `/tmp/otlp-stdout-span-exporter.pipe` instead of stdout. This can be useful in environments where you want to process the telemetry data with a separate process.
+
+If the pipe doesn't exist or can't be written to, the exporter will automatically fall back to stdout with a warning.
 
 ## License
 
@@ -144,4 +191,4 @@ MIT
 
 - [GitHub](https://github.com/dev7a/serverless-otlp-forwarder) - The main project repository for the Serverless OTLP Forwarder project
 - [GitHub](https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/python/otlp-stdout-span-exporter) | [PyPI](https://pypi.org/project/otlp-stdout-span-exporter/) - The Python version of this exporter
-- [GitHub](https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/rust/otlp-stdout-span-exporter) | [crates.io](https://crates.io/crates/otlp-stdout-span-exporter) - The Rust version of this exporter 
+- [GitHub](https://github.com/dev7a/serverless-otlp-forwarder/tree/main/packages/rust/otlp-stdout-span-exporter) | [crates.io](https://crates.io/crates/otlp-stdout-span-exporter) - The Rust version of this exporter

@@ -3,11 +3,55 @@ import { ExportResult, ExportResultCode } from '@opentelemetry/core';
 import { ProtobufTraceSerializer } from '@opentelemetry/otlp-transformer';
 import { SpanExporter, ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import * as zlib from 'zlib';
+import * as fs from 'fs';
 import { VERSION } from './version';
 
 const DEFAULT_ENDPOINT = 'http://localhost:4318/v1/traces';
 const DEFAULT_COMPRESSION_LEVEL = 6;
 const COMPRESSION_LEVEL_ENV_VAR = 'OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL';
+const LOG_LEVEL_ENV_VAR = 'OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL';
+const OUTPUT_TYPE_ENV_VAR = 'OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE';
+const DEFAULT_PIPE_PATH = '/tmp/otlp-stdout-span-exporter.pipe';
+
+/**
+ * Log level for the exported spans
+ */
+export enum LogLevel {
+  /**
+   * Debug level (most verbose)
+   */
+  Debug = 'DEBUG',
+  
+  /**
+   * Info level (default)
+   */
+  Info = 'INFO',
+  
+  /**
+   * Warning level
+   */
+  Warn = 'WARN',
+  
+  /**
+   * Error level (least verbose)
+   */
+  Error = 'ERROR'
+}
+
+/**
+ * Output type for the exporter
+ */
+export enum OutputType {
+  /**
+   * Write to stdout (default)
+   */
+  Stdout = 'stdout',
+  
+  /**
+   * Write to named pipe
+   */
+  Pipe = 'pipe'
+}
 
 /**
  * Configuration options for OTLPStdoutSpanExporter
@@ -19,6 +63,108 @@ export interface OTLPStdoutSpanExporterConfig {
    * Defaults to 6 if neither environment variable nor parameter is provided.
    */
   gzipLevel?: number;
+
+  /**
+   * Log level for the exported spans.
+   * Environment variable OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL takes precedence if set.
+   * If not provided, no level field will be included in the output.
+   */
+  logLevel?: LogLevel;
+
+  /**
+   * Output type for the exporter (stdout or pipe).
+   * Environment variable OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE takes precedence if set.
+   * Defaults to stdout if neither environment variable nor parameter is provided.
+   */
+  outputType?: OutputType;
+}
+
+/**
+ * Interface for output handling
+ */
+interface Output {
+  /**
+   * Write a line to the output
+   * @param line The line to write
+   * @param callback Callback to be called when write is complete
+   */
+  writeLine(line: string, callback: (err?: Error) => void): void;
+}
+
+/**
+ * Standard output implementation
+ */
+class StdOutput implements Output {
+  writeLine(line: string, callback: (err?: Error) => void): void {
+    process.stdout.write(line + '\n', (err) => {
+      callback(err);
+    });
+  }
+}
+
+/**
+ * Named pipe output implementation
+ */
+class NamedPipeOutput implements Output {
+  private readonly pipePath: string;
+  private pipeExists: boolean;
+
+  constructor() {
+    this.pipePath = DEFAULT_PIPE_PATH;
+    
+    // Check if pipe exists once during initialization
+    try {
+      this.pipeExists = fs.existsSync(this.pipePath);
+      if (!this.pipeExists) {
+        diag.warn(`Named pipe does not exist: ${this.pipePath}, will fall back to stdout`);
+      }
+    } catch (e) {
+      diag.warn(`Error checking pipe existence: ${e}, will fall back to stdout`);
+      this.pipeExists = false;
+    }
+  }
+
+  writeLine(line: string, callback: (err?: Error) => void): void {
+    if (!this.pipeExists) {
+      // Fall back to stdout if pipe doesn't exist
+      new StdOutput().writeLine(line, callback);
+      return;
+    }
+
+    // Write to pipe without checking existence again
+    fs.writeFile(this.pipePath, line + '\n', (err) => {
+      if (err) {
+        diag.warn(`Failed to write to pipe: ${err}, falling back to stdout`);
+        new StdOutput().writeLine(line, callback);
+        return;
+      }
+      callback();
+    });
+  }
+}
+
+/**
+ * Helper function to create output based on type
+ */
+function createOutput(outputType: OutputType): Output {
+  if (outputType === OutputType.Pipe) {
+    return new NamedPipeOutput();
+  }
+  return new StdOutput();
+}
+
+/**
+ * Parse log level from string
+ * @param value The string value to parse
+ * @returns The parsed LogLevel or undefined if invalid
+ */
+function parseLogLevel(value: string): LogLevel | undefined {
+  const normalized = value.toLowerCase();
+  if (normalized === 'debug') return LogLevel.Debug;
+  if (normalized === 'info') return LogLevel.Info;
+  if (normalized === 'warn' || normalized === 'warning') return LogLevel.Warn;
+  if (normalized === 'error') return LogLevel.Error;
+  return undefined;
 }
 
 /**
@@ -32,6 +178,8 @@ export interface OTLPStdoutSpanExporterConfig {
  * - Applies GZIP compression with configurable levels
  * - Detects service name from environment variables
  * - Supports custom headers via environment variables
+ * - Supports log level for filtering in log aggregation systems
+ * - Supports writing to stdout or named pipe
  * 
  * Configuration Precedence:
  * 1. Environment variables (highest precedence)
@@ -44,6 +192,8 @@ export interface OTLPStdoutSpanExporterConfig {
  * - OTEL_EXPORTER_OTLP_HEADERS: Global headers for OTLP export
  * - OTEL_EXPORTER_OTLP_TRACES_HEADERS: Trace-specific headers (takes precedence)
  * - OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL: GZIP compression level (0-9). Defaults to 6.
+ * - OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL: Log level (debug, info, warn, error)
+ * - OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE: Output type (stdout, pipe)
  * 
  * Output Format:
  * ```json
@@ -59,7 +209,8 @@ export interface OTLPStdoutSpanExporterConfig {
  *     "custom-header": "value"
  *   },
  *   "payload": "<base64-encoded-gzipped-protobuf>",
- *   "base64": true
+ *   "base64": true,
+ *   "level": "INFO"
  * }
  * ```
  * 
@@ -68,8 +219,12 @@ export interface OTLPStdoutSpanExporterConfig {
  * // Basic usage with defaults
  * const exporter = new OTLPStdoutSpanExporter();
  * 
- * // Custom compression level (environment variable takes precedence if set)
- * const exporter = new OTLPStdoutSpanExporter({ gzipLevel: 9 }); // Use maximum compression
+ * // With custom configuration
+ * const exporter = new OTLPStdoutSpanExporter({
+ *   gzipLevel: 9,
+ *   logLevel: LogLevel.Debug,
+ *   outputType: OutputType.Pipe
+ * });
  * 
  * // With custom headers via environment variables
  * process.env.OTEL_EXPORTER_OTLP_HEADERS = 'tenant-id=tenant-12345,custom-header=value';
@@ -81,6 +236,8 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
   private readonly serviceName: string;
   private readonly gzipLevel: number;
   private readonly headers: Record<string, string>;
+  private readonly logLevel?: LogLevel;
+  private readonly output: Output;
 
   /**
    * Creates a new OTLPStdoutSpanExporter
@@ -88,6 +245,11 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
    * @param config.gzipLevel - Optional GZIP compression level (0-9).
    *                    Environment variable OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL takes precedence if set.
    *                    Defaults to 6 if neither environment variable nor parameter is provided.
+   * @param config.logLevel - Optional log level for the exported spans.
+   *                    Environment variable OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL takes precedence if set.
+   * @param config.outputType - Optional output type (stdout or pipe).
+   *                    Environment variable OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE takes precedence if set.
+   *                    Defaults to stdout if neither environment variable nor parameter is provided.
    */
   constructor(config?: OTLPStdoutSpanExporterConfig) {
     this.endpoint = DEFAULT_ENDPOINT;
@@ -119,6 +281,38 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
       this.gzipLevel = gzipLevel !== undefined ? gzipLevel : DEFAULT_COMPRESSION_LEVEL;
     }
     
+    // Set log level with proper precedence:
+    // 1. Environment variable (highest precedence)
+    // 2. Constructor parameter from config object
+    const logLevelEnv = process.env[LOG_LEVEL_ENV_VAR];
+    if (logLevelEnv !== undefined) {
+      const parsedLogLevel = parseLogLevel(logLevelEnv);
+      if (parsedLogLevel !== undefined) {
+        this.logLevel = parsedLogLevel;
+      } else {
+        diag.warn(`Invalid log level in ${LOG_LEVEL_ENV_VAR}: ${logLevelEnv}, log level will not be included in output`);
+        this.logLevel = config?.logLevel;
+      }
+    } else {
+      // No environment variable, use parameter from config
+      this.logLevel = config?.logLevel;
+    }
+
+    // Set output type with proper precedence:
+    // 1. Environment variable (highest precedence)
+    // 2. Constructor parameter from config object
+    // 3. Default value (lowest precedence)
+    let outputType = OutputType.Stdout;
+    const outputTypeEnv = process.env[OUTPUT_TYPE_ENV_VAR];
+    if (outputTypeEnv !== undefined) {
+      if (outputTypeEnv.toLowerCase() === 'pipe') {
+        outputType = OutputType.Pipe;
+      }
+    } else if (config?.outputType !== undefined) {
+      outputType = config.outputType;
+    }
+    
+    this.output = createOutput(outputType);
     this.headers = this.parseHeaders();
   }
 
@@ -166,7 +360,7 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
 
   /**
    * Exports the spans by serializing them to OTLP Protobuf format, compressing with GZIP,
-   * and writing to stdout as a structured JSON object.
+   * and writing to the configured output as a structured JSON object.
    * 
    * @param spans - The spans to export
    * @param resultCallback - Callback to report the success/failure of the export
@@ -200,10 +394,15 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
         output.headers = this.headers;
       }
 
-      // Write the formatted output to stdout
-      process.stdout.write(JSON.stringify(output) + '\n', (err) => {
+      // Add log level if configured
+      if (this.logLevel !== undefined) {
+        output.level = this.logLevel;
+      }
+
+      // Write the formatted output to the configured output
+      this.output.writeLine(JSON.stringify(output), (err) => {
         if (err) {
-          diag.error('Failed to write to stdout:', err);
+          diag.error('Failed to write output:', err);
           resultCallback({ code: ExportResultCode.FAILED });
         } else {
           resultCallback({ code: ExportResultCode.SUCCESS });
@@ -227,4 +426,4 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
   shutdown(): Promise<void> {
     return Promise.resolve();
   }
-} 
+}
