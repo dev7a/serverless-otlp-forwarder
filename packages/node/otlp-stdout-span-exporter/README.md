@@ -1,5 +1,7 @@
 # Node.js OTLP Stdout Span Exporter
 
+[![npm version](https://img.shields.io/npm/v/@dev7a/otlp-stdout-span-exporter.svg)](https://www.npmjs.com/package/@dev7a/otlp-stdout-span-exporter)
+
 A Node.js span exporter that writes OpenTelemetry spans to stdout, using a custom serialization format that embeds the spans serialized as OTLP protobuf in the `payload` field. The message envelope carries metadata about the spans, such as the service name, the OTLP endpoint, and the HTTP method:
 
 ```json

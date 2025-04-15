@@ -51,7 +51,7 @@ Before publishing a new version of `@dev7a/otlp-stdout-span-exporter`, ensure al
 6. **Create and switch to a release branch** following the pattern `release/<rust|node|python|>/<package-name>-v<version>`
    - Example: `git checkout -b release/node/otlp-stdout-span-exporter-v0.13.0`
 7. **Commit all changes to the release branch**
-   - Example: `git add . && git commit -m "release node otlp-stdout-span-exporter v0.13.0"`
+   - Example: `git add . && git commit -m "release: node/otlp-stdout-span-exporter v0.13.0"`
 8. Push the release branch to GitHub
    - Example: `git push origin release/node/otlp-stdout-span-exporter-v0.13.0`
 9. Tagging and publishing is done automatically by the CI pipeline
