@@ -25,6 +25,21 @@ const FIXTURES = {
   alb: loadFixture('alb.json'),
 };
 
+// Helper function to normalize headers for test assertions, identical to the one in the implementation
+function normalizeHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
+  if (!headers) {
+    return undefined;
+  }
+  
+  return Object.entries(headers).reduce(
+    (acc, [key, value]) => {
+      acc[key.toLowerCase()] = value;
+      return acc;
+    },
+    {} as Record<string, string>
+  );
+}
+
 describe('Extractors', () => {
   describe('defaultExtractor', () => {
     it('should extract basic Lambda context attributes', () => {
@@ -93,7 +108,10 @@ describe('Extractors', () => {
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
-      expect(result.carrier).toBe(event.headers);
+      
+      // Use toEqual instead of toBe to check content equality
+      // and expect the headers to be normalized with lowercase keys
+      expect(result.carrier).toEqual(normalizeHeaders(event.headers));
 
       // Check extracted attributes
       const attrs = result.attributes;
@@ -150,7 +168,10 @@ describe('Extractors', () => {
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
-      expect(result.carrier).toBe(event.headers);
+      
+      // Use toEqual instead of toBe to check content equality
+      // and expect the headers to be normalized with lowercase keys
+      expect(result.carrier).toEqual(normalizeHeaders(event.headers));
 
       // Check extracted attributes
       const attrs = result.attributes;
@@ -202,7 +223,10 @@ describe('Extractors', () => {
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
-      expect(result.carrier).toBe(event.headers);
+      
+      // Use toEqual instead of toBe to check content equality
+      // and expect the headers to be normalized with lowercase keys
+      expect(result.carrier).toEqual(normalizeHeaders(event.headers));
 
       // Check extracted attributes
       const attrs = result.attributes;

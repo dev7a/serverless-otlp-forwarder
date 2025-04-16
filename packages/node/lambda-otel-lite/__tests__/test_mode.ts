@@ -1,6 +1,7 @@
-import { ProcessorMode, processorModeFromEnv } from '../src/mode';
+import { ProcessorMode, resolveProcessorMode } from '../src/mode';
 import { EnvVarManager } from './utils';
 import { describe, it, beforeEach, afterEach, expect } from '@jest/globals';
+import { ENV_VARS } from '../src/constants';
 
 describe('ProcessorMode', () => {
   let envManager: EnvVarManager;
@@ -20,73 +21,79 @@ describe('ProcessorMode', () => {
     expect(ProcessorMode.Finalize).toBe('finalize');
   });
 
-  describe('processorModeFromEnv', () => {
+  describe('resolveProcessorMode', () => {
     it('should get mode from environment variable', () => {
-      envManager.setup({ TEST_MODE: 'sync' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: 'sync' });
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Sync);
 
-      envManager.setup({ TEST_MODE: 'async' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Async);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: 'async' });
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Async);
 
-      envManager.setup({ TEST_MODE: 'finalize' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Finalize);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: 'finalize' });
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Finalize);
     });
 
     it('should handle case-insensitive values', () => {
-      envManager.setup({ TEST_MODE: 'SYNC' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: 'SYNC' });
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Sync);
 
-      envManager.setup({ TEST_MODE: 'Async' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Async);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: 'Async' });
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Async);
     });
 
-    it('should use default mode when env var is not set', () => {
-      envManager.setup({ TEST_MODE: undefined });
-      expect(processorModeFromEnv('TEST_MODE', ProcessorMode.Sync)).toBe(ProcessorMode.Sync);
+    it('should use config value when env var is not set', () => {
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: undefined });
+      expect(resolveProcessorMode(ProcessorMode.Async)).toBe(ProcessorMode.Async);
+      expect(resolveProcessorMode(ProcessorMode.Finalize)).toBe(ProcessorMode.Finalize);
     });
 
-    it('should throw error for invalid mode', () => {
-      envManager.setup({ TEST_MODE: 'invalid' });
-      expect(() => processorModeFromEnv('TEST_MODE')).toThrow(
-        'Invalid TEST_MODE: invalid. Must be one of: sync, async, finalize'
-      );
+    it('should use default value when neither env var nor config is set', () => {
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: undefined });
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Sync);
     });
 
-    it('should use Async mode by default when env var is not set and no default provided', () => {
-      envManager.setup({ TEST_MODE: undefined });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
+    it('should handle invalid environment variable values', () => {
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: 'invalid' });
+      // Should log a warning and use the config value
+      expect(resolveProcessorMode(ProcessorMode.Async)).toBe(ProcessorMode.Async);
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Sync);
     });
 
     it('should handle empty string in environment variable', () => {
-      envManager.setup({ TEST_MODE: '' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: '' });
+      expect(resolveProcessorMode(ProcessorMode.Async)).toBe(ProcessorMode.Async);
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Sync);
     });
 
     it('should handle whitespace in environment variable', () => {
-      envManager.setup({ TEST_MODE: '  sync  ' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: '  async  ' });
+      expect(resolveProcessorMode(ProcessorMode.Sync)).toBe(ProcessorMode.Async);
     });
 
     it('should handle mixed case with whitespace', () => {
-      envManager.setup({ TEST_MODE: '  aSyNc  ' });
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Async);
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: '  aSyNc  ' });
+      expect(resolveProcessorMode(ProcessorMode.Sync)).toBe(ProcessorMode.Async);
     });
 
-    it('should use provided default mode over global default', () => {
-      envManager.setup({ TEST_MODE: undefined });
-      expect(processorModeFromEnv('TEST_MODE', ProcessorMode.Finalize)).toBe(
-        ProcessorMode.Finalize
-      );
+    it('should prioritize environment variable over config value', () => {
+      envManager.setup({ [ENV_VARS.PROCESSOR_MODE]: 'async' });
+      expect(resolveProcessorMode(ProcessorMode.Sync)).toBe(ProcessorMode.Async);
+      expect(resolveProcessorMode(ProcessorMode.Finalize)).toBe(ProcessorMode.Async);
     });
 
     it('should handle non-string environment values', () => {
       // @ts-expect-error - Testing runtime behavior with invalid types
-      process.env.TEST_MODE = 123;
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
+      process.env[ENV_VARS.PROCESSOR_MODE] = 123;
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Sync);
 
       // @ts-expect-error - Testing runtime behavior with invalid types
-      process.env.TEST_MODE = true;
-      expect(processorModeFromEnv('TEST_MODE')).toBe(ProcessorMode.Sync);
+      process.env[ENV_VARS.PROCESSOR_MODE] = true;
+      expect(resolveProcessorMode()).toBe(ProcessorMode.Sync);
+    });
+
+    it('should allow custom environment variable name', () => {
+      envManager.setup({ CUSTOM_ENV_VAR: 'async' });
+      expect(resolveProcessorMode(ProcessorMode.Sync, 'CUSTOM_ENV_VAR')).toBe(ProcessorMode.Async);
     });
   });
 });

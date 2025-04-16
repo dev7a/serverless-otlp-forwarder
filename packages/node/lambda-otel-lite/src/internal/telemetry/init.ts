@@ -7,10 +7,11 @@ import { CompositePropagator } from '@opentelemetry/core';
 import { state } from '../state';
 import { LambdaSpanProcessor } from './processor';
 import { TelemetryCompletionHandler } from './completion';
-import { processorModeFromEnv, ProcessorMode } from '../../mode';
+import { resolveProcessorMode, ProcessorMode } from '../../mode';
 import { createLogger } from '../logger';
 import { Tracer } from '@opentelemetry/api';
 import { getLambdaResource } from './resource';
+import { setupPropagator } from '../propagation';
 
 const logger = createLogger('init');
 
@@ -54,6 +55,9 @@ export { getLambdaResource } from './resource';
  * @param options.idGenerator - Optional ID generator to use for creating trace and span IDs.
  *                            If not provided, the default random ID generator will be used.
  *                            Use an AWS X-Ray compatible ID generator for X-Ray integration.
+ * @param options.processorMode - Optional processor mode to control how spans are processed and exported.
+ *                              Environment variable LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE takes precedence if set.
+ *                              If neither environment variable nor this option is set, defaults to 'sync'.
  *
  * @returns Object containing:
  *   - tracer: Tracer instance for manual instrumentation
@@ -99,7 +103,8 @@ export { getLambdaResource } from './resource';
  * import { AWSXRayIdGenerator } from '@opentelemetry/id-generator-aws-xray';
  *
  * const { tracer, completionHandler } = initTelemetry({
- *   idGenerator: new AWSXRayIdGenerator()
+ *   idGenerator: new AWSXRayIdGenerator(),
+ *   processorMode: ProcessorMode.Async
  * });
  * ```
  *
@@ -122,13 +127,14 @@ export function initTelemetry(options?: {
   spanProcessors?: SpanProcessor[];
   propagators?: TextMapPropagator[];
   idGenerator?: IdGenerator;
+  processorMode?: ProcessorMode;
 }): { tracer: Tracer; completionHandler: TelemetryCompletionHandler } {
   // Setup resource
   const baseResource = options?.resource || getLambdaResource();
 
-  // Setup propagators if provided
+  // Setup propagators
   if (options?.propagators) {
-    // Create a composite propagator and set it as the global propagator
+    // If custom propagators are provided, use them
     const compositePropagator = new CompositePropagator({
       propagators: options.propagators,
     });
@@ -136,6 +142,9 @@ export function initTelemetry(options?: {
     logger.debug(
       `Set custom propagators: ${options.propagators.map((p) => p.constructor.name).join(', ')}`
     );
+  } else {
+    // Otherwise, use the default propagator setup based on environment variables
+    setupPropagator();
   }
 
   // Setup processors with environment variables taking precedence
@@ -155,9 +164,8 @@ export function initTelemetry(options?: {
 
   // Register as global tracer
   provider.register();
-
-  // Get processor mode from environment
-  let mode = processorModeFromEnv();
+  // Resolve processor mode with proper precedence: env var > config > default
+  let mode = resolveProcessorMode(options?.processorMode);
 
   // Check if we're in async mode but extension isn't loaded
   if (mode === ProcessorMode.Async && !state.extensionInitialized) {

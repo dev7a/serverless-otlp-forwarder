@@ -47,7 +47,7 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
 - **Lambda Extension Integration**: Built-in extension for efficient telemetry export
 - **Efficient Memory Usage**: Fixed-size queue to prevent memory growth
 - **AWS Event Support**: Automatic extraction of attributes from common AWS event types (API Gateway v1/v2, ALB)
-- **Flexible Context Propagation**: Support for W3C Trace Context
+- **Flexible Context Propagation**: Support for W3C Trace Context, AWS X-Ray, and custom propagators. Now supports configuration via the `OTEL_PROPAGATORS` environment variable (comma-separated list: `tracecontext`, `xray`, `xray-lambda`, `none`).
 
 ## Architecture and Modules
 
@@ -277,6 +277,14 @@ You can provide multiple span processors, and they will all be used to process s
 
 ### Custom configuration with context propagators
 
+You can now also configure context propagation using the `OTEL_PROPAGATORS` environment variable, which takes precedence over the `propagators` option. Supported values: `tracecontext`, `xray`, `xray-lambda`, `none` (comma-separated for multiple). For example:
+
+```bash
+export OTEL_PROPAGATORS="xray,tracecontext"
+```
+
+If neither the environment variable nor the option is set, the default is `[LambdaXRayPropagator(), W3CTraceContextPropagator()]`.
+
 ```typescript
 import { initTelemetry } from '@dev7a/lambda-otel-lite';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
@@ -493,7 +501,7 @@ The following AWS Lambda environment variables are automatically used for resour
 - `AWS_LAMBDA_FUNCTION_VERSION`: Function version
 - `AWS_LAMBDA_LOG_STREAM_NAME`: Log stream name
 - `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`: Function memory size
-
+- `OTEL_PROPAGATORS`: Comma-separated list of propagators to use for context propagation. Supported: `tracecontext`, `xray`, `xray-lambda`, `none`. Takes precedence over programmatic configuration.
 
 ## License
 

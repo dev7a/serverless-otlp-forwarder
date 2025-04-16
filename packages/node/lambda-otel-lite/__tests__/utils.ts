@@ -116,14 +116,24 @@ export class EnvVarManager {
   private originalEnv: NodeJS.ProcessEnv;
 
   constructor() {
-    this.originalEnv = process.env;
+    // Create a deep copy of the environment, not just a reference
+    this.originalEnv = { ...process.env };
   }
 
   setup(vars: Record<string, string | undefined> = {}) {
-    process.env = { ...this.originalEnv, ...vars };
+    // Start with a clean environment
+    process.env = {};
+    
+    // Only add the variables we specifically want for this test
+    Object.keys(vars).forEach(key => {
+      if (vars[key] !== undefined) {
+        process.env[key] = vars[key];
+      }
+    });
   }
 
   restore() {
-    process.env = this.originalEnv;
+    // Restore to our saved copy
+    process.env = { ...this.originalEnv };
   }
 }

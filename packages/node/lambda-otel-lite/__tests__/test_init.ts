@@ -260,6 +260,7 @@ describe('telemetry/init', () => {
     });
 
     it('should use unknown_service if no environment variables set', () => {
+      envManager.setup({});
       const { completionHandler: _ } = initTelemetry();
 
       expect(state.provider?.resource.attributes['service.name']).toBe('unknown_service');

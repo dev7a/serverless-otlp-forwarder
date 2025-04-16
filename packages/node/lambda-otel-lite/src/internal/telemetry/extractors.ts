@@ -96,12 +96,20 @@ interface LambdaContext {
 
 /**
  * Normalize headers by converting all keys to lowercase.
- * This makes header lookup case-insensitive.
+ * 
+ * HTTP header names are case-insensitive, so we normalize them to lowercase
+ * for consistent processing. The X-Ray propagator does its own case-insensitive
+ * lookup for X-Amzn-Trace-Id, so no special handling is needed.
+ * 
+ * @param headers - The original headers object (may be undefined)
+ * @returns A normalized copy of the headers, or undefined if no headers
  */
 function normalizeHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
   if (!headers) {
     return undefined;
   }
+  
+  // Normalize all headers to lowercase
   return Object.entries(headers).reduce(
     (acc, [key, value]) => {
       acc[key.toLowerCase()] = value;
@@ -217,6 +225,9 @@ export function apiGatewayV2Extractor(event: unknown, context: unknown): SpanAtt
     attributes['server.address'] = apiEvent.requestContext.domainName;
   }
 
+  // Normalize headers once and reuse
+  const normalizedHeaders = apiEvent?.headers ? normalizeHeaders(apiEvent.headers) : undefined;
+
   // Get method and route for span name
   const spanMethod = attributes['http.request.method'] || 'HTTP';
   const spanRoute = attributes['http.route'];
@@ -224,7 +235,7 @@ export function apiGatewayV2Extractor(event: unknown, context: unknown): SpanAtt
   return {
     kind: SpanKind.SERVER,
     attributes,
-    carrier: apiEvent?.headers,
+    carrier: normalizedHeaders,
     trigger: TriggerType.Http,
     spanName: `${spanMethod} ${spanRoute}`,
   };
@@ -292,18 +303,18 @@ export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAtt
     attributes['user_agent.original'] = apiEvent.requestContext.identity.userAgent;
   }
 
+  // Normalize headers once and reuse
+  const normalizedHeaders = apiEvent?.headers ? normalizeHeaders(apiEvent.headers) : undefined;
+
   // Add server address from Host header
-  if (apiEvent?.headers) {
-    const normalizedHeaders = normalizeHeaders(apiEvent.headers);
-    if (normalizedHeaders?.['host']) {
-      attributes['server.address'] = normalizedHeaders['host'];
-    }
+  if (normalizedHeaders?.['host']) {
+    attributes['server.address'] = normalizedHeaders['host'];
   }
 
   return {
     kind: SpanKind.SERVER,
     attributes,
-    carrier: apiEvent?.headers,
+    carrier: normalizedHeaders,
     trigger: TriggerType.Http,
     spanName: `${method} ${route}`,
   };
@@ -347,33 +358,33 @@ export function albExtractor(event: unknown, context: unknown): SpanAttributes {
     attributes['alb.target_group_arn'] = albEvent.requestContext.elb.targetGroupArn;
   }
 
+  // Normalize headers once and reuse
+  const normalizedHeaders = albEvent?.headers ? normalizeHeaders(albEvent.headers) : undefined;
+
   // Extract attributes from headers
-  if (albEvent?.headers) {
-    const normalizedHeaders = normalizeHeaders(albEvent.headers);
-    if (normalizedHeaders) {
-      // Set URL scheme based on x-forwarded-proto
-      if (normalizedHeaders['x-forwarded-proto']) {
-        attributes['url.scheme'] = normalizedHeaders['x-forwarded-proto'];
-      } else {
-        attributes['url.scheme'] = 'http';
-      }
+  if (normalizedHeaders) {
+    // Set URL scheme based on x-forwarded-proto
+    if (normalizedHeaders['x-forwarded-proto']) {
+      attributes['url.scheme'] = normalizedHeaders['x-forwarded-proto'];
+    } else {
+      attributes['url.scheme'] = 'http';
+    }
 
-      // Extract user agent
-      if (normalizedHeaders['user-agent']) {
-        attributes['user_agent.original'] = normalizedHeaders['user-agent'];
-      }
+    // Extract user agent
+    if (normalizedHeaders['user-agent']) {
+      attributes['user_agent.original'] = normalizedHeaders['user-agent'];
+    }
 
-      // Extract server address from host
-      if (normalizedHeaders['host']) {
-        attributes['server.address'] = normalizedHeaders['host'];
-      }
+    // Extract server address from host
+    if (normalizedHeaders['host']) {
+      attributes['server.address'] = normalizedHeaders['host'];
+    }
 
-      // Extract client IP from x-forwarded-for
-      if (normalizedHeaders['x-forwarded-for']) {
-        const clientIp = normalizedHeaders['x-forwarded-for'].split(',')[0]?.trim();
-        if (clientIp) {
-          attributes['client.address'] = clientIp;
-        }
+    // Extract client IP from x-forwarded-for
+    if (normalizedHeaders['x-forwarded-for']) {
+      const clientIp = normalizedHeaders['x-forwarded-for'].split(',')[0]?.trim();
+      if (clientIp) {
+        attributes['client.address'] = clientIp;
       }
     }
   }
@@ -384,7 +395,7 @@ export function albExtractor(event: unknown, context: unknown): SpanAttributes {
   return {
     kind: SpanKind.SERVER,
     attributes,
-    carrier: albEvent?.headers,
+    carrier: normalizedHeaders,
     trigger: TriggerType.Http,
     spanName: `${method} ${path}`,
   };

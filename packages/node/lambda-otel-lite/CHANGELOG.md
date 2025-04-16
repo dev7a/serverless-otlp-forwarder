@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.13.0] - 2025-04-16
+
+### Added
+- Support for configuring processor mode programmatically via the `processorMode` option in `initTelemetry`. Environment variable `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` still takes precedence.
+- Support for configuring context propagation via the `OTEL_PROPAGATORS` environment variable (comma-separated list). **Supported values:** `tracecontext`, `xray`, `xray-lambda`, `none`. This takes precedence over the `propagators` option in `initTelemetry`.
+- Added `LambdaXRayPropagator` which correctly extracts trace context from both incoming headers and the `_X_AMZN_TRACE_ID` environment variable, respecting the `Sampled=0` flag.
+
+### Changed
+- **Configuration Precedence:** Updated configuration loading for processor mode, queue size, batch size, and compression level to consistently follow the precedence: Environment Variable > Programmatic Configuration > Default Value. Invalid environment variable values now log a warning and use the fallback instead of raising an error.
+- **Default Propagator:** Changed the default propagator (used when `OTEL_PROPAGATORS` env var and `propagators` option are not set) to `[LambdaXRayPropagator(), W3CTraceContextPropagator()]`.
+- **HTTP Header Handling:** Improved header normalization to standardize on lowercase while preserving the canonical form of X-Amzn-Trace-Id for compatibility with AWS X-Ray propagation.
+- Improved code formatting and organization throughout the codebase, with dedicated modules for configuration and propagation.
 
 ## [0.11.3] - 2025-03-25
 

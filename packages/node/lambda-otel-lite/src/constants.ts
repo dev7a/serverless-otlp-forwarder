@@ -45,6 +45,12 @@ export const ENV_VARS = {
    * Additional resource attributes in key=value,key2=value2 format
    */
   RESOURCE_ATTRIBUTES: 'OTEL_RESOURCE_ATTRIBUTES',
+
+  /**
+   * Comma-separated list of propagators to use
+   * Supported values: tracecontext, xray, xray-lambda, none
+   */
+  OTEL_PROPAGATORS: 'OTEL_PROPAGATORS',
 };
 
 /**

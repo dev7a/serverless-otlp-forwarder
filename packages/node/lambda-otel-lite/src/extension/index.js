@@ -1,4 +1,4 @@
-import { ProcessorMode, processorModeFromEnv } from '../mode';
+import { ProcessorMode, resolveProcessorMode } from '../mode';
 import { state } from '../internal/state';
 import * as http from 'http';
 import logger from '../internal/logger';
@@ -81,7 +81,7 @@ async function shutdownTelemetry() {
 
 // This is called at startup via --require
 async function initializeInternalExtension() {
-  const processorMode = processorModeFromEnv();
+  const processorMode = resolveProcessorMode();
   // Get processor mode from env vars
   state.mode = processorMode;
   logger.debug(`[extension] processor mode: ${processorMode}`);

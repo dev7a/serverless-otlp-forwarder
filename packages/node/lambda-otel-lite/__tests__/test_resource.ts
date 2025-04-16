@@ -74,6 +74,7 @@ describe('getLambdaResource', () => {
   });
 
   it('should use unknown_service if neither OTEL_SERVICE_NAME nor AWS_LAMBDA_FUNCTION_NAME are set', () => {
+    envManager.setup({});
     const resource = getLambdaResource();
     expect(resource.attributes['service.name']).toBe('unknown_service');
   });

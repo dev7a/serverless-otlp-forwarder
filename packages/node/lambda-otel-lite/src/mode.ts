@@ -1,4 +1,7 @@
 import { ENV_VARS } from './constants';
+import { createLogger } from './internal/logger';
+
+const logger = createLogger('mode');
 
 /**
  * Controls how spans are processed and exported.
@@ -21,29 +24,36 @@ export enum ProcessorMode {
 }
 
 /**
- * Get processor mode from environment variables
- * @param envVar - Name of the environment variable to read
- * @param defaultMode - Default mode if environment variable is not set
+ * Resolves the processor mode with proper precedence:
+ * 1. Environment variable (if set and valid)
+ * 2. Programmatic configuration (if provided)
+ * 3. Default value (sync)
+ *
+ * @param configMode - Optional processor mode from programmatic configuration
+ * @param envVar - Name of the environment variable to read (default: LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE)
+ * @returns The resolved processor mode
  */
-export function processorModeFromEnv(
-  envVar: string = ENV_VARS.PROCESSOR_MODE,
-  defaultMode: ProcessorMode = ProcessorMode.Sync
+export function resolveProcessorMode(
+  configMode?: ProcessorMode,
+  envVar: string = ENV_VARS.PROCESSOR_MODE
 ): ProcessorMode {
   const envValue = process.env[envVar];
-  // Handle undefined, null, or non-string values
-  if (!envValue || typeof envValue !== 'string') {
-    return defaultMode;
+
+  // If environment variable is set and not empty
+  if (envValue && typeof envValue === 'string') {
+    const value = envValue.trim().toLowerCase();
+    if (value && Object.values(ProcessorMode).includes(value as ProcessorMode)) {
+      return value as ProcessorMode;
+    }
+
+    // Invalid environment variable value - log warning and continue
+    if (value) {
+      logger.warn(
+        `Invalid ${envVar}: ${envValue}. Must be one of: ${Object.values(ProcessorMode).join(', ')}. Using fallback.`
+      );
+    }
   }
 
-  const value = envValue.trim().toLowerCase();
-  if (!value) {
-    return defaultMode;
-  }
-
-  if (Object.values(ProcessorMode).includes(value as ProcessorMode)) {
-    return value as ProcessorMode;
-  }
-  throw new Error(
-    `Invalid ${envVar}: ${envValue}. Must be one of: ${Object.values(ProcessorMode).join(', ')}`
-  );
+  // Use config value if provided, otherwise default to Sync
+  return configMode ?? ProcessorMode.Sync;
 }

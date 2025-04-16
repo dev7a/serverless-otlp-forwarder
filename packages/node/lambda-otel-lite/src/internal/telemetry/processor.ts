@@ -4,6 +4,7 @@ import { SpanProcessor, ReadableSpan, SpanExporter } from '@opentelemetry/sdk-tr
 import { ExportResult } from '@opentelemetry/core';
 import { createLogger } from '../logger';
 import { ENV_VARS, DEFAULTS } from '../../constants';
+import { getNumericValue } from '../config';
 
 const logger = createLogger('processor');
 
@@ -154,55 +155,21 @@ export class LambdaSpanProcessor implements SpanProcessor {
     private readonly exporter: SpanExporter,
     config?: LambdaSpanProcessorConfig
   ) {
-    // Set queue size with proper precedence
-    const configQueueSize = config?.maxQueueSize;
-    const envQueueSize = process.env[ENV_VARS.QUEUE_SIZE];
-    let maxQueueSize: number;
+    // Set queue size with proper precedence using helper function
+    const maxQueueSize = getNumericValue(
+      ENV_VARS.QUEUE_SIZE,
+      config?.maxQueueSize,
+      DEFAULTS.QUEUE_SIZE,
+      (value) => value > 0
+    );
 
-    if (envQueueSize !== undefined) {
-      try {
-        const parsedQueueSize = parseInt(envQueueSize, 10);
-        if (!isNaN(parsedQueueSize) && parsedQueueSize > 0) {
-          maxQueueSize = parsedQueueSize;
-        } else {
-          logger.warn(`Invalid value in ${ENV_VARS.QUEUE_SIZE}: ${envQueueSize}, using fallback`);
-          maxQueueSize = configQueueSize !== undefined ? configQueueSize : DEFAULTS.QUEUE_SIZE;
-        }
-      } catch {
-        // Empty catch block - no need to use the error variable
-        logger.warn(`Failed to parse ${ENV_VARS.QUEUE_SIZE}: ${envQueueSize}, using fallback`);
-        maxQueueSize = configQueueSize !== undefined ? configQueueSize : DEFAULTS.QUEUE_SIZE;
-      }
-    } else {
-      // No environment variable, use parameter from config or default
-      maxQueueSize = configQueueSize !== undefined ? configQueueSize : DEFAULTS.QUEUE_SIZE;
-    }
-
-    // Set batch size with proper precedence
-    const configBatchSize = config?.maxExportBatchSize;
-    const envBatchSize = process.env[ENV_VARS.BATCH_SIZE];
-
-    if (envBatchSize !== undefined) {
-      try {
-        const parsedBatchSize = parseInt(envBatchSize, 10);
-        if (!isNaN(parsedBatchSize) && parsedBatchSize > 0) {
-          this.maxExportBatchSize = parsedBatchSize;
-        } else {
-          logger.warn(`Invalid value in ${ENV_VARS.BATCH_SIZE}: ${envBatchSize}, using fallback`);
-          this.maxExportBatchSize =
-            configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
-        }
-      } catch {
-        // Empty catch block - no need to use the error variable
-        logger.warn(`Failed to parse ${ENV_VARS.BATCH_SIZE}: ${envBatchSize}, using fallback`);
-        this.maxExportBatchSize =
-          configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
-      }
-    } else {
-      // No environment variable, use parameter from config or default
-      this.maxExportBatchSize =
-        configBatchSize !== undefined ? configBatchSize : DEFAULTS.BATCH_SIZE;
-    }
+    // Set batch size with proper precedence using helper function
+    this.maxExportBatchSize = getNumericValue(
+      ENV_VARS.BATCH_SIZE,
+      config?.maxExportBatchSize,
+      DEFAULTS.BATCH_SIZE,
+      (value) => value > 0
+    );
 
     // Initialize the buffer with the determined queue size
     this.buffer = new CircularBuffer<ReadableSpan>(maxQueueSize);
