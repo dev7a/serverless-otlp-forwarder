@@ -30,6 +30,9 @@ class EnvVars:
     # Resource attributes
     RESOURCE_ATTRIBUTES = "OTEL_RESOURCE_ATTRIBUTES"
 
+    # Propagator configuration
+    OTEL_PROPAGATORS = "OTEL_PROPAGATORS"
+
 
 class Defaults:
     """Default values for configuration parameters.

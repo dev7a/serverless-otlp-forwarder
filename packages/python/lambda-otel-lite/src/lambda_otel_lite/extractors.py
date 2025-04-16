@@ -61,20 +61,20 @@ class SpanAttributes:
 
 
 def _normalize_headers(headers: dict[str, str] | None) -> dict[str, str]:
-    """Normalize header names to lowercase.
-
-    HTTP header names are case-insensitive, so we normalize them to lowercase
-    for consistent processing.
+    """
+    Process headers while preserving original case.
 
     Args:
-        headers: Dictionary of headers or None
+        headers: The original headers dictionary (may be None)
 
     Returns:
-        Dictionary with lowercase header names. Empty dict if input is None.
+        A dictionary with headers exactly as provided in the input
     """
     if not headers:
         return {}
-    return {k.lower(): v for k, v in headers.items()}
+
+    # Return headers exactly as provided
+    return headers.copy()
 
 
 def default_extractor(event: Any, context: Any) -> SpanAttributes:
@@ -164,9 +164,9 @@ def api_gateway_v1_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
             attributes["user_agent.original"] = user_agent
 
     # Add server address from Host header
-    if headers := _normalize_headers(event.get("headers")):
-        if host := headers.get("host"):
-            attributes["server.address"] = host
+    headers = _normalize_headers(event.get("headers"))
+    if host := headers.get("host"):
+        attributes["server.address"] = host
 
     # Get method and route for span name
     method = attributes.get("http.request.method", "HTTP")
@@ -176,7 +176,7 @@ def api_gateway_v1_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
         trigger=TriggerType.HTTP,
         attributes=attributes,
         span_name=f"{method} {route}",
-        carrier=event.get("headers", {}),
+        carrier=headers,
         kind=SpanKind.SERVER,
     )
 
@@ -243,11 +243,13 @@ def api_gateway_v2_extractor(event: dict[str, Any], context: Any) -> SpanAttribu
     method = attributes.get("http.request.method", "HTTP")
     route = attributes["http.route"]
 
+    headers = _normalize_headers(event.get("headers"))
+
     return SpanAttributes(
         trigger=TriggerType.HTTP,
         attributes=attributes,
         span_name=f"{method} {route}",
-        carrier=event.get("headers", {}),
+        carrier=headers,
         kind=SpanKind.SERVER,
     )
 
@@ -321,6 +323,6 @@ def alb_extractor(event: dict[str, Any], context: Any) -> SpanAttributes:
         trigger=TriggerType.HTTP,
         attributes=attributes,
         span_name=f"{method} {route}",
-        carrier=event.get("headers", {}),
+        carrier=headers,
         kind=SpanKind.SERVER,
     )

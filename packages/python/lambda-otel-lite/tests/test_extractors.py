@@ -21,7 +21,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 def load_fixture(name: str) -> dict[str, Any]:
     """Load a test fixture from the fixtures directory."""
-    with open(FIXTURES_DIR / name) as f:
+    with open(FIXTURES_DIR / name, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -60,7 +60,9 @@ class TestExtractors:
 
         assert result.trigger == TriggerType.HTTP
         assert result.kind == SpanKind.SERVER
-        assert result.carrier == event.get("headers")
+        assert result.carrier == event.get(
+            "headers"
+        )  # carrier should be original headers
 
         # Check extracted attributes
         attrs = result.attributes
@@ -88,7 +90,9 @@ class TestExtractors:
 
         assert result.trigger == TriggerType.HTTP
         assert result.kind == SpanKind.SERVER
-        assert result.carrier == event.get("headers")
+        assert result.carrier == event.get(
+            "headers"
+        )  # carrier should be original headers
 
         # Check extracted attributes
         attrs = result.attributes
@@ -114,7 +118,9 @@ class TestExtractors:
 
         assert result.trigger == TriggerType.HTTP
         assert result.kind == SpanKind.SERVER
-        assert result.carrier == event.get("headers")
+        assert result.carrier == event.get(
+            "headers"
+        )  # carrier should be original headers
 
         # Check extracted attributes
         attrs = result.attributes
@@ -172,17 +178,9 @@ class TestExtractors:
             "cloud.account.id": "123456789012",
         }
 
-        # Check that headers were extracted as carrier
+        # Headers should be preserved as-is in the carrier
         assert result.carrier is not None
-        assert (
-            result.carrier["x-amzn-trace-id"]
-            == "Root=1-5759e988-bd862e3fe1be46a994272793"
-        )
-        assert (
-            result.carrier["traceparent"]
-            == "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"
-        )
-        assert result.carrier["content-type"] == "application/json"
+        assert result.carrier == event["headers"]
 
     def test_missing_data(self) -> None:
         """Test extractors handle missing data gracefully."""

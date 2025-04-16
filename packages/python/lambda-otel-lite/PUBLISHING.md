@@ -85,8 +85,8 @@ This approach ensures that:
    deactivate
    rm -rf test_venv
    ```
-6. Create a branch for the release following the pattern `release-<rust|node|python|>-<package-name>-v<version>`
-7. Commit changes to the release branch and push to GitHub, with a commit message of `release <rust|node|python|> <package-name> v<version>`
+6. Create a branch for the release following the pattern `release/<rust|node|python|>/<package-name>-v<version>`
+7. Commit changes to the release branch and push to GitHub, with a commit message of `release: <rust|node|python|>/<package-name> v<version>`
 8. Create a pull request from the release branch to main
 9. Once the PR is approved and merged, tagging and publishing is done automatically by the CI pipeline
 

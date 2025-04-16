@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2025-04-16
+
+### Added
+- Support for configuring processor mode programmatically via `processor_mode` parameter in `init_telemetry`. Environment variable `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` still takes precedence.
+- Support for configuring context propagation via the `OTEL_PROPAGATORS` environment variable (comma-separated list). **Supported values:** `tracecontext`, `xray`, `xray-lambda`, `none`. This takes precedence over the `propagators` parameter in `init_telemetry`.
+- Added `LambdaXrayPropagator` which correctly extracts trace context from both incoming headers and the `_X_AMZN_TRACE_ID` environment variable, respecting the `Sampled=0` flag.
+- Added `opentelemetry-propagator-aws-xray>=1.0.0` as a direct dependency.
+
+### Changed
+- **Configuration Precedence:** Updated configuration loading for processor mode, queue size, batch size, and compression level to consistently follow the precedence: Environment Variable > Programmatic Configuration > Default Value. Invalid environment variable values now log a warning and use the fallback instead of raising an error.
+- **Default Propagator:** Changed the default propagator (used when `OTEL_PROPAGATORS` env var and `propagators` parameter are not set) to `[LambdaXrayPropagator(), TraceContextTextMapPropagator()]`.
+- The global `processor_mode` variable in `lambda_otel_lite` now uses the new `ProcessorMode.resolve()` method for initialization.
+- Fixed code formatting throughout the codebase for improved consistency, especially in the propagation and extractors modules.
+
 ## [0.12.0] - 2025-03-24
 
 ### Added
@@ -202,4 +216,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Support for synchronous, asynchronous, and finalize processing modes
 - Integration with OpenTelemetry SDK and OTLP exporters
 - Lambda-specific resource detection and attributes
-- Comprehensive test suite and documentation 
+- Comprehensive test suite and documentation

@@ -45,7 +45,9 @@ class ProcessorMode(str, Enum):
         Raises:
             ValueError: If environment variable contains invalid mode
         """
-        value = os.getenv(env_var, "").lower() or (default.value if default else "")
+        value = os.getenv(env_var, "").strip().lower() or (
+            default.value if default else ""
+        )
         try:
             return cls(value)
         except ValueError as err:
@@ -53,13 +55,56 @@ class ProcessorMode(str, Enum):
                 f"Invalid {env_var}: {value}. Must be one of: {', '.join(m.value for m in cls)}"
             ) from err
 
+    @classmethod
+    def resolve(
+        cls,
+        config_mode: "ProcessorMode | None" = None,
+        env_var: str = "LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE",
+    ) -> "ProcessorMode":
+        """Resolve processor mode with proper precedence.
+
+        Precedence order:
+        1. Environment variable (if set and valid)
+        2. Programmatic configuration (if provided)
+        3. Default value (SYNC)
+
+        Unlike from_env, this method logs a warning instead of raising an error
+        when the environment variable contains an invalid value.
+
+        Args:
+            config_mode: Optional processor mode from programmatic configuration
+            env_var: Name of the environment variable to read
+
+        Returns:
+            The resolved processor mode
+        """
+        from .logger import create_logger
+
+        logger = create_logger("processor_mode")
+
+        # Check environment variable first
+        env_value = os.getenv(env_var, "").strip().lower()
+        if env_value:
+            try:
+                if env_value in (m.value for m in cls):
+                    return cls(env_value)
+                else:
+                    logger.warn(
+                        f"Invalid {env_var}: {env_value}. Must be one of: {', '.join(m.value for m in cls)}. Using fallback."
+                    )
+            except Exception as e:
+                logger.warn(f"Error parsing {env_var}: {e}. Using fallback.")
+
+        # Use config value if provided, otherwise default to SYNC
+        return config_mode if config_mode is not None else cls.SYNC
+
 
 # Import this first to avoid circular imports
 from .constants import Defaults, EnvVars, ResourceAttributes  # noqa: E402
 
 # Global processor mode - single source of truth for the package
-processor_mode: Final[ProcessorMode] = ProcessorMode.from_env(
-    EnvVars.PROCESSOR_MODE, ProcessorMode.SYNC
+processor_mode: Final[ProcessorMode] = ProcessorMode.resolve(
+    config_mode=None, env_var=EnvVars.PROCESSOR_MODE
 )
 
 # Package exports

@@ -4,7 +4,7 @@ Telemetry initialization for lambda-otel-lite.
 This module provides the initialization function for OpenTelemetry in AWS Lambda.
 """
 
-import os
+# No need to import os directly as we'll use the config helpers
 from collections.abc import Sequence
 
 from opentelemetry import trace
@@ -16,11 +16,13 @@ from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.id_generator import IdGenerator
 from otlp_stdout_span_exporter import OTLPStdoutSpanExporter
 
-from . import ProcessorMode, __version__, processor_mode
+from . import ProcessorMode, __version__
 from .constants import Defaults, EnvVars
+from .config import get_int_env
 from .extension import handler_complete_event, init_extension
 from .logger import create_logger
 from .processor import LambdaSpanProcessor
+from .propagation import setup_propagator
 from .resource import get_lambda_resource
 
 # Setup logging
@@ -121,6 +123,7 @@ def init_telemetry(
     span_processors: Sequence[SpanProcessor] | None = None,
     propagators: Sequence[TextMapPropagator] | None = None,
     id_generator: IdGenerator | None = None,
+    processor_mode: ProcessorMode | None = None,
 ) -> tuple[trace.Tracer, TelemetryCompletionHandler]:
     """Initialize OpenTelemetry with manual OTLP stdout configuration.
 
@@ -139,6 +142,9 @@ def init_telemetry(
             global propagator.
         id_generator: Optional ID generator. If None, the default W3C-compatible ID generator
             will be used. Set to an XRayIdGenerator instance to use X-Ray compatible IDs.
+        processor_mode: Optional processor mode to control how spans are processed and exported.
+            Environment variable LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE takes precedence if set.
+            If neither environment variable nor this option is set, defaults to 'sync'.
 
     Returns:
         Tuple containing:
@@ -148,66 +154,42 @@ def init_telemetry(
     # Setup resource
     resource = resource or get_lambda_resource()
 
-    # Setup propagators if provided
+    # Setup propagators
     if propagators is not None:
-        # Create a composite propagator and set it as the global propagator
+        # If custom propagators are provided, use them
         composite_propagator = CompositePropagator(propagators)
         set_global_textmap(composite_propagator)
         logger.debug(
             f"Set custom propagators: {[type(p).__name__ for p in propagators]}"
         )
+    else:
+        # Otherwise, use the default propagator setup based on environment variables
+        setup_propagator()
 
     # Create tracer provider
     tracer_provider = TracerProvider(resource=resource, id_generator=id_generator)
 
     # Setup processors with environment variables having precedence
     if span_processors is None:
-        # Get compression level with env var precedence
-        compression_level = None
-        env_compression = os.environ.get(EnvVars.COMPRESSION_LEVEL)
-        if env_compression is not None:
-            try:
-                compression_level = int(env_compression)
-                if not 0 <= compression_level <= 9:
-                    logger.warn(
-                        f"Invalid {EnvVars.COMPRESSION_LEVEL} value: {env_compression}, must be 0-9. Using default."
-                    )
-                    compression_level = Defaults.COMPRESSION_LEVEL
-            except ValueError:
-                logger.warn(
-                    f"Invalid {EnvVars.COMPRESSION_LEVEL} value: {env_compression}. Using default."
-                )
-                compression_level = Defaults.COMPRESSION_LEVEL
-        else:
-            compression_level = Defaults.COMPRESSION_LEVEL
+        # Get configuration values with proper precedence using helper functions
 
-        # Get queue size with env var precedence
-        queue_size = None
-        env_queue_size = os.environ.get(EnvVars.QUEUE_SIZE)
-        if env_queue_size is not None:
-            try:
-                queue_size = int(env_queue_size)
-            except ValueError:
-                logger.warn(
-                    f"Invalid {EnvVars.QUEUE_SIZE} value: {env_queue_size}. Using default."
-                )
-                queue_size = Defaults.QUEUE_SIZE
-        else:
-            queue_size = Defaults.QUEUE_SIZE
+        # Get compression level (0-9)
+        compression_level = get_int_env(
+            EnvVars.COMPRESSION_LEVEL,
+            None,
+            Defaults.COMPRESSION_LEVEL,
+            lambda value: 0 <= value <= 9,
+        )
 
-        # Get batch size with env var precedence
-        batch_size = None
-        env_batch_size = os.environ.get(EnvVars.BATCH_SIZE)
-        if env_batch_size is not None:
-            try:
-                batch_size = int(env_batch_size)
-            except ValueError:
-                logger.warn(
-                    f"Invalid {EnvVars.BATCH_SIZE} value: {env_batch_size}. Using default."
-                )
-                batch_size = Defaults.BATCH_SIZE
-        else:
-            batch_size = Defaults.BATCH_SIZE
+        # Get queue size
+        queue_size = get_int_env(
+            EnvVars.QUEUE_SIZE, None, Defaults.QUEUE_SIZE, lambda value: value > 0
+        )
+
+        # Get batch size
+        batch_size = get_int_env(
+            EnvVars.BATCH_SIZE, None, Defaults.BATCH_SIZE, lambda value: value > 0
+        )
 
         # Default case: Add LambdaSpanProcessor with OTLPStdoutSpanExporter
         tracer_provider.add_span_processor(
@@ -225,8 +207,10 @@ def init_telemetry(
     # Set as global tracer provider
     trace.set_tracer_provider(tracer_provider)
 
-    # Get current mode and check extension status
-    mode = processor_mode
+    # Resolve processor mode with proper precedence: env var > config > default
+    mode = ProcessorMode.resolve(
+        config_mode=processor_mode, env_var=EnvVars.PROCESSOR_MODE
+    )
     # Initialize extension for async and finalize modes
     if mode in [ProcessorMode.ASYNC, ProcessorMode.FINALIZE]:
         init_extension(mode, tracer_provider)

@@ -71,6 +71,8 @@ class TracedHandler:
                         parent_context = extract(extracted.carrier)
                         if parent_context:
                             logger.debug("Successfully extracted parent context")
+                            logger.debug("Extracted parent_context: %r", parent_context)
+                            # Use get_span_context to get the SpanContext from the Context
                     except Exception as ex:
                         logger.warn("Failed to extract context from carrier:", ex)
 

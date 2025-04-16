@@ -12,16 +12,17 @@ Globals:
     Runtime: python3.13
     LoggingConfig:
       LogFormat: JSON
-      ApplicationLogLevel: INFO
+      ApplicationLogLevel: DEBUG
       SystemLogLevel: INFO
   
 Resources:
-  HelloWorld:
+  Example:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-handler-example'
+      FunctionName: !Sub '${AWS::StackName}-example'
       CodeUri: ./handler
       Handler: app.handler
+      Tracing: Active
       Description: 'Demo Python Lambda function to showcase OpenTelemetry integration'
       FunctionUrlConfig:
         AuthType: NONE
@@ -29,6 +30,9 @@ Resources:
         Variables:
           LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
 Outputs:
-  HelloWorldLambdaFunctionArn:
+  ExampleLambdaFunctionArn:
     Description: 'ARN of the Demo Hello World Lambda function'
-    Value: !GetAtt HelloWorld.Arn
+    Value: !GetAtt Example.Arn
+  ExampleLambdaFunctionUrl:
+    Description: 'URL of the Demo Hello World Lambda function'
+    Value: !GetAtt ExampleUrl.FunctionUrl
