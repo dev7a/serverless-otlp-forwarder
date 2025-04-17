@@ -42,3 +42,12 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] } # Ad
 
 # Error Handling (Inherit from workspace)
 anyhow = { workspace = true }
+
+# Console Table
+prettytable-rs = "0.10"
+
+# Console Coloring
+colored = "2.0"
+
+# New dependency
+hex = "0.4"

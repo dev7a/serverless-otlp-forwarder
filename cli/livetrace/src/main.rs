@@ -10,6 +10,15 @@ use std::time::Duration; // For interval timer
 use tokio::time::interval; // For interval timer
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use std::collections::HashMap;
+use prost::Message;
+use opentelemetry_proto::tonic::trace::v1::Span;
+use opentelemetry_proto::tonic::trace::v1::status;
+use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
+use hex;
+use prettytable::{Table, Row, Cell, row, cell}; // Added prettytable imports
+use prettytable::format; // Added for format constants
+use colored::*; // Added colored import
 
 mod processing; // Declare the module
 use processing::{compact_telemetry_payloads, send_telemetry_payload, SpanCompactionConfig, TelemetryData, process_log_event_message};
@@ -23,8 +32,8 @@ struct CliArgs {
     log_group_name: Vec<String>,
 
     /// The OTLP HTTP endpoint URL to send traces to (e.g., http://localhost:4318/v1/traces).
-    #[arg(short = 'e', long, required = true)]
-    otlp_endpoint: String,
+    #[arg(short = 'e', long)]
+    otlp_endpoint: Option<String>,
 
     /// Add custom HTTP headers to the outgoing OTLP request (e.g., "Authorization=Bearer token"). Can be specified multiple times.
     #[arg(short = 'H', long = "otlp-header")]
@@ -45,11 +54,27 @@ struct CliArgs {
     /// Increase logging verbosity (-v, -vv, -vvv).
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+
+    /// Only forward telemetry, do not display it in the console.
+    #[arg(long)]
+    forward_only: bool,
+
+    /// Width of the timeline bar in characters.
+    #[arg(long, default_value_t = 80)]
+    timeline_width: usize,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = CliArgs::parse();
+
+    // Validate args
+    if args.forward_only && args.otlp_endpoint.is_none() {
+        return Err(anyhow::anyhow!("--forward-only requires --otlp-endpoint to be set"));
+    }
+    if !args.forward_only && args.otlp_endpoint.is_none() {
+        tracing::info!("Running in console-only mode. No OTLP endpoint provided.");
+    }
 
     // Initialize logging
     let log_level = match args.verbose {
@@ -67,7 +92,6 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    tracing::info!("Starting livetrace with args: {:?}", args);
     tracing::info!("Starting livetrace with args: {:?}", args);
 
     // 1. Load AWS Config
@@ -97,6 +121,10 @@ async fn main() -> Result<()> {
         .build()
         .context("Failed to build Reqwest client")?;
     tracing::debug!("Reqwest HTTP client created.");
+
+    // Determine operation mode
+    let console_enabled = !args.forward_only;
+    let endpoint_opt = args.otlp_endpoint.as_deref(); // Option<&str>
 
     // 4. Parse OTLP headers
     let mut otlp_header_map = HeaderMap::new();
@@ -157,7 +185,10 @@ async fn main() -> Result<()> {
                                 match process_log_event_message(msg) {
                                     Ok(Some(telemetry)) => {
                                         tracing::debug!(source = %telemetry.original_source, "Successfully processed log event into TelemetryData.");
-                                        telemetry_buffer.push(telemetry);
+                                        // Don't buffer if only forwarding and endpoint is missing (validated earlier)
+                                        if console_enabled || endpoint_opt.is_some() {
+                                            telemetry_buffer.push(telemetry);
+                                        }
                                     }
                                     Ok(None) => {}
                                     Err(e) => {
@@ -180,14 +211,21 @@ async fn main() -> Result<()> {
                 if !telemetry_buffer.is_empty() {
                     tracing::debug!("Timer tick: Processing buffer with {} items.", telemetry_buffer.len());
                     let batch_to_send = std::mem::take(&mut telemetry_buffer);
-                    send_batch(
-                        &http_client,
-                        &args.otlp_endpoint,
-                        batch_to_send,
-                        args.compact,
-                        &compaction_config,
-                        otlp_header_map.clone(),
-                    ).await?;
+
+                    if console_enabled {
+                        display_console(&batch_to_send, args.timeline_width)?;
+                    }
+
+                    if let Some(endpoint) = endpoint_opt {
+                        send_batch(
+                            &http_client,
+                            endpoint,
+                            batch_to_send,
+                            args.compact,
+                            &compaction_config,
+                            otlp_header_map.clone(),
+                        ).await?;
+                    }
                 }
             }
         }
@@ -201,21 +239,27 @@ async fn main() -> Result<()> {
             "Flushing remaining {} items from buffer before exiting.",
             telemetry_buffer.len()
         );
-        send_batch(
-            &http_client,
-            &args.otlp_endpoint,
-            telemetry_buffer, // Send the final buffer contents
-            args.compact,
-            &compaction_config,
-            otlp_header_map.clone(),
-        )
-        .await?;
+        let final_batch = std::mem::take(&mut telemetry_buffer);
+
+        if console_enabled {
+            display_console(&final_batch, args.timeline_width)?;
+        }
+
+        if let Some(endpoint) = endpoint_opt {
+            send_batch(
+                &http_client,
+                endpoint,
+                final_batch,
+                args.compact,
+                &compaction_config,
+                otlp_header_map.clone(),
+            ).await?;
+        }
     }
 
     tracing::info!("livetrace finished successfully.");
     Ok(())
 }
-
 
 /// Helper function to send a batch of telemetry data, handling compaction.
 async fn send_batch(
@@ -289,4 +333,213 @@ async fn send_batch(
         }
     }
     Ok(())
+}
+
+// --- Console Display Implementation ---
+
+const SPAN_NAME_WIDTH: usize = 60;
+const DURATION_WIDTH: usize = 10; // Width for "xx.xx ms" right-aligned
+const TIMELINE_WIDTH: usize = 40; // Must match CONSOLE_BAR_WIDTH
+const CONSOLE_BAR_WIDTH: f64 = TIMELINE_WIDTH as f64;
+
+#[derive(Debug, Clone)]
+struct ConsoleSpan {
+    parent_id: Option<String>,
+    name: String,
+    start_time: u64,
+    duration_ns: u64,
+    children: Vec<ConsoleSpan>,
+    status_code: status::StatusCode,
+}
+
+fn display_console(batch: &[TelemetryData], timeline_width: usize) -> Result<()> {
+    let mut all_spans = Vec::new();
+    for item in batch {
+        match ExportTraceServiceRequest::decode(item.payload.as_slice()) {
+            Ok(request) => {
+                for resource_span in request.resource_spans {
+                    for scope_span in resource_span.scope_spans {
+                        for span in scope_span.spans {
+                            all_spans.push(span);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to decode payload for console display, skipping item.");
+            }
+        }
+    }
+
+    if all_spans.is_empty() {
+        return Ok(());
+    }
+
+    // Group spans by trace ID
+    let mut traces: HashMap<String, Vec<Span>> = HashMap::new();
+    for span in all_spans {
+        let trace_id_hex = hex::encode(&span.trace_id);
+        traces.entry(trace_id_hex).or_default().push(span);
+    }
+
+    // Process each trace
+    for (trace_id, spans) in traces {
+        println!("--- Trace ID: {} ---", trace_id);
+
+        if spans.is_empty() { continue; }
+
+        // Step 1: Collect spans and build parent-child map
+        let mut span_map: HashMap<String, Span> = HashMap::new();
+        let mut parent_to_children_map: HashMap<String, Vec<String>> = HashMap::new();
+        let mut root_ids: Vec<String> = Vec::new();
+
+        for span in spans {
+            let span_id_hex = hex::encode(&span.span_id);
+            span_map.insert(span_id_hex.clone(), span); // Keep original span temporarily
+        }
+
+        // Second pass to determine roots and children, now that span_map is complete
+        for (span_id_hex, span) in &span_map {
+            let parent_id_hex = if span.parent_span_id.is_empty() { None } else { Some(hex::encode(&span.parent_span_id)) };
+
+            match parent_id_hex {
+                Some(ref p_id) if span_map.contains_key(p_id) => {
+                    parent_to_children_map.entry(p_id.clone()).or_default().push(span_id_hex.clone());
+                }
+                _ => {
+                    root_ids.push(span_id_hex.clone());
+                }
+            }
+        }
+
+        // Step 2 & 3: Recursively build the tree and sort roots
+        let mut roots: Vec<ConsoleSpan> = root_ids
+            .iter()
+            .map(|root_id| build_console_span(root_id, &span_map, &parent_to_children_map))
+            .collect();
+
+        roots.sort_by_key(|s| s.start_time);
+
+        // Calculate overall trace duration AFTER building the tree (needed for render_bar)
+        let min_start_time = roots.iter().map(|r| r.start_time).min().unwrap_or(0);
+        // Need max end time - traverse tree or recalculate from original spans
+        let max_end_time = span_map.values().map(|s| s.end_time_unix_nano).max().unwrap_or(0);
+        let trace_duration_ns = if max_end_time >= min_start_time { max_end_time - min_start_time } else { 0 };
+
+        // Print table
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_CLEAN); // Remove borders/lines
+
+        for root in roots {
+            add_span_to_table(&mut table, &root, 0, min_start_time, trace_duration_ns, timeline_width);
+        }
+        table.printstd();
+    }
+
+    Ok(())
+}
+
+// Step 2 (Helper): Recursively build ConsoleSpan tree
+fn build_console_span(span_id: &str, span_map: &HashMap<String, Span>, parent_to_children_map: &HashMap<String, Vec<String>>) -> ConsoleSpan {
+    let span = span_map.get(span_id).expect("Span ID should exist in map"); // Assume ID is valid
+
+    let start_time = span.start_time_unix_nano;
+    let end_time = span.end_time_unix_nano;
+    let duration_ns = if end_time >= start_time { end_time - start_time } else { 0 };
+
+    // Extract status code, default to Unset if status is None
+    let status_code = span.status.as_ref().map_or(status::StatusCode::Unset, |s| status::StatusCode::try_from(s.code).unwrap_or(status::StatusCode::Unset));
+
+    let child_ids = parent_to_children_map.get(span_id).cloned().unwrap_or_default();
+
+    let mut children: Vec<ConsoleSpan> = child_ids
+        .iter()
+        .map(|child_id| build_console_span(child_id, span_map, parent_to_children_map))
+        .collect();
+
+    children.sort_by_key(|c| c.start_time);
+
+    ConsoleSpan {
+        parent_id: if span.parent_span_id.is_empty() { None } else { Some(hex::encode(&span.parent_span_id)) },
+        name: span.name.clone(),
+        start_time,
+        duration_ns,
+        children,
+        status_code,
+    }
+}
+
+// Recursive helper to add spans to the prettytable
+fn add_span_to_table(table: &mut Table, node: &ConsoleSpan, depth: usize, trace_start_time_ns: u64, trace_duration_ns: u64, timeline_width: usize) {
+    let indent = "  ".repeat(depth); // Two spaces per depth level
+
+    // Use only indent for hierarchy
+    // Truncate node.name first to fit remaining width after indentation
+    let name_width = SPAN_NAME_WIDTH.saturating_sub(indent.len());
+    let truncated_name = node.name.chars().take(name_width).collect::<String>();
+    let name_cell_content = format!("{}{}", indent, truncated_name);
+
+    let duration_ms = node.duration_ns as f64 / 1_000_000.0;
+    // Format duration simply, no fixed width padding, add color based on status
+    let duration_cell_content = format!("{:.2}", duration_ms);
+    let colored_duration = if node.status_code == status::StatusCode::Error {
+        duration_cell_content.red().to_string()
+    } else {
+        duration_cell_content.bright_black().to_string() // Use bright black for visibility
+    };
+
+    // Render bar with offset, passing the timeline_width argument and status
+    let bar_cell_content = render_bar(node.start_time, node.duration_ns, trace_start_time_ns, trace_duration_ns, timeline_width, node.status_code);
+
+    // Add row
+    table.add_row(row![
+        name_cell_content,
+        colored_duration,
+        bar_cell_content
+    ]);
+
+    // Sort children by start time before recursing
+    let mut children = node.children.clone(); // Clone to sort
+    children.sort_by_key(|c| c.start_time);
+
+    for child in &children {
+        add_span_to_table(table, child, depth + 1, trace_start_time_ns, trace_duration_ns, timeline_width);
+    }
+}
+
+// Render bar with offset and duration using simple full blocks and color
+fn render_bar(start_time_ns: u64, duration_ns: u64, trace_start_time_ns: u64, trace_duration_ns: u64, timeline_width: usize, status_code: status::StatusCode) -> String {
+    if trace_duration_ns == 0 {
+        return " ".repeat(timeline_width); // Return empty bar
+    }
+
+    let timeline_width_f = timeline_width as f64;
+
+    // Calculate fractions
+    let offset_ns = if start_time_ns >= trace_start_time_ns { start_time_ns - trace_start_time_ns } else { 0 };
+    let offset_fraction = offset_ns as f64 / trace_duration_ns as f64;
+    let duration_fraction = duration_ns as f64 / trace_duration_ns as f64;
+
+    // Calculate start and end points as character positions
+    let start_char_f = offset_fraction * timeline_width_f;
+    let end_char_f = start_char_f + (duration_fraction * timeline_width_f);
+
+    let mut bar = String::with_capacity(timeline_width);
+
+    for i in 0..timeline_width {
+        let cell_midpoint = i as f64 + 0.5;
+        // Check if the midpoint of the cell falls within the span's range
+        if cell_midpoint >= start_char_f && cell_midpoint < end_char_f {
+            // Color based on status
+            if status_code == status::StatusCode::Error {
+                bar.push_str(&'▄'.to_string().red().to_string());
+            } else {
+                bar.push_str(&'▄'.to_string().truecolor(128, 128, 128).to_string()); // Grayscale
+            }
+        } else {
+            bar.push(' '); // Use space
+        }
+    }
+
+    bar
 }
