@@ -1,14 +1,20 @@
 import { describe, it, expect } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
+import type {
+  APIGatewayProxyEventV2,
+  APIGatewayProxyEvent,
+  ALBEvent,
+  Context as LambdaContextType,
+} from 'aws-lambda';
 import {
   defaultExtractor,
   apiGatewayV1Extractor,
   apiGatewayV2Extractor,
   albExtractor,
-  TriggerType,
-} from '../src/internal/telemetry/extractors';
+} from '../src/extractors/index'; // Corrected import path
 import { SpanKind } from '@opentelemetry/api';
+import { TriggerType } from '../src/internal/telemetry/extractors'; // Keep TriggerType import separate if it's still internal
 
 // Load fixtures
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
@@ -25,15 +31,20 @@ const FIXTURES = {
   alb: loadFixture('alb.json'),
 };
 
-// Helper function to normalize headers for test assertions, identical to the one in the implementation
-function normalizeHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
+// Updated helper function to match implementation (handles undefined values)
+function normalizeHeaders(
+  headers?: Record<string, string | undefined>
+): Record<string, string> | undefined {
   if (!headers) {
     return undefined;
   }
-  
+
+  // Normalize all headers to lowercase, filter out undefined values
   return Object.entries(headers).reduce(
     (acc, [key, value]) => {
-      acc[key.toLowerCase()] = value;
+      if (typeof value === 'string') {
+        acc[key.toLowerCase()] = value;
+      }
       return acc;
     },
     {} as Record<string, string>
@@ -43,9 +54,19 @@ function normalizeHeaders(headers?: Record<string, string>): Record<string, stri
 describe('Extractors', () => {
   describe('defaultExtractor', () => {
     it('should extract basic Lambda context attributes', () => {
-      const context = {
+      const context: LambdaContextType = {
         awsRequestId: 'test-request-id',
         invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
+        functionName: 'test-function',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-function',
+        logStreamName: '2023/01/01/[$LATEST]abcdef',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
       };
 
       const result = defaultExtractor({}, context);
@@ -67,8 +88,19 @@ describe('Extractors', () => {
           'Content-Type': 'application/json',
         },
       };
-      const context = {
+      const context: LambdaContextType = {
         awsRequestId: 'test-request-id',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
+        functionName: 'test-function',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-function',
+        logStreamName: '2023/01/01/[$LATEST]abcdef',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
       };
 
       const result = defaultExtractor(event, context);
@@ -82,8 +114,21 @@ describe('Extractors', () => {
     });
 
     it('should handle missing headers', () => {
-      const event = { body: 'test' };
-      const context = { awsRequestId: 'test-request-id' };
+      const event = { body: 'test' }; // No headers
+      const context: LambdaContextType = {
+        awsRequestId: 'test-request-id',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
+        functionName: 'test-function',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-function',
+        logStreamName: '2023/01/01/[$LATEST]abcdef',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
 
       const result = defaultExtractor(event, context);
 
@@ -91,7 +136,20 @@ describe('Extractors', () => {
     });
 
     it('should handle null or undefined event', () => {
-      const context = { awsRequestId: 'test-request-id' };
+      const context: LambdaContextType = {
+        awsRequestId: 'test-request-id',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-function',
+        functionName: 'test-function',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-function',
+        logStreamName: '2023/01/01/[$LATEST]abcdef',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
 
       const result1 = defaultExtractor(null, context);
       const result2 = defaultExtractor(undefined, context);
@@ -103,12 +161,27 @@ describe('Extractors', () => {
 
   describe('apiGatewayV1Extractor', () => {
     it('should extract attributes from API Gateway v1 event', () => {
-      const event = FIXTURES.apigw_v1;
-      const result = apiGatewayV1Extractor(event, null);
+      const event = FIXTURES.apigw_v1 as APIGatewayProxyEvent;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v1',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv1',
+        functionName: 'test-apigwv1',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv1',
+        logStreamName: '2023/01/01/[$LATEST]abcdef1',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV1Extractor(event, context);
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
-      
+
       // Use toEqual instead of toBe to check content equality
       // and expect the headers to be normalized with lowercase keys
       expect(result.carrier).toEqual(normalizeHeaders(event.headers));
@@ -132,8 +205,23 @@ describe('Extractors', () => {
     });
 
     it('should handle missing data gracefully', () => {
-      const emptyEvent = {};
-      const result = apiGatewayV1Extractor(emptyEvent, null);
+      const emptyEvent = {} as APIGatewayProxyEvent; // Cast for type checking
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v1-empty',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv1-empty',
+        functionName: 'test-apigwv1-empty',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv1-empty',
+        logStreamName: '2023/01/01/[$LATEST]abcdef1e',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV1Extractor(emptyEvent, context);
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
@@ -141,8 +229,23 @@ describe('Extractors', () => {
     });
 
     it('should extract all expected attributes from API Gateway v1 event', () => {
-      const event = FIXTURES.apigw_v1;
-      const result = apiGatewayV1Extractor(event, null);
+      const event = FIXTURES.apigw_v1 as APIGatewayProxyEvent;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v1-full',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv1-full',
+        functionName: 'test-apigwv1-full',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv1-full',
+        logStreamName: '2023/01/01/[$LATEST]abcdef1f',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV1Extractor(event, context);
       const attrs = result.attributes;
 
       // Verify all expected attributes are extracted
@@ -158,8 +261,23 @@ describe('Extractors', () => {
 
   describe('apiGatewayV2Extractor', () => {
     it('should extract attributes from API Gateway v2 event', () => {
-      const event = FIXTURES.apigw_v2;
-      const result = apiGatewayV2Extractor(event, null);
+      const event = FIXTURES.apigw_v2 as APIGatewayProxyEventV2;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v2',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv2',
+        functionName: 'test-apigwv2',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv2',
+        logStreamName: '2023/01/01/[$LATEST]abcdef2',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV2Extractor(event, context);
 
       let route = event.routeKey;
       if (route === '$default') {
@@ -168,7 +286,7 @@ describe('Extractors', () => {
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
-      
+
       // Use toEqual instead of toBe to check content equality
       // and expect the headers to be normalized with lowercase keys
       expect(result.carrier).toEqual(normalizeHeaders(event.headers));
@@ -192,8 +310,23 @@ describe('Extractors', () => {
     });
 
     it('should handle missing data gracefully', () => {
-      const emptyEvent = {};
-      const result = apiGatewayV2Extractor(emptyEvent, null);
+      const emptyEvent = {} as APIGatewayProxyEventV2; // Cast for type checking
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v2-empty',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv2-empty',
+        functionName: 'test-apigwv2-empty',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv2-empty',
+        logStreamName: '2023/01/01/[$LATEST]abcdef2e',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV2Extractor(emptyEvent, context);
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
@@ -201,8 +334,23 @@ describe('Extractors', () => {
     });
 
     it('should extract all expected attributes from API Gateway v2 event', () => {
-      const event = FIXTURES.apigw_v2;
-      const result = apiGatewayV2Extractor(event, null);
+      const event = FIXTURES.apigw_v2 as APIGatewayProxyEventV2;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v2-full',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv2-full',
+        functionName: 'test-apigwv2-full',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv2-full',
+        logStreamName: '2023/01/01/[$LATEST]abcdef2f',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV2Extractor(event, context);
       const attrs = result.attributes;
 
       // Verify all expected attributes are extracted
@@ -218,12 +366,27 @@ describe('Extractors', () => {
 
   describe('albExtractor', () => {
     it('should extract attributes from ALB event', () => {
-      const event = FIXTURES.alb;
-      const result = albExtractor(event, null);
+      const event = FIXTURES.alb as ALBEvent;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-alb',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-alb',
+        functionName: 'test-alb',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-alb',
+        logStreamName: '2023/01/01/[$LATEST]abcdefa',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = albExtractor(event, context);
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
-      
+
       // Use toEqual instead of toBe to check content equality
       // and expect the headers to be normalized with lowercase keys
       expect(result.carrier).toEqual(normalizeHeaders(event.headers));
@@ -246,19 +409,43 @@ describe('Extractors', () => {
         }
 
         // Check X-Forwarded-For handling
-        if ('X-Forwarded-For' in event.headers) {
-          const clientIp = event.headers['X-Forwarded-For'].split(',')[0].trim();
-          expect(attrs['client.address']).toBe(clientIp);
-        } else if ('x-forwarded-for' in event.headers) {
-          const clientIp = event.headers['x-forwarded-for'].split(',')[0].trim();
-          expect(attrs['client.address']).toBe(clientIp);
+        // Check X-Forwarded-For handling (with check for headers existence and type)
+        if (event.headers) {
+          if (
+            'X-Forwarded-For' in event.headers &&
+            typeof event.headers['X-Forwarded-For'] === 'string'
+          ) {
+            const clientIp = event.headers['X-Forwarded-For'].split(',')[0].trim();
+            expect(attrs['client.address']).toBe(clientIp);
+          } else if (
+            'x-forwarded-for' in event.headers &&
+            typeof event.headers['x-forwarded-for'] === 'string'
+          ) {
+            const clientIp = event.headers['x-forwarded-for'].split(',')[0].trim();
+            expect(attrs['client.address']).toBe(clientIp);
+          }
         }
       }
     });
 
     it('should handle missing data gracefully', () => {
-      const emptyEvent = {};
-      const result = albExtractor(emptyEvent, null);
+      const emptyEvent = {} as ALBEvent; // Cast for type checking
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-alb-empty',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-alb-empty',
+        functionName: 'test-alb-empty',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-alb-empty',
+        logStreamName: '2023/01/01/[$LATEST]abcdefae',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = albExtractor(emptyEvent, context);
 
       expect(result.trigger).toBe(TriggerType.Http);
       expect(result.kind).toBe(SpanKind.SERVER);
@@ -267,8 +454,23 @@ describe('Extractors', () => {
     });
 
     it('should extract all expected attributes from ALB event', () => {
-      const event = FIXTURES.alb;
-      const result = albExtractor(event, null);
+      const event = FIXTURES.alb as ALBEvent;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-alb-full',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-alb-full',
+        functionName: 'test-alb-full',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-alb-full',
+        logStreamName: '2023/01/01/[$LATEST]abcdefaf',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = albExtractor(event, context);
       const attrs = result.attributes;
 
       // Verify all expected attributes are extracted
@@ -289,33 +491,91 @@ describe('Extractors', () => {
 
   describe('mixed case headers', () => {
     it('should handle headers case-insensitively for API Gateway v1', () => {
-      const event = FIXTURES.apigw_v1;
-      const result = apiGatewayV1Extractor(event, null);
+      const event = FIXTURES.apigw_v1 as APIGatewayProxyEvent;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v1-case',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv1-case',
+        functionName: 'test-apigwv1-case',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv1-case',
+        logStreamName: '2023/01/01/[$LATEST]abcdef1c',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV1Extractor(event, context);
       const attrs = result.attributes;
 
       expect(attrs['user_agent.original']).toBe(event.requestContext.identity.userAgent);
     });
 
     it('should handle headers case-insensitively for API Gateway v2', () => {
-      const event = FIXTURES.apigw_v2;
-      const result = apiGatewayV2Extractor(event, null);
+      const event = FIXTURES.apigw_v2 as APIGatewayProxyEventV2;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-v2-case',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-apigwv2-case',
+        functionName: 'test-apigwv2-case',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-apigwv2-case',
+        logStreamName: '2023/01/01/[$LATEST]abcdef2c',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = apiGatewayV2Extractor(event, context);
       const attrs = result.attributes;
 
       expect(attrs['user_agent.original']).toBe(event.requestContext.http.userAgent);
     });
 
     it('should handle headers case-insensitively for ALB', () => {
-      const event = FIXTURES.alb;
-      const result = albExtractor(event, null);
+      const event = FIXTURES.alb as ALBEvent;
+      const context: LambdaContextType = {
+        // Provide a minimal valid context
+        awsRequestId: 'test-req-id-alb-case',
+        invokedFunctionArn: 'arn:aws:lambda:us-east-1:123456789012:function:test-alb-case',
+        functionName: 'test-alb-case',
+        functionVersion: '$LATEST',
+        memoryLimitInMB: '128',
+        logGroupName: '/aws/lambda/test-alb-case',
+        logStreamName: '2023/01/01/[$LATEST]abcdefac',
+        getRemainingTimeInMillis: () => 5000,
+        done: () => {},
+        fail: () => {},
+        succeed: () => {},
+        callbackWaitsForEmptyEventLoop: true, // Added missing property
+      };
+      const result = albExtractor(event, context);
       const attrs = result.attributes;
 
-      // ALB gets user agent from headers
-      expect(attrs['user_agent.original']).toBe(event.headers['user-agent']);
+      // Add checks for event.headers before accessing properties
+      if (event.headers) {
+        // ALB gets user agent from headers
+        expect(attrs['user_agent.original']).toBe(event.headers['user-agent']);
 
-      // ALB processes these header values
-      expect(attrs['client.address']).toBe(event.headers['x-forwarded-for'].split(',')[0].trim());
-      expect(attrs['server.address']).toBe(event.headers.host);
-      expect(attrs['url.scheme']).toBe(event.headers['x-forwarded-proto']);
+        // ALB processes these header values
+        if (typeof event.headers['x-forwarded-for'] === 'string') {
+          expect(attrs['client.address']).toBe(
+            event.headers['x-forwarded-for'].split(',')[0].trim()
+          );
+        }
+        expect(attrs['server.address']).toBe(event.headers.host);
+        expect(attrs['url.scheme']).toBe(event.headers['x-forwarded-proto']);
+      } else {
+        // If headers are missing, these attributes should not be set from headers
+        expect(attrs['user_agent.original']).toBeUndefined();
+        expect(attrs['client.address']).toBeUndefined();
+        expect(attrs['server.address']).toBeUndefined();
+        expect(attrs['url.scheme']).toBeUndefined(); // Or check default if applicable
+      }
     });
   });
 

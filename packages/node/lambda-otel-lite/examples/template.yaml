@@ -15,23 +15,8 @@ Globals:
       ApplicationLogLevel: INFO
       SystemLogLevel: INFO
   
-
 Resources:
-  HelloWorld:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-handler-example'
-      CodeUri: ./handler
-      Handler: app.handler
-      Description: 'Demo Node Lambda function to showcase OpenTelemetry integration'
-      FunctionUrlConfig:
-        AuthType: NONE
-      Environment:
-        Variables:
-          LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
-          NODE_OPTIONS: --require @dev7a/lambda-otel-lite/extension # required for async mode
-
-  HelloWorldESBuild:
+  Example:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: esbuild
@@ -40,13 +25,14 @@ Resources:
         Target: "es2022"
         Format: "cjs"
         Platform: "node"
-        EntryPoints: 
-          - app.js
+        EntryPoints:
+          - app.ts
           - init.js
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-handler-example-esbuild'
+      FunctionName: !Sub '${AWS::StackName}-example'
       CodeUri: ./handler
       Handler: app.handler
+      Tracing: Enabled
       Description: 'Demo Node Lambda function to showcase OpenTelemetry integration'
       FunctionUrlConfig:
         AuthType: NONE
@@ -56,9 +42,9 @@ Resources:
           NODE_OPTIONS: --require /var/task/init.js # required for async mode
 
 Outputs:
-  HelloWorldFunctionUrl:
+  ExampleLambdaFunctionArn:
+    Description: 'ARN of the Demo Hello World Lambda function'
+    Value: !GetAtt Example.Arn
+  ExampleLambdaFunctionUrl:
     Description: 'URL of the Demo Hello World Lambda function'
-    Value: !GetAtt HelloWorldUrl.FunctionUrl
-  HelloWorldESBuildFunctionUrl:
-    Description: 'URL of the Demo Hello World Lambda function'
-    Value: !GetAtt HelloWorldESBuildUrl.FunctionUrl
+    Value: !GetAtt ExampleUrl.FunctionUrl

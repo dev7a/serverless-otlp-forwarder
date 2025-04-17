@@ -13,7 +13,4 @@ export {
   defaultExtractor,
   TriggerType,
   type SpanAttributes,
-  type APIGatewayV2Event,
-  type APIGatewayV1Event,
-  type ALBEvent,
 } from '../internal/telemetry/extractors';

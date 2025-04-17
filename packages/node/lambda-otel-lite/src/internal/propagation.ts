@@ -1,6 +1,5 @@
 import {
   Context,
-  SpanContext,
   TextMapGetter,
   TextMapPropagator,
   TextMapSetter,
@@ -22,7 +21,9 @@ const logger = createLogger('propagation');
  */
 function hasValidSpan(context: Context): boolean {
   const span = trace.getSpan(context);
-  if (!span) return false;
+  if (!span) {
+    return false;
+  }
 
   const spanContext = span.spanContext();
   // Check if the span context is valid (has valid trace ID and span ID)
@@ -36,14 +37,14 @@ export class NoopPropagator implements TextMapPropagator {
   /**
    * Extract from carrier (no-op).
    */
-  extract<Carrier>(context: Context, carrier: Carrier, getter: TextMapGetter<Carrier>): Context {
+  extract<Carrier>(context: Context, _carrier: Carrier, _getter: TextMapGetter<Carrier>): Context {
     return context;
   }
 
   /**
    * Inject into carrier (no-op).
    */
-  inject<Carrier>(context: Context, carrier: Carrier, setter: TextMapSetter<Carrier>): void {
+  inject<Carrier>(_context: Context, _carrier: Carrier, _setter: TextMapSetter<Carrier>): void {
     // No-op
   }
 

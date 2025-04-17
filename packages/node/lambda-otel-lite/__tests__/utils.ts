@@ -123,9 +123,9 @@ export class EnvVarManager {
   setup(vars: Record<string, string | undefined> = {}) {
     // Start with a clean environment
     process.env = {};
-    
+
     // Only add the variables we specifically want for this test
-    Object.keys(vars).forEach(key => {
+    Object.keys(vars).forEach((key) => {
       if (vars[key] !== undefined) {
         process.env[key] = vars[key];
       }

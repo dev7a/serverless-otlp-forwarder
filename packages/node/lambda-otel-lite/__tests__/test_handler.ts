@@ -50,6 +50,7 @@ import { jest } from '@jest/globals';
 import { createTracedHandler } from '../src/handler';
 import * as init from '../src/internal/telemetry/init';
 import { TelemetryCompletionHandler } from '../src/internal/telemetry/completion';
+import { defaultExtractor } from '../src/internal/telemetry/extractors'; // Import defaultExtractor
 import { describe, it, beforeEach, expect } from '@jest/globals';
 
 describe('createTracedHandler', () => {
@@ -96,6 +97,7 @@ describe('createTracedHandler', () => {
 
     // Set up default event and context
     defaultEvent = {};
+    // Update defaultContext to match the full aws-lambda Context type
     defaultContext = {
       awsRequestId: 'test-id',
       invokedFunctionArn: 'arn:aws:lambda:region:account:function:name',
@@ -103,6 +105,12 @@ describe('createTracedHandler', () => {
       functionVersion: '$LATEST',
       memoryLimitInMB: '128',
       getRemainingTimeInMillis: () => 1000,
+      callbackWaitsForEmptyEventLoop: true, // Added
+      logGroupName: '/aws/lambda/test-function', // Added
+      logStreamName: '2023/01/01/[$LATEST]abcdef', // Added
+      done: jest.fn(), // Added
+      fail: jest.fn(), // Added
+      succeed: jest.fn(), // Added
     };
 
     // Mock cold start as true initially
@@ -114,7 +122,7 @@ describe('createTracedHandler', () => {
 
   describe('basic functionality', () => {
     it('should work with basic options', async () => {
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => 'success');
       const result = await handler(defaultEvent, defaultContext);
@@ -127,7 +135,7 @@ describe('createTracedHandler', () => {
 
     it('should set default faas.trigger for non-HTTP events', async () => {
       const event = { type: 'custom' };
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => 'success');
       const result = await handler(event, defaultContext);
@@ -139,6 +147,7 @@ describe('createTracedHandler', () => {
 
   describe('Lambda context handling', () => {
     it('should extract attributes from Lambda context', async () => {
+      // Update lambdaContext to match the full aws-lambda Context type
       const lambdaContext = {
         awsRequestId: '123',
         invokedFunctionArn: 'arn:aws:lambda:region:account:function:name',
@@ -146,9 +155,15 @@ describe('createTracedHandler', () => {
         functionVersion: '$LATEST',
         memoryLimitInMB: '128',
         getRemainingTimeInMillis: () => 1000,
+        callbackWaitsForEmptyEventLoop: false, // Added
+        logGroupName: '/aws/lambda/test-function', // Added
+        logStreamName: '2023/01/01/[$LATEST]ghijkl', // Added
+        done: jest.fn(), // Added
+        fail: jest.fn(), // Added
+        succeed: jest.fn(), // Added
       };
 
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => 'success');
       await handler(defaultEvent, lambdaContext);
@@ -187,7 +202,7 @@ describe('createTracedHandler', () => {
 
   describe('HTTP response handling', () => {
     it('should handle successful HTTP responses', async () => {
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => ({
         statusCode: 200,
@@ -200,7 +215,7 @@ describe('createTracedHandler', () => {
     });
 
     it('should handle error HTTP responses', async () => {
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => ({
         statusCode: 500,
@@ -219,7 +234,7 @@ describe('createTracedHandler', () => {
   describe('error handling', () => {
     it('should handle errors in handler', async () => {
       const error = new Error('test error');
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => {
         throw error;
@@ -239,7 +254,7 @@ describe('createTracedHandler', () => {
         throw new Error('extraction error');
       });
 
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => 'success');
       const result = await handler(defaultEvent, defaultContext);
@@ -250,7 +265,7 @@ describe('createTracedHandler', () => {
 
     it('should complete telemetry even if handler throws', async () => {
       const error = new Error('test error');
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => {
         throw error;
@@ -263,7 +278,7 @@ describe('createTracedHandler', () => {
 
   describe('cold start handling', () => {
     it('should handle cold start correctly', async () => {
-      const traced = createTracedHandler('test-handler', completionHandler);
+      const traced = createTracedHandler('test-handler', completionHandler, defaultExtractor); // Added defaultExtractor
 
       const handler = traced(async (_event, _context) => 'success');
       await handler(defaultEvent, defaultContext);

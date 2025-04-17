@@ -3,68 +3,54 @@ import { isColdStart, setColdStart } from './internal/telemetry/init';
 import { TelemetryCompletionHandler } from './internal/telemetry/completion';
 import { SpanAttributes, defaultExtractor } from './internal/telemetry/extractors';
 import logger from './internal/logger';
+import type { Context as AwsLambdaContext } from 'aws-lambda'; // Import standard Context
 
 /**
- * AWS Lambda context object
+ * A function that extracts attributes from a Lambda event and context.
+ *
+ * @template TEvent The event type for the Lambda function
+ * @param event The Lambda event
+ * @param context The Lambda context
+ * @returns The extracted span attributes
  */
-export interface LambdaContext {
-  awsRequestId: string;
-  invokedFunctionArn: string;
-  functionName: string;
-  functionVersion: string;
-  memoryLimitInMB: string;
-  getRemainingTimeInMillis: () => number;
-}
+export type AttributesExtractor<TEvent = any> = (
+  event: TEvent,
+  context: AwsLambdaContext
+) => SpanAttributes;
 
 /**
- * A Lambda handler function type
+ * A Lambda handler function type using the standard Context
  */
 export type TracedFunction<TEvent, TResult> = (
   event: TEvent,
-  context: LambdaContext
+  context: AwsLambdaContext
 ) => Promise<TResult>;
-
 /**
  * Creates a traced handler for AWS Lambda functions with automatic attribute extraction
  * and context propagation.
  *
- * @example
- * ```typescript
- * const completionHandler = initTelemetry();
- *
- * // Create a traced handler with a name and optional attribute extractor
- * const traced = createTracedHandler(
- *   'my-handler',
- *   completionHandler,
- *   apiGatewayV2Extractor
- * );
- *
- * // Use the traced handler to process Lambda events
- * export const lambdaHandler = traced(async (event, context) => {
- *   // Get current span if needed
- *   const currentSpan = trace.getActiveSpan();
- *   currentSpan?.setAttribute('custom.attribute', 'value');
- *
- *   // Your handler logic here
- *   return {
- *     statusCode: 200,
- *     body: JSON.stringify({ message: 'Hello World' })
- *   };
- * });
- * ```
+ * @template TEvent The event type for the Lambda function
+ * @template TResult The result type for the Lambda function
+ * @param name The name of the handler
+ * @param completionHandler The telemetry completion handler
+ * @param attributesExtractor Optional extractor for attributes from the event
+ * @returns A function that wraps a Lambda handler function
  */
-export function createTracedHandler(
+export function createTracedHandler<TEvent = any, TResult = any>(
   name: string,
   completionHandler: TelemetryCompletionHandler,
-  attributesExtractor?: (event: unknown, context: LambdaContext) => SpanAttributes
+  attributesExtractor?: AttributesExtractor<TEvent>
 ) {
-  return function <TEvent, TResult>(fn: TracedFunction<TEvent, TResult>) {
-    return async function (event: TEvent, context: LambdaContext): Promise<TResult> {
+  // Return a function that wraps the user's handler
+  return function (fn: TracedFunction<TEvent, TResult>) {
+    return async function (event: TEvent, context: AwsLambdaContext): Promise<TResult> {
       const tracer = completionHandler.getTracer();
 
       try {
-        // Extract attributes using provided extractor or default
-        const extracted = (attributesExtractor || defaultExtractor)(event, context);
+        // Use the provided extractor or the default one
+        const extracted = attributesExtractor
+          ? attributesExtractor(event, context)
+          : defaultExtractor(event as unknown, context);
 
         // Extract context from carrier if available
         let parentContext = ROOT_CONTEXT;

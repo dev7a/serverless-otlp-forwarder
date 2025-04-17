@@ -41,78 +41,38 @@ export interface SpanAttributes {
   trigger?: string;
 }
 
-/** API Gateway V2 HTTP API event interface */
-export interface APIGatewayV2Event {
-  requestContext?: {
-    http?: {
-      method?: string;
-      protocol?: string;
-      sourceIp?: string;
-      userAgent?: string;
-    };
-    domainName?: string;
-  };
-  rawPath?: string;
-  rawQueryString?: string;
-  routeKey?: string;
-  headers?: Record<string, string>;
-}
+import type {
+  APIGatewayProxyEventV2,
+  APIGatewayProxyEvent,
+  ALBEvent,
+  Context as LambdaContextType,
+} from 'aws-lambda';
 
-/** API Gateway V1 REST API event interface */
-export interface APIGatewayV1Event {
-  httpMethod?: string;
-  resource?: string;
-  path?: string;
-  multiValueQueryStringParameters?: Record<string, string[]>;
-  requestContext?: {
-    protocol?: string;
-    identity?: {
-      sourceIp?: string;
-      userAgent?: string;
-    };
-    domainName?: string;
-  };
-  headers?: Record<string, string>;
-}
-
-/** Application Load Balancer event interface */
-export interface ALBEvent {
-  httpMethod?: string;
-  path?: string;
-  queryStringParameters?: Record<string, string>;
-  requestContext?: {
-    elb?: {
-      targetGroupArn?: string;
-    };
-  };
-  headers?: Record<string, string>;
-}
-
-/** Lambda context interface for type safety */
-interface LambdaContext {
-  awsRequestId: string;
-  invokedFunctionArn: string;
-}
-
+// Remove the internal LambdaContext alias
+// We will use Context from 'aws-lambda' directly
 /**
  * Normalize headers by converting all keys to lowercase.
- * 
+ *
  * HTTP header names are case-insensitive, so we normalize them to lowercase
  * for consistent processing. The X-Ray propagator does its own case-insensitive
  * lookup for X-Amzn-Trace-Id, so no special handling is needed.
- * 
+ *
  * @param headers - The original headers object (may be undefined)
  * @returns A normalized copy of the headers, or undefined if no headers
  */
-function normalizeHeaders(headers?: Record<string, string>): Record<string, string> | undefined {
+function normalizeHeaders(
+  headers?: Record<string, string | undefined>
+): Record<string, string> | undefined {
   if (!headers) {
     return undefined;
   }
-  
-  // Normalize all headers to lowercase
+
+  // Normalize all headers to lowercase, filter out undefined values
   return Object.entries(headers).reduce(
     (acc, [key, value]) => {
-      acc[key.toLowerCase()] = value;
+      if (typeof value === 'string') {
+        acc[key.toLowerCase()] = value;
+      }
       return acc;
     },
     {} as Record<string, string>
@@ -128,13 +88,13 @@ export function defaultExtractor(event: unknown, context: unknown): SpanAttribut
 
   // Add invocation ID if available
   if (context && typeof context === 'object' && 'awsRequestId' in context) {
-    const typedContext = context as LambdaContext;
+    const typedContext = context as LambdaContextType; // Use imported type
     attributes['faas.invocation_id'] = typedContext.awsRequestId;
   }
 
   // Add function ARN and account ID if available
   if (context && typeof context === 'object' && 'invokedFunctionArn' in context) {
-    const typedContext = context as LambdaContext;
+    const typedContext = context as LambdaContextType; // Use imported type
     const arn = typedContext.invokedFunctionArn;
     attributes['cloud.resource_id'] = arn;
     // Extract account ID from ARN (arn:aws:lambda:region:account-id:...)
@@ -146,8 +106,20 @@ export function defaultExtractor(event: unknown, context: unknown): SpanAttribut
 
   // Extract carrier headers if present
   let carrier: Record<string, string> | undefined;
-  if (event && typeof event === 'object' && 'headers' in event && event.headers) {
-    carrier = normalizeHeaders(event.headers as Record<string, string>);
+  if (
+    event &&
+    typeof event === 'object' &&
+    'headers' in event &&
+    event.headers &&
+    typeof event.headers === 'object' &&
+    !Array.isArray(event.headers)
+  ) {
+    // Only include if all values are strings
+    const headersObj = event.headers as Record<string, unknown>;
+    const allStringValues = Object.values(headersObj).every((v) => typeof v === 'string');
+    if (allStringValues) {
+      carrier = normalizeHeaders(headersObj as Record<string, string>);
+    }
   }
 
   return {
@@ -172,61 +144,63 @@ export function defaultExtractor(event: unknown, context: unknown): SpanAttribut
  * - user_agent.original: The user agent header
  * - server.address: The domain name
  */
-export function apiGatewayV2Extractor(event: unknown, context: unknown): SpanAttributes {
+export function apiGatewayV2Extractor(
+  event: APIGatewayProxyEventV2,
+  context: LambdaContextType // Use imported type
+): SpanAttributes {
   // Start with default attributes
   const base = defaultExtractor(event, context);
   const attributes = { ...base.attributes };
 
-  const apiEvent = event as APIGatewayV2Event;
-  const method = apiEvent?.requestContext?.http?.method;
+  const method = event.requestContext?.http?.method;
 
   // Add HTTP attributes
   if (method) {
     attributes['http.request.method'] = method;
   }
 
-  if (apiEvent?.rawPath) {
-    attributes['url.path'] = apiEvent.rawPath;
+  if (event.rawPath) {
+    attributes['url.path'] = event.rawPath;
   }
 
-  if (apiEvent?.rawQueryString && apiEvent.rawQueryString !== '') {
-    attributes['url.query'] = apiEvent.rawQueryString;
+  if (event.rawQueryString && event.rawQueryString !== '') {
+    attributes['url.query'] = event.rawQueryString;
   }
 
   attributes['url.scheme'] = 'https';
 
-  if (apiEvent?.requestContext?.http?.protocol) {
-    const protocol = apiEvent.requestContext.http.protocol.toLowerCase();
+  if (event.requestContext?.http?.protocol) {
+    const protocol = event.requestContext.http.protocol.toLowerCase();
     if (protocol.startsWith('http/')) {
       attributes['network.protocol.version'] = protocol.replace('http/', '');
     }
   }
 
   // Add route with special handling for $default
-  if (apiEvent?.routeKey) {
-    if (apiEvent.routeKey === '$default') {
-      attributes['http.route'] = apiEvent?.rawPath || '/';
+  if (event.routeKey) {
+    if (event.routeKey === '$default') {
+      attributes['http.route'] = event.rawPath || '/';
     } else {
-      attributes['http.route'] = apiEvent.routeKey;
+      attributes['http.route'] = event.routeKey;
     }
   } else {
     attributes['http.route'] = '/';
   }
 
-  if (apiEvent?.requestContext?.http?.sourceIp) {
-    attributes['client.address'] = apiEvent.requestContext.http.sourceIp;
+  if (event.requestContext?.http?.sourceIp) {
+    attributes['client.address'] = event.requestContext.http.sourceIp;
   }
 
-  if (apiEvent?.requestContext?.http?.userAgent) {
-    attributes['user_agent.original'] = apiEvent.requestContext.http.userAgent;
+  if (event.requestContext?.http?.userAgent) {
+    attributes['user_agent.original'] = event.requestContext.http.userAgent;
   }
 
-  if (apiEvent?.requestContext?.domainName) {
-    attributes['server.address'] = apiEvent.requestContext.domainName;
+  if (event.requestContext?.domainName) {
+    attributes['server.address'] = event.requestContext.domainName;
   }
 
   // Normalize headers once and reuse
-  const normalizedHeaders = apiEvent?.headers ? normalizeHeaders(apiEvent.headers) : undefined;
+  const normalizedHeaders = event.headers ? normalizeHeaders(event.headers) : undefined;
 
   // Get method and route for span name
   const spanMethod = attributes['http.request.method'] || 'HTTP';
@@ -244,31 +218,33 @@ export function apiGatewayV2Extractor(event: unknown, context: unknown): SpanAtt
 /**
  * Extract attributes from API Gateway V1 REST API events.
  */
-export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAttributes {
+export function apiGatewayV1Extractor(
+  event: APIGatewayProxyEvent,
+  context: LambdaContextType // Use imported type
+): SpanAttributes {
   // Start with default attributes
   const base = defaultExtractor(event, context);
   const attributes = { ...base.attributes };
 
-  const apiEvent = event as APIGatewayV1Event;
-  const method = apiEvent?.httpMethod;
-  const route = apiEvent?.resource || '/';
+  const method = event.httpMethod;
+  const route = event.resource || '/';
 
   // Add HTTP attributes
   if (method) {
     attributes['http.request.method'] = method;
   }
 
-  if (apiEvent?.path) {
-    attributes['url.path'] = apiEvent.path;
+  if (event.path) {
+    attributes['url.path'] = event.path;
   }
 
   // Handle query string parameters
   if (
-    apiEvent?.multiValueQueryStringParameters &&
-    Object.keys(apiEvent.multiValueQueryStringParameters).length > 0
+    event.multiValueQueryStringParameters &&
+    Object.keys(event.multiValueQueryStringParameters).length > 0
   ) {
     const queryParts: string[] = [];
-    for (const [key, values] of Object.entries(apiEvent.multiValueQueryStringParameters)) {
+    for (const [key, values] of Object.entries(event.multiValueQueryStringParameters)) {
       if (Array.isArray(values)) {
         for (const value of values) {
           queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
@@ -283,8 +259,8 @@ export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAtt
   // API Gateway is always HTTPS
   attributes['url.scheme'] = 'https';
 
-  if (apiEvent?.requestContext?.protocol) {
-    const protocol = apiEvent.requestContext.protocol.toLowerCase();
+  if (event.requestContext?.protocol) {
+    const protocol = event.requestContext.protocol.toLowerCase();
     if (protocol.startsWith('http/')) {
       attributes['network.protocol.version'] = protocol.replace('http/', '');
     }
@@ -294,17 +270,17 @@ export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAtt
   attributes['http.route'] = route;
 
   // Add source IP from identity
-  if (apiEvent?.requestContext?.identity?.sourceIp) {
-    attributes['client.address'] = apiEvent.requestContext.identity.sourceIp;
+  if (event.requestContext?.identity?.sourceIp) {
+    attributes['client.address'] = event.requestContext.identity.sourceIp;
   }
 
   // Add user agent from identity
-  if (apiEvent?.requestContext?.identity?.userAgent) {
-    attributes['user_agent.original'] = apiEvent.requestContext.identity.userAgent;
+  if (event.requestContext?.identity?.userAgent) {
+    attributes['user_agent.original'] = event.requestContext.identity.userAgent;
   }
 
   // Normalize headers once and reuse
-  const normalizedHeaders = apiEvent?.headers ? normalizeHeaders(apiEvent.headers) : undefined;
+  const normalizedHeaders = event.headers ? normalizeHeaders(event.headers) : undefined;
 
   // Add server address from Host header
   if (normalizedHeaders?.['host']) {
@@ -323,14 +299,16 @@ export function apiGatewayV1Extractor(event: unknown, context: unknown): SpanAtt
 /**
  * Extract attributes from Application Load Balancer target group events.
  */
-export function albExtractor(event: unknown, context: unknown): SpanAttributes {
+export function albExtractor(
+  event: ALBEvent,
+  context: LambdaContextType // Use imported type
+): SpanAttributes {
   // Start with default attributes
   const base = defaultExtractor(event, context);
   const attributes = { ...base.attributes };
 
-  const albEvent = event as ALBEvent;
-  const method = albEvent?.httpMethod;
-  const path = albEvent?.path || '/';
+  const method = event.httpMethod;
+  const path = event.path || '/';
 
   // Add HTTP attributes
   if (method) {
@@ -343,10 +321,12 @@ export function albExtractor(event: unknown, context: unknown): SpanAttributes {
   }
 
   // Handle query string parameters
-  if (albEvent?.queryStringParameters && Object.keys(albEvent.queryStringParameters).length > 0) {
+  if (event.queryStringParameters && Object.keys(event.queryStringParameters).length > 0) {
     const queryParts: string[] = [];
-    for (const [key, value] of Object.entries(albEvent.queryStringParameters)) {
-      queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+    for (const [key, value] of Object.entries(event.queryStringParameters)) {
+      if (typeof value === 'string') {
+        queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+      }
     }
     if (queryParts.length > 0) {
       attributes['url.query'] = queryParts.join('&');
@@ -354,12 +334,12 @@ export function albExtractor(event: unknown, context: unknown): SpanAttributes {
   }
 
   // Add ALB specific attributes
-  if (albEvent?.requestContext?.elb?.targetGroupArn) {
-    attributes['alb.target_group_arn'] = albEvent.requestContext.elb.targetGroupArn;
+  if (event.requestContext?.elb?.targetGroupArn) {
+    attributes['alb.target_group_arn'] = event.requestContext.elb.targetGroupArn;
   }
 
   // Normalize headers once and reuse
-  const normalizedHeaders = albEvent?.headers ? normalizeHeaders(albEvent.headers) : undefined;
+  const normalizedHeaders = event.headers ? normalizeHeaders(event.headers) : undefined;
 
   // Extract attributes from headers
   if (normalizedHeaders) {
@@ -371,7 +351,7 @@ export function albExtractor(event: unknown, context: unknown): SpanAttributes {
     }
 
     // Extract user agent
-    if (normalizedHeaders['user-agent']) {
+    if (typeof normalizedHeaders['user-agent'] === 'string') {
       attributes['user_agent.original'] = normalizedHeaders['user-agent'];
     }
 

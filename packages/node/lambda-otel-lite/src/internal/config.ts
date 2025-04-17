@@ -33,8 +33,12 @@ export function getBooleanValue(
   // If environment variable is set and not empty
   if (envValue !== undefined) {
     const value = envValue.trim().toLowerCase();
-    if (value === 'true') return true;
-    if (value === 'false') return false;
+    if (value === 'true') {
+      return true;
+    }
+    if (value === 'false') {
+      return false;
+    }
 
     // Invalid environment variable value - log warning and continue
     if (value) {
@@ -82,7 +86,7 @@ export function getNumericValue(
       } else {
         logger.warn(`Invalid numeric value for ${name}: ${envValue}. Using fallback.`);
       }
-    } catch (error) {
+    } catch {
       logger.warn(`Error parsing numeric value for ${name}: ${envValue}. Using fallback.`);
     }
   }

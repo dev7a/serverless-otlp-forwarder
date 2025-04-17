@@ -10,8 +10,8 @@ import {
 } from '../src/internal/propagation'; // Import setupPropagator here
 import { EnvVarManager } from './utils';
 import { describe, it, beforeEach, afterEach, expect, jest } from '@jest/globals';
-import { context, trace, propagation, TextMapGetter } from '@opentelemetry/api';
-import { CompositePropagator, W3CTraceContextPropagator } from '@opentelemetry/core';
+import { context, propagation, TextMapGetter } from '@opentelemetry/api';
+import { CompositePropagator } from '@opentelemetry/core';
 import { ENV_VARS } from '../src/constants';
 
 // Mock the logger once

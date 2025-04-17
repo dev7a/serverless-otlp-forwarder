@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Configuration Precedence:** Updated configuration loading for processor mode, queue size, batch size, and compression level to consistently follow the precedence: Environment Variable > Programmatic Configuration > Default Value. Invalid environment variable values now log a warning and use the fallback instead of raising an error.
 - **Default Propagator:** Changed the default propagator (used when `OTEL_PROPAGATORS` env var and `propagators` option are not set) to `[LambdaXRayPropagator(), W3CTraceContextPropagator()]`.
 - **HTTP Header Handling:** Improved header normalization to standardize on lowercase while preserving the canonical form of X-Amzn-Trace-Id for compatibility with AWS X-Ray propagation.
+- **Enhanced Type Safety:** Improved generic type system for `createTracedHandler` and `AttributesExtractor` to provide better type inference and validation when using specific event types.
+- **Exported Types:** Added export for `AttributesExtractor` type to enable better type checking in custom extractors.
 - Improved code formatting and organization throughout the codebase, with dedicated modules for configuration and propagation.
 
 ## [0.11.3] - 2025-03-25

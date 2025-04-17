@@ -1,31 +1,33 @@
 /**
  * Simple Hello World Lambda function using lambda-otel-lite.
- * 
+ *
  * This example demonstrates basic OpenTelemetry setup with lambda-otel-lite.
  * It creates spans for each invocation and logs the event payload using span events.
  */
 
-const { trace, SpanStatusCode } = require('@opentelemetry/api');
+import { trace, SpanStatusCode, Span } from '@opentelemetry/api';
 // Import initTelemetry and createTracedHandler from the main package
-const { initTelemetry, createTracedHandler } = require('@dev7a/lambda-otel-lite');
+import { initTelemetry, createTracedHandler } from '@dev7a/lambda-otel-lite';
 // Import extractor from the dedicated subpath
-const { apiGatewayV2Extractor } = require('@dev7a/lambda-otel-lite/extractors');
+import { apiGatewayV2Extractor } from '@dev7a/lambda-otel-lite/extractors';
+// Import AWS Lambda types
+import type { APIGatewayProxyEventV2, Context, APIGatewayProxyResultV2 } from 'aws-lambda';
 
 // Initialize telemetry once at module load
 const { tracer, completionHandler } = initTelemetry();
 
 /**
  * Simple nested function that creates its own span.
- * 
+ *
  * This function demonstrates how to create a child span from the current context.
  * The span will automatically become a child of the currently active span.
  */
-async function nestedFunction(event) {
+async function nestedFunction(event: APIGatewayProxyEventV2): Promise<string> {
   // Create a child span - it will automatically use the active span as parent
-  return tracer.startActiveSpan('nested_function', async (span) => {
+  return tracer.startActiveSpan('nested_function', async (span: Span) => {
     try {
       span.addEvent('Nested function called');
-      
+
       if (event?.rawPath === '/error') {
         // simulate a random error
         const r = Math.random();
@@ -43,25 +45,29 @@ async function nestedFunction(event) {
 }
 
 // Create a traced handler with configuration
-const traced = createTracedHandler(
+const traced = createTracedHandler<APIGatewayProxyEventV2, APIGatewayProxyResultV2>(
   'simple-handler',
   completionHandler,
-  apiGatewayV2Extractor 
+  apiGatewayV2Extractor
 );
 
 /**
  * Lambda handler function.
- * 
+ *
  * This example shows how to:
  * 1. Use the traced decorator for automatic span creation
  * 2. Access the current span via OpenTelemetry API
  * 3. Create child spans for nested operations
  * 4. Add custom attributes and events
  */
-exports.handler = traced(async (event, context) => {
+// Define the handler using the standard AWS Lambda types
+export const handler = traced(async (
+  event: APIGatewayProxyEventV2,
+  context: Context // Use the standard Context type from 'aws-lambda'
+): Promise<APIGatewayProxyResultV2> => {
   const currentSpan = trace.getActiveSpan();
   const requestId = context.awsRequestId;
-  
+
   currentSpan?.setAttribute('request.id', requestId);
   currentSpan?.addEvent('handling request', {
     event: JSON.stringify(event)
@@ -76,8 +82,9 @@ exports.handler = traced(async (event, context) => {
         message: `Hello from request ${requestId}`
       })
     };
-  } catch (error) {
-    if (error.message === 'expected error') {
+  } catch (error: unknown) { // Type the error as unknown
+    // Check if error is an instance of Error before accessing message
+    if (error instanceof Error && error.message === 'expected error') {
       currentSpan?.recordException(error);
       currentSpan?.setStatus({
         code: SpanStatusCode.ERROR,
