@@ -4,6 +4,7 @@
 //! including enhanced X-Ray propagation that integrates with Lambda's built-in tracing.
 
 use crate::logger::Logger;
+use opentelemetry::trace::TraceContextExt;
 use opentelemetry::{
     propagation::{text_map_propagator::FieldIter, Extractor, Injector, TextMapPropagator},
     Context,
@@ -16,6 +17,7 @@ static LOGGER: Logger = Logger::const_new("propagation");
 
 // Define the X-Ray trace header constant since it's not publicly exported
 const AWS_XRAY_TRACE_HEADER: &str = "x-amzn-trace-id";
+const AWS_XRAY_TRACE_ENV_VAR: &str = "_X_AMZN_TRACE_ID";
 
 /// A custom propagator that wraps the `XrayPropagator` with Lambda-specific enhancements.
 ///
@@ -71,8 +73,15 @@ impl TextMapPropagator for LambdaXrayPropagator {
 
         // If we didn't get a valid context from the carrier, try the environment variable
         if !has_carrier_context {
-            if let Ok(trace_id_value) = env::var("_X_AMZN_TRACE_ID") {
+            if let Ok(trace_id_value) = env::var(AWS_XRAY_TRACE_ENV_VAR) {
                 LOGGER.debug(format!("Found _X_AMZN_TRACE_ID: {}", trace_id_value));
+
+                // If Sampled=0, skip extraction entirely so the sampler treats this as a root span.
+                // This avoids suppressing spans when X-Ray is disabled but Lambda still injects the env var.
+                if trace_id_value.contains("Sampled=0") {
+                    LOGGER.debug("_X_AMZN_TRACE_ID has Sampled=0; skipping context extraction to allow root span sampling");
+                    return cx.clone();
+                }
 
                 // Create a carrier from the environment variable
                 let mut env_carrier = HashMap::new();
@@ -80,9 +89,14 @@ impl TextMapPropagator for LambdaXrayPropagator {
 
                 // Try to extract from the environment variable
                 let env_ctx = self.inner.extract_with_context(cx, &env_carrier);
-                if has_active_span(&env_ctx) {
-                    LOGGER.debug("Successfully extracted context from _X_AMZN_TRACE_ID");
+                let span = env_ctx.span();
+                let span_context = span.span_context();
+                if span_context.is_valid() && span_context.is_sampled() {
+                    LOGGER.debug("Successfully extracted *sampled* context from _X_AMZN_TRACE_ID");
                     return env_ctx;
+                } else {
+                    LOGGER
+                        .debug("Ignoring _X_AMZN_TRACE_ID because context is invalid or unsampled");
                 }
             }
         }
@@ -102,7 +116,6 @@ impl TextMapPropagator for LambdaXrayPropagator {
 
 // Helper function to check if a context has an active span
 fn has_active_span(cx: &Context) -> bool {
-    use opentelemetry::trace::TraceContextExt;
     cx.span().span_context().is_valid()
 }
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2025-03-29
+### Fixed
+- Changed propagator registration order to prioritize W3C TraceContext over X-Ray when both are present
+- Fixed handling of Sampled=0 in X-Ray trace headers to allow proper root span sampling
+- Improved context extraction logic from the _X_AMZN_TRACE_ID environment variable
+- Enhanced X-Ray propagation with better validity and sampling checks
+
 ## [0.13.0] - 2025-03-28
 ### Added
 - Added ability to programmatically set the processor mode via `TelemetryConfig.processor_mode`

@@ -567,12 +567,18 @@ pub async fn init_telemetry(
     } else {
         // if no propagators are set, use the default propagators
         if config.propagators.is_empty() {
-            config
-                .propagators
-                .push(Box::new(TraceContextPropagator::new()));
+            // IMPORTANT:
+            // LambdaXrayPropagator is added *before* TraceContextPropagator
+            // because in OpenTelemetry Rust, the *last* propagator that extracts
+            // a valid context wins during extraction.
+            // This ensures that if both an AWS X-Ray header (or _X_AMZN_TRACE_ID)
+            // and a W3C traceparent header are present, the W3C traceparent takes precedence.
             config
                 .propagators
                 .push(Box::new(LambdaXrayPropagator::new()));
+            config
+                .propagators
+                .push(Box::new(TraceContextPropagator::new()));
         }
     }
 
