@@ -10,6 +10,8 @@ rust-version.workspace = true
 # AWS SDK (Inherit from workspace where possible, specify version if not)
 aws-config = { workspace = true }
 aws-sdk-cloudwatchlogs = { workspace = true }
+aws-sdk-cloudformation = { workspace = true }
+aws-sdk-sts = { workspace = true }
 
 # Async Runtime & Utilities (Inherit from workspace)
 tokio = { workspace = true }
