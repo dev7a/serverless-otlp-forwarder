@@ -10,6 +10,11 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
         .required(true)
         .args(["log_group_pattern", "stack_name"]),
 ))]
+#[clap(group( // Add group to make poll/timeout mutually exclusive
+    ArgGroup::new("mode")
+        .required(false) // One or neither can be specified
+        .args(["poll_interval", "session_timeout"]),
+))]
 pub struct CliArgs {
     /// Log group name pattern for discovery (case-sensitive substring search).
     #[arg(long = "pattern", group = "discovery")]
@@ -55,8 +60,12 @@ pub struct CliArgs {
     #[arg(long)]
     pub event_attrs: Option<String>,
 
-    /// Session duration in minutes after which livetrace will automatically exit.
-    #[arg(long, default_value_t = 30)]
+    /// Optional polling interval in seconds. If set, uses FilterLogEvents API instead of StartLiveTail.
+    #[arg(long, group = "mode")] // Add to group
+    pub poll_interval: Option<u64>,
+
+    /// Session duration in minutes after which livetrace will automatically exit (LiveTail mode only).
+    #[arg(long, default_value_t = 30, group = "mode")] // Re-add, add to group
     pub session_timeout: u64,
 }
 

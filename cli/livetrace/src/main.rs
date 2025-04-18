@@ -3,6 +3,8 @@ mod aws_setup;
 mod cli;
 mod console_display;
 mod forwarder;
+mod poller;
+mod live_tail_adapter;
 mod processing;
 
 // Standard Library
@@ -15,6 +17,7 @@ use aws_sdk_cloudwatchlogs::types::StartLiveTailResponseStream;
 use clap::{Parser, ArgGroup};
 use colored::*;
 use reqwest::Client as ReqwestClient;
+use tokio::sync::mpsc;
 use tokio::time::{interval, sleep};
 use tokio::pin;
 use tracing::level_filters::LevelFilter;
@@ -25,6 +28,8 @@ use crate::aws_setup::setup_aws_resources;
 use crate::cli::{parse_args, parse_event_attr_globs};
 use crate::console_display::display_console;
 use crate::forwarder::{parse_otlp_headers_from_vec, send_batch};
+use crate::live_tail_adapter::start_live_tail_task;
+use crate::poller::start_polling_task;
 use crate::processing::{
     process_log_event_message,
     SpanCompactionConfig,
@@ -87,6 +92,10 @@ struct CliArgs {
     /// Session timeout in minutes.
     #[arg(short, long, default_value_t = 10)]
     session_timeout: u64,
+
+    /// FilterLogEvents polling interval in seconds.
+    #[arg(short, long)]
+    poll_interval: Option<u64>,
 }
 
 #[tokio::main]
@@ -188,78 +197,60 @@ async fn main() -> Result<()> {
     println!("\n");
     // --- End Preamble ---
 
-    // 9. Start Live Tail
-    tracing::debug!("Attempting to start Live Tail for resolved log groups...");
-    let mut live_tail_output = cwl_client // Use the client returned from aws_setup
-        .start_live_tail()
-        .set_log_group_identifiers(Some(resolved_log_group_arns))
-        .log_event_filter_pattern("{ $.__otel_otlp_stdout = * }")
-        .send()
-        .await
-        .context("Failed to start Live Tail")?;
-    tracing::debug!("Waiting for Live Tail stream events...");
+    // 9. Create MPSC Channel and Spawn Event Source Task
+    let (tx, mut rx) = mpsc::channel::<Result<TelemetryData>>(100); // Channel for TelemetryData or errors
 
-    // 8. Main Event Loop Setup
+    if let Some(interval_secs) = args.poll_interval {
+        // --- Polling Mode --- 
+        tracing::info!(interval = interval_secs, "Using FilterLogEvents polling mode.");
+        start_polling_task(cwl_client, resolved_log_group_arns, interval_secs, tx);
+    } else {
+        // --- Live Tail Mode --- 
+        tracing::info!(timeout_minutes = args.session_timeout, "Using StartLiveTail streaming mode with timeout.");
+        start_live_tail_task(cwl_client, resolved_log_group_arns, tx, args.session_timeout);
+    }
+
+    // 10. Main Event Processing Loop
+    tracing::info!("Waiting for telemetry events...");
     let mut telemetry_buffer: Vec<TelemetryData> = Vec::new();
     let mut ticker = interval(Duration::from_secs(1));
-    let timeout_duration = Duration::from_secs(args.session_timeout * 60);
-    let timeout_sleep = sleep(timeout_duration); // Create the sleep future
-    pin!(timeout_sleep); // Pin the future so it can be used in select!
-
-    tracing::debug!(timeout_minutes = args.session_timeout, "Session timeout set.");
 
     loop {
         tokio::select! {
-            event = live_tail_output.response_stream.recv() => {
-                match event? {
-                    Some(StartLiveTailResponseStream::SessionStart(start_info)) => {
-                        tracing::debug!(
-                            "Live Tail session started. Request ID: {}, Session ID: {}",
-                            start_info.request_id().unwrap_or("N/A"),
-                            start_info.session_id().unwrap_or("N/A")
-                        );
-                    }
-                    Some(StartLiveTailResponseStream::SessionUpdate(update)) => {
-                        let log_events = update.session_results();
-                        tracing::trace!("Received session update with {} log events.", log_events.len());
-                        for log_event in log_events {
-                            if let Some(msg) = log_event.message() {
-                                match process_log_event_message(msg) {
-                                    Ok(Some(telemetry)) => {
-                                        tracing::debug!(source = %telemetry.original_source, "Successfully processed log event into TelemetryData.");
-                                        if console_enabled || endpoint_opt.is_some() {
-                                            telemetry_buffer.push(telemetry);
-                                        }
-                                    }
-                                    Ok(None) => {}
-                                    Err(e) => {
-                                        tracing::warn!(message = ?msg, error = %e, "Failed to process potential OTLP/stdout log event");
-                                    }
-                                }
-                            }
+            // Receive from either the poller or live tail adapter task
+            received = rx.recv() => {
+                match received {
+                    Some(Ok(telemetry)) => {
+                        // Successfully received telemetry data
+                        if console_enabled || endpoint_opt.is_some() {
+                            telemetry_buffer.push(telemetry);
                         }
                     }
-                    Some(_) => {
-                        tracing::warn!("Received unknown or unhandled event from Live Tail stream.");
+                    Some(Err(e)) => {
+                        // An error occurred in the source task (polling or live tail)
+                        tracing::error!(error = %e, "Error received from event source task");
+                        // Depending on the error, we might want to break or continue
+                        // For now, let's break if the source task reports a fatal error
+                        // (like channel closure implicitly does via None)
                     }
                     None => {
-                        tracing::info!("Live Tail stream ended (no more events).");
-                        break;
+                        // Channel closed by the sender task
+                        tracing::info!("Event source channel closed. Exiting.");
+                        break; 
                     }
                 }
             }
+            // Ticker Branch (unchanged)
             _ = ticker.tick() => {
                 if !telemetry_buffer.is_empty() {
                     tracing::debug!("Timer tick: Processing buffer with {} items.", telemetry_buffer.len());
                     let batch_to_send = std::mem::take(&mut telemetry_buffer);
 
                     if console_enabled {
-                        // Call display function from console_display module
                         display_console(&batch_to_send, args.timeline_width, args.compact_display, &event_attr_globs)?;
                     }
 
                     if let Some(endpoint) = endpoint_opt {
-                        // Call send_batch from forwarder module
                         send_batch(
                             &http_client,
                             endpoint,
@@ -270,13 +261,10 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            _ = &mut timeout_sleep => {
-                tracing::info!(timeout = args.session_timeout, "Session timeout reached. Exiting.");
-                break; // Exit the loop
-            }
+            // Removed Live Tail stream recv() branch
+            // Removed Timeout branch
         }
     }
-    tracing::debug!("Live Tail stream finished.");
 
     // 11. Final Flush
     if !telemetry_buffer.is_empty() {
