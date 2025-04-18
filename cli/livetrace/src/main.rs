@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
         ));
     }
     if !args.forward_only && args.otlp_endpoint.is_none() {
-        tracing::info!("Running in console-only mode. No OTLP endpoint provided.");
+        tracing::debug!("Running in console-only mode. No OTLP endpoint provided.");
     }
 
     // Parse event attribute globs if provided
@@ -142,7 +142,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    tracing::info!("Starting livetrace with args: {:?}", args);
+    tracing::debug!("Starting livetrace with args: {:?}", args);
 
     // 1. Load AWS Config
     let region_provider =
@@ -211,7 +211,7 @@ async fn main() -> Result<()> {
 
     // 5. Discover Log Groups based on pattern or stack name
     let resolved_log_group_names: Vec<String> = if let Some(stack_name) = args.stack_name.as_deref() {
-        tracing::info!("Discovering log groups from stack: '{}'", stack_name);
+        tracing::debug!("Discovering log groups from stack: '{}'", stack_name);
         let mut discovered_groups = Vec::new();
         let mut next_token: Option<String> = None;
 
@@ -252,7 +252,7 @@ async fn main() -> Result<()> {
         discovered_groups
 
     } else if let Some(pattern) = args.log_group_pattern.as_deref() {
-        tracing::info!("Discovering log groups matching pattern: '{}'", pattern);
+        tracing::debug!("Discovering log groups matching pattern: '{}'", pattern);
         let describe_output = cwl_client
             .describe_log_groups()
             .log_group_name_pattern(pattern) // Use the pattern string
@@ -273,7 +273,7 @@ async fn main() -> Result<()> {
     };
 
     // Add validation step
-    tracing::info!("Validating discovered log group names...");
+    tracing::debug!("Validating discovered log group names...");
     let validated_log_group_names = validate_log_groups(&cwl_client, resolved_log_group_names).await?;
     tracing::debug!("Validation complete. Valid names: {:?}", validated_log_group_names);
 
@@ -298,18 +298,18 @@ async fn main() -> Result<()> {
             method, value, group_count, validated_log_group_names));
     } else {
         // Use validated names in log message
-        tracing::info!("Proceeding with {} validated log group name(s): {:?}", group_count, validated_log_group_names);
+        tracing::debug!("Proceeding with {} validated log group name(s): {:?}", group_count, validated_log_group_names);
     }
 
     // Construct ARNs from *validated* names
     let resolved_log_group_arns: Vec<String> = validated_log_group_names // Use validated names
-        .into_iter()
-        .map(|name| format!("arn:{}:logs:{}:{}:log-group:{}", partition, region_str, account_id, name))
+        .iter() // Use iter() to borrow instead of into_iter() to move
+        .map(|name| format!("arn:{}:logs:{}:{}:log-group:{}", partition, region_str, account_id, name)) // Dereference name inside format! is handled automatically
         .collect();
-    tracing::info!("Constructed ARNs: {:?}", resolved_log_group_arns);
+    tracing::debug!("Constructed ARNs: {:?}", resolved_log_group_arns);
 
     // 6. Start Live Tail stream for resolved groups (using ARNs)
-    tracing::info!("Attempting to start Live Tail for resolved log groups...");
+    tracing::debug!("Attempting to start Live Tail for resolved log groups...");
     let mut live_tail_output = cwl_client
         .start_live_tail()
         .set_log_group_identifiers(Some(resolved_log_group_arns)) // Use resolved ARNs
@@ -318,7 +318,26 @@ async fn main() -> Result<()> {
         .await
         .context("Failed to start Live Tail")?;
 
-    tracing::info!("Waiting for Live Tail stream events...");
+    // --- Preamble Output (List Style) ---
+    println!("\n"); // Blank line before header
+    println!("{}", " Livetrace Configuration".bold());
+    println!("  {}", "-------------------------".dimmed()); // Separator
+    println!("  {:<18}: {}", "Account ID".dimmed(), account_id);
+    println!("  {:<18}: {}", "Region".dimmed(), region_str);
+    println!("  {:<18}: ({})", "Tailing Log Groups".dimmed(), validated_log_group_names.len());
+    if validated_log_group_names.is_empty() {
+         println!("    {}", "(None)".red());
+    } else {
+        for name in &validated_log_group_names {
+            // Indent log group names further
+            println!("    - {}", name.bright_black());
+        }
+    }
+    println!("  {}", "-------------------------".dimmed()); // Separator
+    println!("\n"); // Blank line after header
+    // --- End Preamble ---
+
+    tracing::debug!("Waiting for Live Tail stream events...");
 
     let mut telemetry_buffer: Vec<TelemetryData> = Vec::new();
     let mut ticker = interval(Duration::from_secs(1));
@@ -329,7 +348,7 @@ async fn main() -> Result<()> {
             event = live_tail_output.response_stream.recv() => {
                 match event? {
                     Some(StartLiveTailResponseStream::SessionStart(start_info)) => {
-                        tracing::info!(
+                        tracing::debug!(
                             "Live Tail session started. Request ID: {}, Session ID: {}",
                             start_info.request_id().unwrap_or("N/A"),
                             start_info.session_id().unwrap_or("N/A")
@@ -388,11 +407,11 @@ async fn main() -> Result<()> {
         }
     }
 
-    tracing::info!("Live Tail stream finished.");
+    tracing::debug!("Live Tail stream finished.");
 
     // 7. Final Flush: Send any remaining data in the buffer
     if !telemetry_buffer.is_empty() {
-        tracing::info!(
+        tracing::debug!(
             "Flushing remaining {} items from buffer before exiting.",
             telemetry_buffer.len()
         );
@@ -435,64 +454,33 @@ async fn send_batch(
         return Ok(());
     }
 
-    if batch.len() == 1 {
-        // Only one item, just compress and send
-        let telemetry = batch.into_iter().next().unwrap(); // batch is not empty checked above
-        tracing::debug!("Sending single item (compressing first)...");
-        match processing::compress_payload(&telemetry.payload, compaction_config.compression_level)
-        {
-            Ok(compressed_payload) => {
-                tracing::info!(
-                    "Sending individual payload ({} bytes) from source '{}' to {}",
-                    compressed_payload.len(),
-                    telemetry.original_source,
-                    endpoint
-                );
-                if let Err(e) = send_telemetry_payload(
-                    http_client,
-                    endpoint,
-                    compressed_payload, // Send compressed payload
-                    headers.clone(),    // Clone headers for each request
-                )
-                .await
-                {
-                    tracing::error!(source = %telemetry.original_source, "Failed to send individual telemetry payload: {}", e);
-                    // Log and continue
-                }
-            }
-            Err(e) => {
-                tracing::error!(source = %telemetry.original_source, "Failed to compress single telemetry payload: {}", e);
-                // Skip sending this item
+    // Always use compact_telemetry_payloads, removing the special case for len == 1
+    tracing::debug!("Compacting batch of {} item(s)...", batch.len()); // Log batch size
+    match compact_telemetry_payloads(batch, compaction_config) {
+        Ok(compacted_data) => {
+            tracing::debug!(
+                "Sending compacted batch ({} bytes) to {}",
+                compacted_data.payload.len(),
+                endpoint
+            );
+            if let Err(e) = send_telemetry_payload(
+                http_client,
+                endpoint,
+                compacted_data.payload, // Already compressed by compact_telemetry_payloads
+                headers,
+            )
+            .await
+            {
+                tracing::error!("Failed to send compacted batch: {}", e);
+                // Log and continue (don't make fatal for now)
             }
         }
-    } else {
-        // Multiple items, compact (merge + compress) and send
-        tracing::debug!("Compacting batch of {} items...", batch.len());
-        match compact_telemetry_payloads(batch, compaction_config) {
-            Ok(compacted_data) => {
-                tracing::info!(
-                    "Sending compacted batch ({} bytes) to {}",
-                    compacted_data.payload.len(),
-                    endpoint
-                );
-                if let Err(e) = send_telemetry_payload(
-                    http_client,
-                    endpoint,
-                    compacted_data.payload, // Already compressed by compact_telemetry_payloads
-                    headers,
-                )
-                .await
-                {
-                    tracing::error!("Failed to send compacted batch: {}", e);
-                    // Log and continue (don't make fatal for now)
-                }
-            }
-            Err(e) => {
-                tracing::error!("Failed to compact telemetry batch: {}", e);
-                // Don't send if compaction failed
-            }
+        Err(e) => {
+            tracing::error!("Failed to compact telemetry batch: {}", e);
+            // Don't send if compaction failed
         }
     }
+
     Ok(())
 }
 
@@ -668,7 +656,6 @@ fn display_console(
                 trace_duration_ns,
                 timeline_width,
                 compact_display,
-                event_attr_globs,
             )?;
         }
         table.printstd();
@@ -775,7 +762,6 @@ fn add_span_to_table(
     trace_duration_ns: u64,
     timeline_width: usize,
     compact_display: bool,
-    event_attr_globs: &Option<GlobSet>,
 ) -> Result<()> {
     let indent = "  ".repeat(depth); // Two spaces per depth level
 
@@ -838,7 +824,6 @@ fn add_span_to_table(
             trace_duration_ns,
             timeline_width,
             compact_display,
-            event_attr_globs,
         )?;
     }
 
@@ -944,7 +929,7 @@ async fn validate_log_groups(
 
             match describe_result {
                 Ok(output) => {
-                    if output.log_groups.map_or(false, |lgs| lgs.iter().any(|lg| lg.log_group_name.as_deref() == Some(&name))) {
+                    if output.log_groups.is_some_and(|lgs| lgs.iter().any(|lg| lg.log_group_name.as_deref() == Some(&name))) {
                         tracing::debug!(log_group = %name, "Validated existing log group");
                         Ok(Some(name)) // Original name found and matches
                     } else {
@@ -992,13 +977,13 @@ async fn validate_log_groups(
 async fn check_lambda_edge_variant(client: &CwlClient, original_name: String) -> Result<Option<String>> {
     const LAMBDA_PREFIX: &str = "/aws/lambda/";
     if original_name.starts_with(LAMBDA_PREFIX) {
-        let base_name = &original_name[LAMBDA_PREFIX.len()..];
+        let base_name = original_name.strip_prefix(LAMBDA_PREFIX).unwrap(); // unwrap is safe due to the starts_with check
         let edge_name = format!("/aws/lambda/us-east-1.{}", base_name);
         tracing::debug!(original_log_group = %original_name, edge_variant = %edge_name, "Original log group not found/matched, checking Lambda@Edge variant");
 
         match client.describe_log_groups().log_group_name_prefix(&edge_name).limit(1).send().await {
             Ok(output) => {
-                 if output.log_groups.map_or(false, |lgs| lgs.iter().any(|lg| lg.log_group_name.as_deref() == Some(&edge_name))) {
+                 if output.log_groups.is_some_and(|lgs| lgs.iter().any(|lg| lg.log_group_name.as_deref() == Some(&edge_name))) {
                     tracing::info!(log_group = %edge_name, "Found and validated Lambda@Edge log group variant");
                     Ok(Some(edge_name)) // Edge variant found and matches
                  } else {

@@ -159,7 +159,7 @@ pub fn compact_telemetry_payloads(
     }
 
     let original_count = batch.len();
-    tracing::info!("Compacting {} telemetry payloads...", original_count);
+    tracing::debug!("Compacting {} telemetry payloads...", original_count);
 
     let mut decoded_requests = Vec::with_capacity(batch.len());
     for telemetry in &batch {
@@ -192,7 +192,7 @@ pub fn compact_telemetry_payloads(
 
     let compressed_payload = compress_payload(&uncompressed_payload, config.compression_level)
         .context("Failed to compress compacted payload")?;
-    tracing::info!(
+    tracing::debug!(
         compressed_size = compressed_payload.len(),
         "Compressed compacted payload"
     );
