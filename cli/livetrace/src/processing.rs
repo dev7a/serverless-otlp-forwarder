@@ -36,7 +36,10 @@ pub fn process_log_event_message(message: &str) -> Result<Option<TelemetryData>>
     let record: ExporterOutput = match serde_json::from_str::<ExporterOutput>(message) {
         Ok(output) => {
             if output.version.is_empty() || output.payload.is_empty() {
-                tracing::debug!(message, "Log message parsed but missing expected fields, skipping.");
+                tracing::debug!(
+                    message,
+                    "Log message parsed but missing expected fields, skipping."
+                );
                 return Ok(None);
             }
             output
@@ -91,7 +94,10 @@ fn convert_to_protobuf(
         decoder
             .read_to_end(&mut decompressed_data)
             .context("Failed to decompress Gzip payload")?;
-        tracing::trace!(output_size = decompressed_data.len(), "Decompressed payload");
+        tracing::trace!(
+            output_size = decompressed_data.len(),
+            "Decompressed payload"
+        );
         decompressed_data
     } else {
         payload
@@ -102,7 +108,10 @@ fn convert_to_protobuf(
             tracing::trace!("Payload is already protobuf");
             match ExportTraceServiceRequest::decode(decompressed.as_slice()) {
                 Ok(_) => Ok(decompressed),
-                Err(e) => Err(anyhow!("Payload has content-type protobuf but failed to decode: {}", e)),
+                Err(e) => Err(anyhow!(
+                    "Payload has content-type protobuf but failed to decode: {}",
+                    e
+                )),
             }
         }
         "application/json" => {
@@ -110,14 +119,24 @@ fn convert_to_protobuf(
             let request: ExportTraceServiceRequest = serde_json::from_slice(&decompressed)
                 .context("Failed to parse JSON as ExportTraceServiceRequest")?;
             let protobuf_bytes = request.encode_to_vec();
-            tracing::trace!(output_size = protobuf_bytes.len(), "Converted JSON to protobuf");
+            tracing::trace!(
+                output_size = protobuf_bytes.len(),
+                "Converted JSON to protobuf"
+            );
             Ok(protobuf_bytes)
         }
         _ => {
-            tracing::warn!(content_type, "Unsupported content type encountered, attempting to treat as protobuf.");
+            tracing::warn!(
+                content_type,
+                "Unsupported content type encountered, attempting to treat as protobuf."
+            );
             match ExportTraceServiceRequest::decode(decompressed.as_slice()) {
                 Ok(_) => Ok(decompressed),
-                Err(e) => Err(anyhow!("Payload has unknown content-type '{}' and failed to decode as protobuf: {}", content_type, e)),
+                Err(e) => Err(anyhow!(
+                    "Payload has unknown content-type '{}' and failed to decode as protobuf: {}",
+                    content_type,
+                    e
+                )),
             }
         }
     }
@@ -203,14 +222,6 @@ pub fn compress_payload(payload: &[u8], level: u32) -> Result<Vec<u8>> {
     encoder.finish().context("Failed to finish compression")
 }
 
-#[tracing::instrument(skip_all, fields(
-    http.method = "POST",
-    http.url = %endpoint,
-    payload_size = payload.len(),
-    otel.status_code,
-    http.status_code,
-    error,
-))]
 pub async fn send_telemetry_payload(
     client: &ReqwestClient,
     endpoint: &str,
@@ -250,10 +261,7 @@ pub async fn send_telemetry_payload(
             _ => format!("Status: {}", status),
         };
         tracing::error!(status = %status, body = %error_body, "OTLP endpoint returned error");
-        return Err(anyhow!(
-            "OTLP endpoint returned error: {}",
-            error_body
-        ));
+        return Err(anyhow!("OTLP endpoint returned error: {}", error_body));
     }
 
     tracing::debug!(status = %status, "Successfully sent OTLP data");

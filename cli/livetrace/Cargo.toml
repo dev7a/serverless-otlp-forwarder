@@ -31,7 +31,7 @@ prost = { workspace = true }
 opentelemetry-proto = { workspace = true } # Inherit version and features
 
 # Local Workspace Crates (Path dependencies are fine)
-otlp-stdout-span-exporter = { path = "../../packages/rust/otlp-stdout-span-exporter" }
+otlp-stdout-span-exporter = { workspace = true }
 
 # CLI Arguments (Inherit from workspace)
 clap = { workspace = true, features = ["derive", "env"] } # Add required features
@@ -44,10 +44,16 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] } # Ad
 anyhow = { workspace = true }
 
 # Console Table
-prettytable-rs = "0.10"
+prettytable-rs = { workspace = true }
 
 # Console Coloring
-colored = "2.0"
+colored = { workspace = true }
+
+# Timestamp Formatting
+chrono = { workspace = true, features = ["clock"] }
+
+# Glob Matching for Attributes
+globset = "0.4"
 
 # New dependency
-hex = "0.4"
+hex = { workspace = true }
