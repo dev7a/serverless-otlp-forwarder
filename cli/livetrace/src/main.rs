@@ -32,9 +32,9 @@ use processing::{
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct CliArgs {
-    /// The CloudWatch Log Group name(s) to tail. Can be specified multiple times.
-    #[arg(short = 'g', long, required = true)]
-    log_group_name: Vec<String>,
+    /// Log group name pattern for discovery (case-sensitive substring search).
+    #[arg(long = "pattern", required = true)]
+    log_group_pattern: String,
 
     /// The OTLP HTTP endpoint URL to send traces to (e.g., http://localhost:4318/v1/traces).
     #[arg(short = 'e', long)]
@@ -185,14 +185,48 @@ async fn main() -> Result<()> {
         tracing::debug!("Parsed OTLP headers: {:?}", otlp_header_map);
     }
 
-    // 5. Start Live Tail stream
-    tracing::info!(
-        "Attempting to start Live Tail for log groups: {:?}",
-        args.log_group_name
-    );
+    // 5. Discover Log Groups based on pattern
+    tracing::info!("Discovering log groups matching pattern: '{}'", args.log_group_pattern);
+    let describe_output = cwl_client
+        .describe_log_groups()
+        .log_group_name_pattern(&args.log_group_pattern)
+        // .limit(50) // Default limit is 50, we check > 10 later
+        .send()
+        .await
+        .context("Failed to describe log groups")?;
+
+    let resolved_log_groups: Vec<String> = describe_output
+        .log_groups
+        .unwrap_or_default() // Handle case where no groups are returned
+        .into_iter()
+        .filter_map(|lg| lg.arn) // Extract ARN instead of name
+        .map(|arn| { // Remove trailing :* if present
+            if arn.ends_with(":") { // Check for trailing colon common in some ARN formats too
+                 arn[..arn.len() - 1].to_string()
+            } else if arn.ends_with(":*") {
+                 arn[..arn.len() - 2].to_string()
+            } else {
+                arn
+            }
+        })
+        .collect();
+
+    // Validate count
+    let group_count = resolved_log_groups.len();
+    if group_count == 0 {
+        return Err(anyhow::anyhow!("Pattern '{}' matched 0 log groups.", args.log_group_pattern));
+    } else if group_count > 10 {
+        return Err(anyhow::anyhow!("Pattern '{}' matched {} log groups (max 10 allowed for live tail). Found: {:?}", 
+            args.log_group_pattern, group_count, resolved_log_groups));
+    } else {
+        tracing::info!("Found {} log group(s) matching pattern: {:?}", group_count, resolved_log_groups);
+    }
+
+    // 6. Start Live Tail stream for resolved groups
+    tracing::info!("Attempting to start Live Tail for resolved log groups...");
     let mut live_tail_output = cwl_client
         .start_live_tail()
-        .set_log_group_identifiers(Some(args.log_group_name.clone()))
+        .set_log_group_identifiers(Some(resolved_log_groups)) // Use resolved groups
         .log_event_filter_pattern("{ $.__otel_otlp_stdout = * }")
         .send()
         .await
