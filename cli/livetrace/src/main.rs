@@ -90,6 +90,10 @@ struct CliArgs {
     /// FilterLogEvents polling interval in seconds.
     #[arg(short, long)]
     poll_interval: Option<u64>,
+
+    /// Event severity attribute to display in the console.
+    #[arg(short, long)]
+    event_severity_attribute: Option<String>,
 }
 
 #[tokio::main]
@@ -266,7 +270,13 @@ async fn main() -> Result<()> {
                     let batch_to_send = std::mem::take(&mut telemetry_buffer);
 
                     if console_enabled {
-                        display_console(&batch_to_send, args.timeline_width, args.compact_display, &event_attr_globs)?;
+                        display_console(
+                            &batch_to_send,
+                            args.timeline_width,
+                            args.compact_display,
+                            &event_attr_globs,
+                            &args.event_severity_attribute,
+                        )?;
                     }
 
                     if let Some(endpoint) = endpoint_opt {
@@ -299,6 +309,7 @@ async fn main() -> Result<()> {
                 args.timeline_width,
                 args.compact_display,
                 &event_attr_globs,
+                &args.event_severity_attribute,
             )?;
         }
 

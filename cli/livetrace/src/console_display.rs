@@ -41,6 +41,8 @@ struct EventInfo {
     trace_id: String,
     attributes: Vec<KeyValue>,
     service_name: String,
+    is_error: bool,
+    level: String,
 }
 
 // --- Public Display Function ---
@@ -49,6 +51,7 @@ pub fn display_console(
     timeline_width: usize,
     compact_display: bool,
     event_attr_globs: &Option<GlobSet>,
+    event_severity_attribute_name: &str,
 ) -> Result<()> {
     let mut spans_with_service: Vec<(Span, String)> = Vec::new();
 
@@ -122,9 +125,39 @@ pub fn display_console(
         }
 
         let mut trace_events: Vec<EventInfo> = Vec::new();
+        let span_error_status: HashMap<String, bool> = spans_in_trace_with_service
+            .iter()
+            .map(|(span, _)| {
+                let span_id_hex = hex::encode(&span.span_id);
+                let is_error = span.status.as_ref().is_some_and(|s| {
+                    status::StatusCode::try_from(s.code).unwrap_or(status::StatusCode::Unset)
+                        == status::StatusCode::Error
+                });
+                (span_id_hex, is_error)
+            })
+            .collect();
+
         for (span, service_name) in &spans_in_trace_with_service {
             let span_id_hex = hex::encode(&span.span_id);
+            let is_error = *span_error_status.get(&span_id_hex).unwrap_or(&false);
             for event in &span.events {
+                let mut level = if is_error {
+                    "ERROR".to_string()
+                } else {
+                    "INFO".to_string()
+                };
+
+                for attr in &event.attributes {
+                    if attr.key == event_severity_attribute_name {
+                        if let Some(val) = &attr.value {
+                            if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &val.value {
+                                level = s.clone().to_uppercase();
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 trace_events.push(EventInfo {
                     timestamp_ns: event.time_unix_nano,
                     name: event.name.clone(),
@@ -132,6 +165,8 @@ pub fn display_console(
                     trace_id: trace_id.clone(),
                     attributes: event.attributes.clone(),
                     service_name: service_name.clone(),
+                    is_error,
+                    level,
                 });
             }
         }
@@ -228,11 +263,26 @@ pub fn display_console(
                     }
                 }
 
+                // Apply red color to span ID if it's an error span
+                let colored_span_id = if event.is_error {
+                    event.span_id.red().to_string()
+                } else {
+                    event.span_id.cyan().to_string()
+                };
+
+                // Color the level based on its value
+                let colored_level = match event.level.to_uppercase().as_str() {
+                    "ERROR" => event.level.red().bold(),
+                    "WARN" | "WARNING" => event.level.yellow().bold(),
+                    _ => event.level.normal().bold(), // Keep others bold but default color
+                };
+
                 let log_line_start = format!(
-                    "{} {} [{}] {}",
+                    "{} {} [{}] [{}] {}",
                     formatted_time.bright_black(),
-                    event.span_id.cyan(),
+                    colored_span_id,
                     event.service_name.yellow(),
+                    colored_level,
                     event.name,
                 );
 
@@ -366,11 +416,18 @@ fn add_span_to_table(
         ]);
     } else {
         let span_id_content = node.id.chars().take(SPAN_ID_WIDTH).collect::<String>();
+        // Color span ID if error
+        let colored_span_id = if node.status_code == status::StatusCode::Error {
+            span_id_content.red().to_string()
+        } else {
+            span_id_content // No color change for non-error spans
+        };
+
         table.add_row(row![
             service_name_content,
             span_name_cell_content,
             colored_duration,
-            span_id_content,
+            colored_span_id, // Use colored span id
             bar_cell_content
         ]);
     }

@@ -66,6 +66,10 @@ pub struct CliArgs {
     /// Session duration in minutes after which livetrace will automatically exit (LiveTail mode only).
     #[arg(long, default_value_t = 30, group = "mode")] // Re-add, add to group
     pub session_timeout: u64,
+
+    /// Attribute name to use for determining event severity level.
+    #[arg(long, default_value = "event.severity")]
+    pub event_severity_attribute: String,
 }
 
 /// Parses CLI arguments.
