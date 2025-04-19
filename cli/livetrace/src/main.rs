@@ -1,6 +1,7 @@
 // Crate Modules
 mod aws_setup;
 mod cli;
+mod config;
 mod console_display;
 mod forwarder;
 mod live_tail_adapter;
@@ -13,7 +14,7 @@ use std::time::Duration;
 
 // External Crates
 use anyhow::{Context, Result};
-use clap::{ArgGroup, Parser};
+use clap::Parser;
 use colored::*;
 use reqwest::Client as ReqwestClient;
 use tokio::sync::mpsc;
@@ -23,7 +24,8 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 // Internal Crate Imports
 use crate::aws_setup::setup_aws_resources;
-use crate::cli::{parse_args, parse_event_attr_globs};
+use crate::cli::{parse_event_attr_globs, CliArgs};
+use crate::config::{load_and_resolve_config, save_profile_config, ProfileConfig, EffectiveConfig};
 use crate::console_display::display_console;
 use crate::forwarder::{parse_otlp_headers_from_vec, send_batch};
 use crate::live_tail_adapter::start_live_tail_task;
@@ -31,78 +33,55 @@ use crate::poller::start_polling_task;
 use crate::processing::{SpanCompactionConfig, TelemetryData};
 
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
-#[derive(Parser, Debug)]
-#[command(author = "Dev7A", version, about, long_about = None)]
-#[clap(group(
-    ArgGroup::new("discovery")
-        .required(true)
-        .args(["log_group_pattern", "stack_name"]),
-))]
-struct CliArgs {
-    /// Log group name pattern for discovery (case-sensitive substring search).
-    #[arg(long = "pattern", group = "discovery")]
-    log_group_pattern: Option<String>,
-
-    /// CloudFormation stack name for log group discovery.
-    #[arg(long = "stack-name", group = "discovery")]
-    stack_name: Option<String>,
-
-    /// The OTLP HTTP endpoint URL to send traces to (e.g., http://localhost:4318/v1/traces).
-    #[arg(short = 'e', long)]
-    otlp_endpoint: Option<String>,
-
-    /// Add custom HTTP headers to the outgoing OTLP request (e.g., "Authorization=Bearer token"). Can be specified multiple times.
-    #[arg(short = 'H', long = "otlp-header")]
-    otlp_headers: Vec<String>,
-
-    /// AWS Region to use. Defaults to environment/profile configuration.
-    #[arg(short, long)]
-    region: Option<String>,
-
-    /// AWS Profile to use. Defaults to environment/profile configuration.
-    #[arg(short, long)]
-    profile: Option<String>,
-
-    /// Increase logging verbosity (-v, -vv, -vvv).
-    #[arg(short, long, action = clap::ArgAction::Count)]
-    verbose: u8,
-
-    /// Only forward telemetry, do not display it in the console.
-    #[arg(long)]
-    forward_only: bool,
-
-    /// Width of the timeline bar in characters.
-    #[arg(long, default_value_t = 80)]
-    timeline_width: usize,
-
-    /// Use a compact display format (omits Span ID).
-    #[arg(long)]
-    compact_display: bool,
-
-    /// Comma-separated list of glob patterns for event attributes to display (e.g., "http.*,db.*,aws.lambda.*").
-    #[arg(long)]
-    event_attrs: Option<String>,
-
-    /// Session timeout in minutes.
-    #[arg(short, long, default_value_t = 10)]
-    session_timeout: u64,
-
-    /// FilterLogEvents polling interval in seconds.
-    #[arg(short, long)]
-    poll_interval: Option<u64>,
-
-    /// Event severity attribute to display in the console.
-    #[arg(short, long)]
-    event_severity_attribute: Option<String>,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    // 1. Parse Args
-    let args = parse_args();
+    // 1. Parse Args fully now (clap handles defaults)
+    let args = CliArgs::parse();
+
+    // --- Save Profile Check ---
+    if let Some(profile_name) = args.save_profile.as_ref() {
+        // Convert CliArgs to the savable ProfileConfig format
+        let profile_to_save = ProfileConfig::from_cli_args(&args);
+        // Call the actual save function
+        save_profile_config(profile_name, &profile_to_save)?;
+        println!("Configuration saved to profile '{}'. Exiting.", profile_name);
+        return Ok(());
+    }
+    // --- End Save Profile Check ---
+
+    // --- Load Configuration Profile if Specified ---
+    let config = if args.config_profile.is_some() {
+        load_and_resolve_config(args.config_profile.clone(), &args)?
+    } else {
+        // If no profile specified, create an EffectiveConfig directly from CLI args
+        EffectiveConfig {
+            log_group_pattern: args.log_group_pattern.clone(),
+            stack_name: args.stack_name.clone(),
+            otlp_endpoint: args.otlp_endpoint.clone(),
+            otlp_headers: args.otlp_headers.clone(),
+            aws_region: args.aws_region.clone(),
+            aws_profile: args.aws_profile.clone(),
+            forward_only: args.forward_only,
+            timeline_width: args.timeline_width,
+            compact_display: args.compact_display,
+            event_attrs: args.event_attrs.clone(),
+            event_severity_attribute: args.event_severity_attribute.clone(),
+            poll_interval: args.poll_interval,
+            session_timeout: args.session_timeout,
+            verbose: args.verbose,
+        }
+    };
+    // --- End Load Configuration Profile ---
+
+    // Validate discovery parameters - either log_group_pattern or stack_name must be set
+    if config.log_group_pattern.is_none() && config.stack_name.is_none() {
+        return Err(anyhow::anyhow!(
+            "Either --pattern or --stack-name must be provided on the command line or in the configuration profile"
+        ));
+    }
 
     // 2. Initialize Logging
-    let log_level = match args.verbose {
+    let log_level = match config.verbose {
         0 => LevelFilter::INFO,
         1 => LevelFilter::DEBUG,
         _ => LevelFilter::TRACE,
@@ -115,21 +94,21 @@ async fn main() -> Result<()> {
                 .parse_lossy(format!("{}={}", env!("CARGO_PKG_NAME"), log_level)),
         )
         .init();
-    tracing::debug!("Starting livetrace with args: {:?}", args);
+    tracing::debug!("Starting livetrace with configuration: {:?}", config);
 
-    // 3. Resolve OTLP Endpoint (CLI > TRACES_ENV > GENERAL_ENV)
-    let resolved_endpoint: Option<String> = args.otlp_endpoint.clone().or_else(|| {
+    // 3. Resolve OTLP Endpoint (CONFIG > TRACES_ENV > GENERAL_ENV)
+    let resolved_endpoint: Option<String> = config.otlp_endpoint.clone().or_else(|| {
         env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
             .ok()
             .or_else(|| env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok())
     });
     let endpoint_opt = resolved_endpoint.as_deref();
-    tracing::debug!(cli_arg = ?args.otlp_endpoint, env_traces = ?env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT").ok(), env_general = ?env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(), resolved = ?resolved_endpoint, "Resolved OTLP endpoint");
+    tracing::debug!(config_endpoint = ?config.otlp_endpoint, env_traces = ?env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT").ok(), env_general = ?env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(), resolved = ?resolved_endpoint, "Resolved OTLP endpoint");
 
-    // 4. Resolve OTLP Headers (CLI > TRACES_ENV > GENERAL_ENV)
-    let resolved_headers_vec: Vec<String> = if !args.otlp_headers.is_empty() {
-        tracing::debug!(source="cli", headers=?args.otlp_headers, "Using headers from --otlp-header args");
-        args.otlp_headers.clone()
+    // 4. Resolve OTLP Headers (CONFIG > TRACES_ENV > GENERAL_ENV)
+    let resolved_headers_vec: Vec<String> = if !config.otlp_headers.is_empty() {
+        tracing::debug!(source="config", headers=?config.otlp_headers, "Using headers from configuration");
+        config.otlp_headers.clone()
     } else if let Ok(hdr_str) = env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS") {
         let headers: Vec<String> = hdr_str
             .split(',')
@@ -151,16 +130,36 @@ async fn main() -> Result<()> {
     };
 
     // 5. Post-Resolution Validation
-    if args.forward_only && endpoint_opt.is_none() {
+    if config.forward_only && endpoint_opt.is_none() {
         return Err(anyhow::anyhow!("
             --forward-only requires --otlp-endpoint argument or OTEL_EXPORTER_OTLP_TRACES_ENDPOINT/OTEL_EXPORTER_OTLP_ENDPOINT env var to be set"));
     }
-    if !args.forward_only && endpoint_opt.is_none() {
+    if !config.forward_only && endpoint_opt.is_none() {
         tracing::debug!("Running in console-only mode. No OTLP endpoint configured.");
     }
 
     // 6. AWS Setup (Config, Clients, Discovery, Validation, ARN Construction)
-    let aws_result = setup_aws_resources(&args).await?;
+    // Create a temporary CliArgs-like structure for AWS setup since it expects CliArgs
+    let aws_setup_args = CliArgs {
+        log_group_pattern: config.log_group_pattern.clone(),
+        stack_name: config.stack_name.clone(),
+        aws_region: config.aws_region.clone(),
+        aws_profile: config.aws_profile.clone(),
+        // Other fields don't matter for AWS setup, use defaults
+        otlp_endpoint: None,
+        otlp_headers: Vec::new(),
+        verbose: 0,
+        forward_only: false,
+        timeline_width: 80,
+        compact_display: false,
+        event_attrs: None,
+        poll_interval: None,
+        session_timeout: 30,
+        event_severity_attribute: "event.severity".to_string(),
+        config_profile: None,
+        save_profile: None,
+    };
+    let aws_result = setup_aws_resources(&aws_setup_args).await?;
     let cwl_client = aws_result.cwl_client;
     let account_id = aws_result.account_id;
     let region_str = aws_result.region_str;
@@ -175,8 +174,8 @@ async fn main() -> Result<()> {
     let compaction_config = SpanCompactionConfig::default();
 
     // 8. Prepare Console Display
-    let console_enabled = !args.forward_only;
-    let event_attr_globs = parse_event_attr_globs(&args);
+    let console_enabled = !config.forward_only;
+    let event_attr_globs = parse_event_attr_globs(&config.event_attrs); // Now passes the Option<String> directly
 
     // --- Preamble Output (List Style) ---
     let preamble_width: usize = 80; // Explicitly usize
@@ -206,13 +205,16 @@ async fn main() -> Result<()> {
     for name in &validated_log_group_names_for_display {
         println!("{:<20}  - {}", "", name.bright_black());
     }
+    if let Some(profile) = &args.config_profile {
+        println!("  {:<18}: {}", "Config Profile".dimmed(), profile);
+    }
     println!("\n");
     // --- End Preamble ---
 
     // 9. Create MPSC Channel and Spawn Event Source Task
     let (tx, mut rx) = mpsc::channel::<Result<TelemetryData>>(100); // Channel for TelemetryData or errors
 
-    if let Some(interval_secs) = args.poll_interval {
+    if let Some(interval_secs) = config.poll_interval {
         // --- Polling Mode ---
         tracing::info!(
             interval = interval_secs,
@@ -222,14 +224,14 @@ async fn main() -> Result<()> {
     } else {
         // --- Live Tail Mode ---
         tracing::info!(
-            timeout_minutes = args.session_timeout,
+            timeout_minutes = config.session_timeout,
             "Using StartLiveTail streaming mode with timeout."
         );
         start_live_tail_task(
             cwl_client,
             resolved_log_group_arns,
             tx,
-            args.session_timeout,
+            config.session_timeout,
         );
     }
 
@@ -272,10 +274,10 @@ async fn main() -> Result<()> {
                     if console_enabled {
                         display_console(
                             &batch_to_send,
-                            args.timeline_width,
-                            args.compact_display,
+                            config.timeline_width,
+                            config.compact_display,
                             &event_attr_globs,
-                            &args.event_severity_attribute,
+                            config.event_severity_attribute.as_str(),
                         )?;
                     }
 
@@ -306,10 +308,10 @@ async fn main() -> Result<()> {
         if console_enabled {
             display_console(
                 &final_batch,
-                args.timeline_width,
-                args.compact_display,
+                config.timeline_width,
+                config.compact_display,
                 &event_attr_globs,
-                &args.event_severity_attribute,
+                &config.event_severity_attribute,
             )?;
         }
 

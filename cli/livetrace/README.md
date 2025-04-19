@@ -121,13 +121,15 @@ livetrace --stack-name my-stack
 
 ### Other Options
 
-*   `--region <AWS_REGION>`: Specify the AWS Region. Defaults to environment/profile configuration.
-*   `--profile <AWS_PROFILE>`: Specify the AWS profile name.
+*   `--aws-region <AWS_REGION>`: Specify the AWS Region. Defaults to environment/profile configuration.
+*   `--aws-profile <AWS_PROFILE>`: Specify the AWS profile name.
 *   `-v, -vv, -vvv`: Increase logging verbosity (Info -> Debug -> Trace). Internal logs go to stderr.
 *   `--forward-only`: Only forward telemetry via OTLP; do not display traces/events in the console. Requires an endpoint to be configured.
 *   `--timeline-width <CHARS>`: (Default: 80) Set the width of the timeline bar in the console output.
 *   `--compact-display`: Use a more compact waterfall view (omits the Span ID column).
 *   `--event-attrs <GLOB_LIST>`: Comma-separated list of glob patterns (e.g., `"http.*,db.statement,my.custom.*"`) to filter which event attributes are displayed. If omitted, all attributes are shown.
+*   `--config-profile <PROFILE_NAME>`: Load configuration from a named profile in `.livetrace.toml`.
+*   `--save-profile <PROFILE_NAME>`: Save the current command-line arguments as a named profile in `.livetrace.toml` and exit.
 
 ## Console Output
 
@@ -145,6 +147,61 @@ When running in console mode (`--forward-only` not specified), `livetrace` displ
 3.  **Trace Events:** If a trace has events:
     *   A header `─ Events for Trace: <trace_id> ─────`
     *   A list of events showing: Timestamp, Span ID, Service Name, Event Name, and Attributes (filtered by `--event-attrs` if provided).
+
+## Configuration Profiles
+
+`livetrace` supports saving and loading configuration profiles to reduce typing for frequently used commands. Profiles are stored in a `.livetrace.toml` file in the current directory.
+
+### Saving a Profile
+
+To save your current command-line options as a named profile:
+
+```bash
+# Save the current settings as "dev-profile"
+livetrace --pattern "my-service-" --timeline-width 120 --event-attrs "http.*" --save-profile dev-profile
+```
+
+### Using a Profile
+
+To use a saved profile:
+
+```bash
+# Load settings from the "dev-profile"
+livetrace --config-profile dev-profile
+```
+
+You can also override specific settings from the profile by providing additional command-line arguments:
+
+```bash
+# Load from profile but override the event attributes
+livetrace --config-profile dev-profile --event-attrs "db.*,aws.*"
+```
+
+### Configuration File Format
+
+The `.livetrace.toml` file follows this structure:
+
+```toml
+version = 0.0
+
+# Global settings applied to all profiles
+[global]
+aws-region = "us-east-1"
+event-severity-attribute = "event.severity"
+
+# Profile-specific settings
+[profiles.dev-profile]
+pattern = "my-service-"
+timeline-width = 120
+event-attrs = "http.*"
+
+[profiles.prod-profile]
+stack-name = "production-stack"
+forward-only = true
+otlp-endpoint = "http://localhost:4318"
+```
+
+This file is meant to be local to your project or environment and should typically not be committed to version control.
 
 ## Development
 

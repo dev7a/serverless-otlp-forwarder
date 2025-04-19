@@ -3,10 +3,10 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
 #[derive(Parser, Debug, Clone)] // Added Clone
-#[command(author, version, about, long_about = None)]
+#[command(author = "Dev7A", version, about, long_about = None)]
 #[clap(group(
     ArgGroup::new("discovery")
-        .required(true)
+        .required(false) // Changed from true to false to allow loading from config
         .args(["log_group_pattern", "stack_name"]),
 ))]
 #[clap(group( // Add group to make poll/timeout mutually exclusive
@@ -32,12 +32,12 @@ pub struct CliArgs {
     pub otlp_headers: Vec<String>,
 
     /// AWS Region to use. Defaults to environment/profile configuration.
-    #[arg(short, long)]
-    pub region: Option<String>,
+    #[arg(short = 'r', long = "aws-region")]
+    pub aws_region: Option<String>,
 
     /// AWS Profile to use. Defaults to environment/profile configuration.
-    #[arg(short, long)]
-    pub profile: Option<String>,
+    #[arg(short = 'p', long = "aws-profile")]
+    pub aws_profile: Option<String>,
 
     /// Increase logging verbosity (-v, -vv, -vvv).
     #[arg(short, long, action = clap::ArgAction::Count)]
@@ -70,23 +70,21 @@ pub struct CliArgs {
     /// Attribute name to use for determining event severity level.
     #[arg(long, default_value = "event.severity")]
     pub event_severity_attribute: String,
+
+    /// Load configuration from a specific profile in livetrace.toml.
+    #[arg(long)]
+    pub config_profile: Option<String>,
+
+    /// Save the current effective command-line arguments to the specified profile in livetrace.toml and exit.
+    #[arg(long, value_name = "PROFILE_NAME")]
+    pub save_profile: Option<String>,
 }
 
-/// Parses CLI arguments.
-/// Basic validation (like forward_only needing an endpoint) moved to main.
-pub fn parse_args() -> CliArgs {
-    // Renamed function
 
-    // Validation logic removed - now handled in main.rs
-    // if args.forward_only && args.otlp_endpoint.is_none() { ... }
-    // if !args.forward_only && args.otlp_endpoint.is_none() { ... }
-
-    CliArgs::parse() // Return parsed args directly
-}
-
-/// Parses the event attribute glob patterns from the arguments.
-pub fn parse_event_attr_globs(args: &CliArgs) -> Option<GlobSet> {
-    match args.event_attrs.as_deref() {
+/// Parses event attribute glob patterns from a string pattern.
+/// This is a more general function that doesn't depend on CliArgs or EffectiveConfig directly.
+pub fn parse_event_attr_globs(patterns_opt: &Option<String>) -> Option<GlobSet> {
+    match patterns_opt.as_deref() {
         Some(patterns_str) if !patterns_str.is_empty() => {
             let mut builder = GlobSetBuilder::new();
             for pattern in patterns_str.split(',') {

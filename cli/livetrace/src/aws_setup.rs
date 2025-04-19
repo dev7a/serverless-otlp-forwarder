@@ -20,14 +20,14 @@ pub struct AwsSetupResult {
 pub async fn setup_aws_resources(args: &CliArgs) -> Result<AwsSetupResult> {
     // --- 1. Load AWS Config ---
     let region_provider =
-        RegionProviderChain::first_try(args.region.clone().map(aws_config::Region::new))
+        RegionProviderChain::first_try(args.aws_region.clone().map(aws_config::Region::new))
             .or_default_provider()
             .or_else(aws_config::Region::new("us-east-1")); // Default fallback region
 
     let mut config_loader =
         aws_config::defaults(aws_config::BehaviorVersion::latest()).region(region_provider);
 
-    if let Some(profile) = args.profile.clone() {
+    if let Some(profile) = args.aws_profile.clone() {
         config_loader = config_loader.profile_name(profile);
     }
 
