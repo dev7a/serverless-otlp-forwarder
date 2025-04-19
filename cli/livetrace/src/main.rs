@@ -3,23 +3,21 @@ mod aws_setup;
 mod cli;
 mod console_display;
 mod forwarder;
-mod poller;
 mod live_tail_adapter;
+mod poller;
 mod processing;
 
 // Standard Library
-use std::time::Duration;
 use std::env;
+use std::time::Duration;
 
 // External Crates
 use anyhow::{Context, Result};
-use aws_sdk_cloudwatchlogs::types::StartLiveTailResponseStream;
-use clap::{Parser, ArgGroup};
+use clap::{ArgGroup, Parser};
 use colored::*;
 use reqwest::Client as ReqwestClient;
 use tokio::sync::mpsc;
-use tokio::time::{interval, sleep};
-use tokio::pin;
+use tokio::time::interval;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
@@ -30,11 +28,7 @@ use crate::console_display::display_console;
 use crate::forwarder::{parse_otlp_headers_from_vec, send_batch};
 use crate::live_tail_adapter::start_live_tail_task;
 use crate::poller::start_polling_task;
-use crate::processing::{
-    process_log_event_message,
-    SpanCompactionConfig,
-    TelemetryData,
-};
+use crate::processing::{SpanCompactionConfig, TelemetryData};
 
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
 #[derive(Parser, Debug)]
@@ -121,9 +115,9 @@ async fn main() -> Result<()> {
 
     // 3. Resolve OTLP Endpoint (CLI > TRACES_ENV > GENERAL_ENV)
     let resolved_endpoint: Option<String> = args.otlp_endpoint.clone().or_else(|| {
-        env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT").ok().or_else(|| {
-            env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()
-        })
+        env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT")
+            .ok()
+            .or_else(|| env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok())
     });
     let endpoint_opt = resolved_endpoint.as_deref();
     tracing::debug!(cli_arg = ?args.otlp_endpoint, env_traces = ?env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT").ok(), env_general = ?env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok(), resolved = ?resolved_endpoint, "Resolved OTLP endpoint");
@@ -133,11 +127,19 @@ async fn main() -> Result<()> {
         tracing::debug!(source="cli", headers=?args.otlp_headers, "Using headers from --otlp-header args");
         args.otlp_headers.clone()
     } else if let Ok(hdr_str) = env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS") {
-        let headers: Vec<String> = hdr_str.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let headers: Vec<String> = hdr_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
         tracing::debug!(source="env_traces", headers=?headers, "Using headers from OTEL_EXPORTER_OTLP_TRACES_HEADERS");
         headers
     } else if let Ok(hdr_str) = env::var("OTEL_EXPORTER_OTLP_HEADERS") {
-        let headers: Vec<String> = hdr_str.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let headers: Vec<String> = hdr_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
         tracing::debug!(source="env_general", headers=?headers, "Using headers from OTEL_EXPORTER_OTLP_HEADERS");
         headers
     } else {
@@ -172,25 +174,31 @@ async fn main() -> Result<()> {
     let console_enabled = !args.forward_only;
     let event_attr_globs = parse_event_attr_globs(&args);
 
-    // --- Preamble Output (List Style) --- 
+    // --- Preamble Output (List Style) ---
     let preamble_width: usize = 80; // Explicitly usize
     let config_heading = " Livetrace Configuration";
     let config_padding = preamble_width.saturating_sub(config_heading.len() + 3);
 
     println!("\n");
-    println!(" {} {} {}", 
-             "─".dimmed(), 
-             config_heading.bold(), 
-             "─".repeat(config_padding).dimmed()
+    println!(
+        " {} {} {}",
+        "─".dimmed(),
+        config_heading.bold(),
+        "─".repeat(config_padding).dimmed()
     );
     println!("  {:<18}: {}", "Account ID".dimmed(), account_id);
     println!("  {:<18}: {}", "Region".dimmed(), region_str);
     // Need validated names for the count/list - let's re-get them from ARNs for simplicity here
     // In a real scenario, might pass validated_names through AwsSetupResult
-    let validated_log_group_names_for_display: Vec<String> = resolved_log_group_arns.iter()
+    let validated_log_group_names_for_display: Vec<String> = resolved_log_group_arns
+        .iter()
         .map(|arn| arn.split(':').last().unwrap_or("unknown-name").to_string())
         .collect();
-    println!("  {:<18}: ({})", "Log Groups".dimmed(), validated_log_group_names_for_display.len());
+    println!(
+        "  {:<18}: ({})",
+        "Log Groups".dimmed(),
+        validated_log_group_names_for_display.len()
+    );
     for name in &validated_log_group_names_for_display {
         println!("{:<20}  - {}", "", name.bright_black());
     }
@@ -201,13 +209,24 @@ async fn main() -> Result<()> {
     let (tx, mut rx) = mpsc::channel::<Result<TelemetryData>>(100); // Channel for TelemetryData or errors
 
     if let Some(interval_secs) = args.poll_interval {
-        // --- Polling Mode --- 
-        tracing::info!(interval = interval_secs, "Using FilterLogEvents polling mode.");
+        // --- Polling Mode ---
+        tracing::info!(
+            interval = interval_secs,
+            "Using FilterLogEvents polling mode."
+        );
         start_polling_task(cwl_client, resolved_log_group_arns, interval_secs, tx);
     } else {
-        // --- Live Tail Mode --- 
-        tracing::info!(timeout_minutes = args.session_timeout, "Using StartLiveTail streaming mode with timeout.");
-        start_live_tail_task(cwl_client, resolved_log_group_arns, tx, args.session_timeout);
+        // --- Live Tail Mode ---
+        tracing::info!(
+            timeout_minutes = args.session_timeout,
+            "Using StartLiveTail streaming mode with timeout."
+        );
+        start_live_tail_task(
+            cwl_client,
+            resolved_log_group_arns,
+            tx,
+            args.session_timeout,
+        );
     }
 
     // 10. Main Event Processing Loop
@@ -236,7 +255,7 @@ async fn main() -> Result<()> {
                     None => {
                         // Channel closed by the sender task
                         tracing::info!("Event source channel closed. Exiting.");
-                        break; 
+                        break;
                     }
                 }
             }
@@ -275,7 +294,12 @@ async fn main() -> Result<()> {
         let final_batch = std::mem::take(&mut telemetry_buffer);
 
         if console_enabled {
-            display_console(&final_batch, args.timeline_width, args.compact_display, &event_attr_globs)?;
+            display_console(
+                &final_batch,
+                args.timeline_width,
+                args.compact_display,
+                &event_attr_globs,
+            )?;
         }
 
         if let Some(endpoint) = endpoint_opt {

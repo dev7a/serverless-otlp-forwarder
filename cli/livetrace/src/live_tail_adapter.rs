@@ -1,16 +1,15 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use aws_sdk_cloudwatchlogs::{types::StartLiveTailResponseStream, Client as CwlClient};
 use std::time::Duration;
-use tokio::sync::mpsc;
-use tokio::time::{sleep, timeout};
 use tokio::pin;
-use tracing;
+use tokio::sync::mpsc;
+use tokio::time::sleep;
 
 use crate::processing::{process_log_event_message, TelemetryData};
 
 /// Spawns a task that runs StartLiveTail and sends processed TelemetryData over an MPSC channel.
 pub fn start_live_tail_task(
-    cwl_client: CwlClient, 
+    cwl_client: CwlClient,
     arns: Vec<String>,
     sender: mpsc::Sender<Result<TelemetryData>>,
     timeout_minutes: u64,
@@ -33,7 +32,11 @@ pub fn start_live_tail_task(
                 let err_msg = format!("Live Tail Adapter: Failed to start Live Tail: {}", e);
                 tracing::error!(%err_msg);
                 // Send error over channel and exit task
-                let _ = sender.send(Err(anyhow::Error::new(e).context("Failed to start Live Tail stream"))).await;
+                let _ = sender
+                    .send(Err(
+                        anyhow::Error::new(e).context("Failed to start Live Tail stream")
+                    ))
+                    .await;
                 return; // Exit the spawned task
             }
         };
@@ -78,7 +81,7 @@ pub fn start_live_tail_task(
                                         }
                                     }
                                 }
-                                _ => { 
+                                _ => {
                                     tracing::warn!("Live Tail Adapter: Received unexpected/unknown event type from stream.");
                                 }
                             }
@@ -105,4 +108,4 @@ pub fn start_live_tail_task(
         tracing::debug!("Live Tail Adapter: Task finished.");
         // Sender is dropped here, closing the channel naturally
     });
-} 
+}

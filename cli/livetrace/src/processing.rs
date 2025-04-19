@@ -4,11 +4,10 @@ use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use otlp_stdout_span_exporter::ExporterOutput;
 use prost::Message;
-use reqwest::header::{HeaderMap, CONTENT_ENCODING, CONTENT_TYPE};
+use reqwest::header::HeaderMap;
 use reqwest::Client as ReqwestClient;
 use reqwest::Url;
 use std::io::{Read, Write};
-use tracing;
 
 /// Represents a processed OTLP payload ready for potential compaction or sending.
 #[derive(Clone, Debug)]
@@ -232,14 +231,18 @@ pub async fn send_telemetry_payload(
     headers: HeaderMap,
 ) -> Result<()> {
     // Parse the base endpoint URL
-    let base_url = Url::parse(endpoint)
-        .with_context(|| format!("Invalid OTLP endpoint URL: {}", endpoint))?;
+    let base_url =
+        Url::parse(endpoint).with_context(|| format!("Invalid OTLP endpoint URL: {}", endpoint))?;
 
     // Determine the final target URL, appending /v1/traces if needed
     let target_url = if base_url.path() == "/" || base_url.path().is_empty() {
         // Use join to correctly handle base paths with/without trailing slash
-        base_url.join("/v1/traces")
-            .with_context(|| format!("Failed to join /v1/traces to base endpoint URL: {}", endpoint))?
+        base_url.join("/v1/traces").with_context(|| {
+            format!(
+                "Failed to join /v1/traces to base endpoint URL: {}",
+                endpoint
+            )
+        })?
     } else {
         // Use the URL as-is if it already has a path
         base_url
@@ -259,7 +262,10 @@ pub async fn send_telemetry_payload(
 
     if !response.status().is_success() {
         let status = response.status();
-        let error_body = response.text().await.unwrap_or_else(|_| "<failed to read body>".to_string());
+        let error_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<failed to read body>".to_string());
         tracing::error!(%status, body = %error_body, "Received non-success status from OTLP endpoint");
         // Consider returning an error here depending on desired behavior
         // return Err(anyhow::anyhow!("OTLP endpoint returned status: {}", status));
@@ -273,12 +279,12 @@ pub async fn send_telemetry_payload(
 #[cfg(test)]
 mod tests {
     use super::*; // Import items from parent module
+    use base64::{engine::general_purpose, Engine};
     use opentelemetry_proto::tonic::{
         common::v1::{any_value, AnyValue, KeyValue},
         resource::v1::Resource,
-        trace::v1::{ResourceSpans, ScopeSpans, Span},
+        trace::v1::{ResourceSpans, ScopeSpans},
     };
-    use base64::{engine::general_purpose, Engine};
     use otlp_stdout_span_exporter::ExporterOutput;
 
     // Helper to create a dummy ExportTraceServiceRequest
@@ -327,17 +333,26 @@ mod tests {
         let json_message = serde_json::to_string(&exporter_output).unwrap();
 
         let result = process_log_event_message(&json_message).unwrap();
-        
+
         assert!(result.is_some());
         let telemetry_data = result.unwrap();
         assert_eq!(telemetry_data.original_source, "test_source");
         assert_eq!(telemetry_data.original_endpoint, "test_endpoint");
 
         // Verify the payload decodes back to the original request (uncompressed)
-        let decoded_request = ExportTraceServiceRequest::decode(telemetry_data.payload.as_slice()).unwrap();
+        let decoded_request =
+            ExportTraceServiceRequest::decode(telemetry_data.payload.as_slice()).unwrap();
         // Corrected variable name and check
         assert_eq!(decoded_request.resource_spans.len(), 1);
-        assert_eq!(decoded_request.resource_spans[0].resource.as_ref().unwrap().attributes[0].key, "service.name");
+        assert_eq!(
+            decoded_request.resource_spans[0]
+                .resource
+                .as_ref()
+                .unwrap()
+                .attributes[0]
+                .key,
+            "service.name"
+        );
     }
 
     #[test]
@@ -371,13 +386,21 @@ mod tests {
 
         // Verify merged content
         assert_eq!(merged_request.resource_spans.len(), 2); // Should have spans from both requests
-        let service_names: Vec<String> = merged_request.resource_spans.iter()
+        let service_names: Vec<String> = merged_request
+            .resource_spans
+            .iter()
             .filter_map(|rs| rs.resource.as_ref())
             .flat_map(|r| r.attributes.iter())
             .filter(|kv| kv.key == "service.name")
-            .filter_map(|kv| kv.value.as_ref().and_then(|v| 
-                if let Some(any_value::Value::StringValue(s)) = &v.value { Some(s.clone()) } else { None }
-            ))
+            .filter_map(|kv| {
+                kv.value.as_ref().and_then(|v| {
+                    if let Some(any_value::Value::StringValue(s)) = &v.value {
+                        Some(s.clone())
+                    } else {
+                        None
+                    }
+                })
+            })
             .collect();
         assert!(service_names.contains(&"service-a".to_string()));
         assert!(service_names.contains(&"service-b".to_string()));
@@ -406,12 +429,21 @@ mod tests {
 
         // Verify it matches the original request (before compression)
         assert_eq!(final_request.resource_spans.len(), 1);
-        let service_name = final_request.resource_spans[0].resource.as_ref().unwrap().attributes[0].value.as_ref().unwrap().value.as_ref();
-         if let Some(any_value::Value::StringValue(s)) = service_name { 
-              assert_eq!(s, "service-single");
-         } else {
-              panic!("Expected string value for service name");
-         }
+        let service_name = final_request.resource_spans[0]
+            .resource
+            .as_ref()
+            .unwrap()
+            .attributes[0]
+            .value
+            .as_ref()
+            .unwrap()
+            .value
+            .as_ref();
+        if let Some(any_value::Value::StringValue(s)) = service_name {
+            assert_eq!(s, "service-single");
+        } else {
+            panic!("Expected string value for service name");
+        }
     }
 
     #[test]
@@ -444,7 +476,10 @@ mod tests {
         let result = process_log_event_message(&json_message);
         assert!(result.is_err());
         // Optionally check the error message content
-        assert!(result.unwrap_err().to_string().contains("Failed to decode base64 payload"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to decode base64 payload"));
     }
 
     #[test]
@@ -470,20 +505,22 @@ mod tests {
         // Expect an Err result because gzip decoding fails
         let result = process_log_event_message(&json_message);
         assert!(result.is_err()); // Just check that it errors, context might be less specific
-        // assert!(result.unwrap_err().to_string().contains("Failed to decompress Gzip payload")); // Removed specific context check
+                                  // assert!(result.unwrap_err().to_string().contains("Failed to decompress Gzip payload")); // Removed specific context check
     }
 
     // Helper to decompress Gzip data (needed for verifying compaction output)
     fn decompress_payload(compressed_data: &[u8]) -> Result<Vec<u8>> {
         let mut decoder = GzDecoder::new(compressed_data);
         let mut decompressed_data = Vec::new();
-        decoder.read_to_end(&mut decompressed_data).context("Failed to decompress payload in test")?;
+        decoder
+            .read_to_end(&mut decompressed_data)
+            .context("Failed to decompress payload in test")?;
         Ok(decompressed_data)
     }
 
     // Modified helper to allow different service names
     fn create_dummy_request_with_service(service_name: &str) -> ExportTraceServiceRequest {
-         ExportTraceServiceRequest {
+        ExportTraceServiceRequest {
             resource_spans: vec![ResourceSpans {
                 resource: Some(Resource {
                     attributes: vec![KeyValue {
@@ -494,7 +531,9 @@ mod tests {
                     }],
                     dropped_attributes_count: 0,
                 }),
-                scope_spans: vec![ScopeSpans { ..Default::default() }],
+                scope_spans: vec![ScopeSpans {
+                    ..Default::default()
+                }],
                 schema_url: String::new(),
             }],
         }

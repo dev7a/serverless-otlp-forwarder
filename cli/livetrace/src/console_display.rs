@@ -22,6 +22,7 @@ const SPAN_ID_WIDTH: usize = 32;
 #[derive(Debug, Clone)]
 struct ConsoleSpan {
     id: String,
+    #[allow(dead_code)]
     parent_id: Option<String>,
     name: String,
     start_time: u64,
@@ -36,6 +37,7 @@ struct EventInfo {
     timestamp_ns: u64,
     name: String,
     span_id: String,
+    #[allow(dead_code)]
     trace_id: String,
     attributes: Vec<KeyValue>,
     service_name: String,
@@ -54,7 +56,12 @@ pub fn display_console(
         match ExportTraceServiceRequest::decode(item.payload.as_slice()) {
             Ok(request) => {
                 for resource_span in request.resource_spans {
-                    let service_name = find_service_name(resource_span.resource.as_ref().map_or(&[], |r| &r.attributes));
+                    let service_name = find_service_name(
+                        resource_span
+                            .resource
+                            .as_ref()
+                            .map_or(&[], |r| &r.attributes),
+                    );
                     for scope_span in resource_span.scope_spans {
                         for span in scope_span.spans {
                             spans_with_service.push((span.clone(), service_name.clone()));
@@ -76,7 +83,10 @@ pub fn display_console(
     let mut traces: HashMap<String, Vec<(Span, String)>> = HashMap::new();
     for (span, service_name) in spans_with_service {
         let trace_id_hex = hex::encode(&span.trace_id);
-        traces.entry(trace_id_hex).or_default().push((span, service_name));
+        traces
+            .entry(trace_id_hex)
+            .or_default()
+            .push((span, service_name));
     }
 
     // Calculate approximate total table width for header ruling
@@ -87,7 +97,12 @@ pub fn display_console(
     let total_table_width = if compact_display {
         SERVICE_NAME_WIDTH + SPAN_NAME_WIDTH + DURATION_ESTIMATE + SPACING_COMPACT + timeline_width
     } else {
-        SERVICE_NAME_WIDTH + SPAN_NAME_WIDTH + DURATION_ESTIMATE + SPAN_ID_WIDTH + SPACING_NON_COMPACT + timeline_width
+        SERVICE_NAME_WIDTH
+            + SPAN_NAME_WIDTH
+            + DURATION_ESTIMATE
+            + SPAN_ID_WIDTH
+            + SPACING_NON_COMPACT
+            + timeline_width
     };
 
     for (trace_id, spans_in_trace_with_service) in traces {
@@ -95,10 +110,11 @@ pub fn display_console(
         let trace_heading = format!("Trace ID: {}", trace_id);
         // Calculate padding based on total table width
         let trace_padding = total_table_width.saturating_sub(trace_heading.len() + 3); // 3 for " ─ " and spaces
-        println!("\n {} {} {}", 
-                 "─".dimmed(), 
-                 trace_heading.bold(), 
-                 "─".repeat(trace_padding).dimmed()
+        println!(
+            "\n {} {} {}",
+            "─".dimmed(),
+            trace_heading.bold(),
+            "─".repeat(trace_padding).dimmed()
         );
 
         if spans_in_trace_with_service.is_empty() {
@@ -153,12 +169,23 @@ pub fn display_console(
 
         let mut roots: Vec<ConsoleSpan> = root_ids
             .iter()
-            .map(|root_id| build_console_span(root_id, &span_map, &parent_to_children_map, &service_name_map))
+            .map(|root_id| {
+                build_console_span(
+                    root_id,
+                    &span_map,
+                    &parent_to_children_map,
+                    &service_name_map,
+                )
+            })
             .collect();
         roots.sort_by_key(|s| s.start_time);
 
         let min_start_time = roots.iter().map(|r| r.start_time).min().unwrap_or(0);
-        let max_end_time = span_map.values().map(|s| s.end_time_unix_nano).max().unwrap_or(0);
+        let max_end_time = span_map
+            .values()
+            .map(|s| s.end_time_unix_nano)
+            .max()
+            .unwrap_or(0);
         let trace_duration_ns = max_end_time.saturating_sub(min_start_time);
 
         let mut table = Table::new();
@@ -183,10 +210,11 @@ pub fn display_console(
             let events_heading = format!("Events for Trace: {}", trace_id);
             // Calculate padding based on total table width
             let events_padding = total_table_width.saturating_sub(events_heading.len() + 3);
-            println!("\n {} {} {}",
-                     "─".dimmed(),
-                     events_heading.bold(),
-                     "─".repeat(events_padding).dimmed()
+            println!(
+                "\n {} {} {}",
+                "─".dimmed(),
+                events_heading.bold(),
+                "─".repeat(events_padding).dimmed()
             );
             for event in trace_events {
                 let timestamp = Utc.timestamp_nanos(event.timestamp_ns as i64);
@@ -209,7 +237,11 @@ pub fn display_console(
                 );
 
                 if !attrs_to_display.is_empty() {
-                    println!("{} - Attrs: {}", log_line_start, attrs_to_display.join(", "));
+                    println!(
+                        "{} - Attrs: {}",
+                        log_line_start,
+                        attrs_to_display.join(", ")
+                    );
                 } else {
                     println!("{}", log_line_start);
                 }
@@ -223,15 +255,22 @@ pub fn display_console(
 // --- Private Helper Functions ---
 
 fn find_service_name(attrs: &[KeyValue]) -> String {
-    attrs.iter().find(|kv| kv.key == "service.name").and_then(|kv| {
-        kv.value.as_ref().and_then(|av| {
-            if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &av.value {
-                Some(s.clone())
-            } else {
-                None
-            }
+    attrs
+        .iter()
+        .find(|kv| kv.key == "service.name")
+        .and_then(|kv| {
+            kv.value.as_ref().and_then(|av| {
+                if let Some(
+                    opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s),
+                ) = &av.value
+                {
+                    Some(s.clone())
+                } else {
+                    None
+                }
+            })
         })
-    }).unwrap_or_else(|| "<unknown>".to_string())
+        .unwrap_or_else(|| "<unknown>".to_string())
 }
 
 fn build_console_span(
@@ -241,7 +280,10 @@ fn build_console_span(
     service_name_map: &HashMap<String, String>,
 ) -> ConsoleSpan {
     let span = span_map.get(span_id).expect("Span ID should exist in map");
-    let service_name = service_name_map.get(span_id).cloned().unwrap_or_else(|| "<unknown>".to_string());
+    let service_name = service_name_map
+        .get(span_id)
+        .cloned()
+        .unwrap_or_else(|| "<unknown>".to_string());
 
     let start_time = span.start_time_unix_nano;
     let end_time = span.end_time_unix_nano;
@@ -251,11 +293,16 @@ fn build_console_span(
         status::StatusCode::try_from(s.code).unwrap_or(status::StatusCode::Unset)
     });
 
-    let child_ids = parent_to_children_map.get(span_id).cloned().unwrap_or_default();
+    let child_ids = parent_to_children_map
+        .get(span_id)
+        .cloned()
+        .unwrap_or_default();
 
     let mut children: Vec<ConsoleSpan> = child_ids
         .iter()
-        .map(|child_id| build_console_span(child_id, span_map, parent_to_children_map, service_name_map))
+        .map(|child_id| {
+            build_console_span(child_id, span_map, parent_to_children_map, service_name_map)
+        })
         .collect();
     children.sort_by_key(|c| c.start_time);
 
@@ -285,7 +332,11 @@ fn add_span_to_table(
     compact_display: bool,
 ) -> Result<()> {
     let indent = "  ".repeat(depth);
-    let service_name_content = node.service_name.chars().take(SERVICE_NAME_WIDTH).collect::<String>();
+    let service_name_content = node
+        .service_name
+        .chars()
+        .take(SERVICE_NAME_WIDTH)
+        .collect::<String>();
     let span_name_width = SPAN_NAME_WIDTH.saturating_sub(indent.len());
     let truncated_span_name = node.name.chars().take(span_name_width).collect::<String>();
     let span_name_cell_content = format!("{} {}", indent, truncated_span_name);
@@ -383,15 +434,29 @@ fn format_keyvalue(kv: &KeyValue) -> String {
 fn format_anyvalue(av: &Option<AnyValue>) -> String {
     match av {
         Some(any_value) => match &any_value.value {
-            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => s.clone(),
-            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::BoolValue(b)) => b.to_string(),
-            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(i)) => i.to_string(),
-            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::DoubleValue(d)) => d.to_string(),
-            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::ArrayValue(_)) => "[array]".to_string(),
-            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::KvlistValue(_)) => "[kvlist]".to_string(),
-            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::BytesValue(_)) => "[bytes]".to_string(),
+            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) => {
+                s.clone()
+            }
+            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::BoolValue(b)) => {
+                b.to_string()
+            }
+            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::IntValue(i)) => {
+                i.to_string()
+            }
+            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::DoubleValue(d)) => {
+                d.to_string()
+            }
+            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::ArrayValue(_)) => {
+                "[array]".to_string()
+            }
+            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::KvlistValue(_)) => {
+                "[kvlist]".to_string()
+            }
+            Some(opentelemetry_proto::tonic::common::v1::any_value::Value::BytesValue(_)) => {
+                "[bytes]".to_string()
+            }
             None => "<empty_value>".to_string(),
         },
         None => "<no_value>".to_string(),
     }
-} 
+}

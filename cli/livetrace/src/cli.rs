@@ -1,5 +1,4 @@
-use anyhow::Result;
-use clap::{Parser, ArgGroup};
+use clap::{ArgGroup, Parser};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
@@ -71,19 +70,19 @@ pub struct CliArgs {
 
 /// Parses CLI arguments.
 /// Basic validation (like forward_only needing an endpoint) moved to main.
-pub fn parse_args() -> CliArgs { // Renamed function
-    let args = CliArgs::parse();
+pub fn parse_args() -> CliArgs {
+    // Renamed function
 
     // Validation logic removed - now handled in main.rs
     // if args.forward_only && args.otlp_endpoint.is_none() { ... }
     // if !args.forward_only && args.otlp_endpoint.is_none() { ... }
 
-    args // Return parsed args directly
+    CliArgs::parse() // Return parsed args directly
 }
 
 /// Parses the event attribute glob patterns from the arguments.
 pub fn parse_event_attr_globs(args: &CliArgs) -> Option<GlobSet> {
-     match args.event_attrs.as_deref() {
+    match args.event_attrs.as_deref() {
         Some(patterns_str) if !patterns_str.is_empty() => {
             let mut builder = GlobSetBuilder::new();
             for pattern in patterns_str.split(',') {
@@ -109,4 +108,4 @@ pub fn parse_event_attr_globs(args: &CliArgs) -> Option<GlobSet> {
         }
         _ => None, // No patterns provided
     }
-} 
+}

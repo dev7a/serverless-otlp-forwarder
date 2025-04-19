@@ -4,10 +4,10 @@ use reqwest::{
     Client as ReqwestClient,
 };
 use std::str::FromStr;
-use tracing;
 
-use crate::cli::CliArgs; // Need CliArgs for headers
-use crate::processing::{ // Need processing functions/structs
+// Need CliArgs for headers
+use crate::processing::{
+    // Need processing functions/structs
     compact_telemetry_payloads,
     send_telemetry_payload,
     SpanCompactionConfig,
@@ -17,13 +17,15 @@ use crate::processing::{ // Need processing functions/structs
 /// Parses OTLP headers from a vector of header strings.
 pub fn parse_otlp_headers_from_vec(headers_vec: &[String]) -> Result<HeaderMap> {
     let mut otlp_header_map = HeaderMap::new();
-    for header_str in headers_vec { // Iterate over the provided vector
+    for header_str in headers_vec {
+        // Iterate over the provided vector
         let parts: Vec<&str> = header_str.splitn(2, '=').collect();
         if parts.len() == 2 {
             let header_name = HeaderName::from_str(parts[0])
                 .with_context(|| format!("Invalid OTLP header name: {}", parts[0]))?;
-            let header_value = HeaderValue::from_str(parts[1])
-                .with_context(|| format!("Invalid OTLP header value for {}: {}", parts[0], parts[1]))?;
+            let header_value = HeaderValue::from_str(parts[1]).with_context(|| {
+                format!("Invalid OTLP header value for {}: {}", parts[0], parts[1])
+            })?;
             otlp_header_map.insert(header_name, header_value);
         } else {
             tracing::warn!(
@@ -56,13 +58,8 @@ pub async fn send_batch(
                 compacted_data.payload.len(),
                 endpoint
             );
-            if let Err(e) = send_telemetry_payload(
-                http_client,
-                endpoint,
-                compacted_data.payload,
-                headers,
-            )
-            .await
+            if let Err(e) =
+                send_telemetry_payload(http_client, endpoint, compacted_data.payload, headers).await
             {
                 tracing::error!("Failed to send compacted batch: {}", e);
                 // Log and continue
@@ -80,8 +77,7 @@ pub async fn send_batch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-    use std::str::FromStr;
+    use reqwest::header::HeaderValue;
 
     #[test]
     fn test_parse_otlp_headers_valid() {
@@ -92,24 +88,30 @@ mod tests {
         let result = parse_otlp_headers_from_vec(&headers_vec).unwrap();
 
         assert_eq!(result.len(), 2);
-        assert_eq!(result.get("Authorization").unwrap(), &HeaderValue::from_str("Bearer 123").unwrap());
-        assert_eq!(result.get("x-custom-header").unwrap(), &HeaderValue::from_str("Value456").unwrap());
+        assert_eq!(
+            result.get("Authorization").unwrap(),
+            &HeaderValue::from_str("Bearer 123").unwrap()
+        );
+        assert_eq!(
+            result.get("x-custom-header").unwrap(),
+            &HeaderValue::from_str("Value456").unwrap()
+        );
     }
 
     #[test]
     fn test_parse_otlp_headers_malformed() {
         let headers_vec = vec![
             "Authorization=Bearer 123".to_string(),
-            "MalformedHeader".to_string(), // No equals sign
-            "EmptyValue=".to_string(), // Empty value
-            "=NoKey".to_string(), // Technically invalid HeaderName
+            "MalformedHeader".to_string(),   // No equals sign
+            "EmptyValue=".to_string(),       // Empty value
+            "=NoKey".to_string(),            // Technically invalid HeaderName
             "Key=Val1,Key=Val2".to_string(), // Should be separate strings
         ];
         // We expect Ok, but only valid headers should be parsed. Invalid HeaderName causes an Err.
         let result = parse_otlp_headers_from_vec(&headers_vec);
-        
+
         // The "=NoKey" case should cause an error due to invalid HeaderName
-        assert!(result.is_err()); 
+        assert!(result.is_err());
         // If we wanted to ignore the error and just check parsed headers:
         // assert!(result.is_ok());
         // let header_map = result.unwrap();
@@ -125,12 +127,15 @@ mod tests {
         assert!(result.is_empty());
     }
 
-     #[test]
+    #[test]
     fn test_parse_otlp_headers_invalid_name() {
         // Test case specifically for an invalid header name that should fail
-        let headers_vec = vec!["=NoKey".to_string()]; 
+        let headers_vec = vec!["=NoKey".to_string()];
         let result = parse_otlp_headers_from_vec(&headers_vec);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Invalid OTLP header name"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid OTLP header name"));
     }
-} 
+}

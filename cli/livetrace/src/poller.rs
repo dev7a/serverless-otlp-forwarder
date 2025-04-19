@@ -1,11 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use aws_sdk_cloudwatchlogs::Client as CwlClient;
+use chrono::Utc;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::time::{interval, sleep};
-use tracing;
-use chrono::Utc;
+use tokio::time::interval;
 
 use crate::processing::{process_log_event_message, TelemetryData};
 
@@ -22,9 +21,16 @@ pub fn start_polling_task(
         let mut ticker = interval(poll_duration);
 
         let initial_start_time_ms = Utc::now().timestamp_millis();
-        tracing::debug!(start_time = initial_start_time_ms, "Polling will start from current time.");
+        tracing::debug!(
+            start_time = initial_start_time_ms,
+            "Polling will start from current time."
+        );
 
-        tracing::debug!(interval_seconds = interval_secs, num_groups = arns.len(), "Polling Adapter: Starting polling loop.");
+        tracing::debug!(
+            interval_seconds = interval_secs,
+            num_groups = arns.len(),
+            "Polling Adapter: Starting polling loop."
+        );
 
         loop {
             ticker.tick().await;
@@ -37,18 +43,20 @@ pub fn start_polling_task(
                 let sender_clone = sender.clone();
 
                 tracing::debug!(log_group_arn = %arn_clone, %start_time, "Polling Adapter: Fetching events for group.");
-                
+
                 match filter_log_events_for_group(
-                    &client_clone, 
+                    &client_clone,
                     arn_clone.clone(),
-                    start_time, 
-                    sender_clone, 
-                ).await {
+                    start_time,
+                    sender_clone,
+                )
+                .await
+                {
                     Ok(Some(new_timestamp)) => {
                         tracing::trace!(log_group_arn=%arn_clone, %new_timestamp, "Polling Adapter: Updating timestamp.");
                         last_timestamps.insert(arn_clone, new_timestamp);
                     }
-                    Ok(None) => { 
+                    Ok(None) => {
                         tracing::trace!(log_group_arn=%arn_clone, "Polling Adapter: No new events found.");
                     }
                     Err(e) => {
@@ -70,18 +78,17 @@ async fn filter_log_events_for_group(
     sender: mpsc::Sender<Result<TelemetryData>>,
 ) -> Result<Option<i64>> {
     let mut next_token: Option<String> = None;
-    let mut latest_event_timestamp = start_time_ms; 
+    let mut latest_event_timestamp = start_time_ms;
     let mut events_found = false;
 
     loop {
         let mut request_builder = client
             .filter_log_events()
             .log_group_identifier(log_group_identifier.clone())
-            .start_time(start_time_ms + 1) 
-            ;
-        
+            .start_time(start_time_ms + 1);
+
         if let Some(token) = next_token {
-             request_builder = request_builder.next_token(token);
+            request_builder = request_builder.next_token(token);
         }
 
         match request_builder.send().await {
@@ -96,7 +103,7 @@ async fn filter_log_events_for_group(
                         }
 
                         if let Some(msg) = event.message {
-                             match process_log_event_message(&msg) {
+                            match process_log_event_message(&msg) {
                                 Ok(Some(telemetry)) => {
                                     if sender.send(Ok(telemetry)).await.is_err() {
                                         tracing::warn!("Polling Adapter: MPSC channel closed by receiver while sending data.");
@@ -120,10 +127,18 @@ async fn filter_log_events_for_group(
                 }
             }
             Err(e) => {
-                 let context_msg = format!("Polling Adapter: Failed to filter log events for {}", log_group_identifier);
-                 tracing::error!(error = %e, %context_msg);
-                 let _ = sender.send(Err(anyhow::Error::new(e).context(context_msg))).await;
-                 return Err(anyhow::anyhow!("Failed to filter log events for group {}", log_group_identifier)); 
+                let context_msg = format!(
+                    "Polling Adapter: Failed to filter log events for {}",
+                    log_group_identifier
+                );
+                tracing::error!(error = %e, %context_msg);
+                let _ = sender
+                    .send(Err(anyhow::Error::new(e).context(context_msg)))
+                    .await;
+                return Err(anyhow::anyhow!(
+                    "Failed to filter log events for group {}",
+                    log_group_identifier
+                ));
             }
         }
     }
@@ -133,4 +148,4 @@ async fn filter_log_events_for_group(
     } else {
         Ok(None)
     }
-} 
+}
