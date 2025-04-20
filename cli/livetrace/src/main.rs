@@ -25,8 +25,8 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 // Internal Crate Imports
 use crate::aws_setup::setup_aws_resources;
 use crate::cli::{parse_event_attr_globs, CliArgs};
-use crate::config::{load_and_resolve_config, save_profile_config, ProfileConfig, EffectiveConfig};
-use crate::console_display::display_console;
+use crate::config::{load_and_resolve_config, save_profile_config, EffectiveConfig, ProfileConfig};
+use crate::console_display::{display_console, Theme};
 use crate::forwarder::{parse_otlp_headers_from_vec, send_batch};
 use crate::live_tail_adapter::start_live_tail_task;
 use crate::poller::start_polling_task;
@@ -44,7 +44,10 @@ async fn main() -> Result<()> {
         let profile_to_save = ProfileConfig::from_cli_args(&args);
         // Call the actual save function
         save_profile_config(profile_name, &profile_to_save)?;
-        println!("Configuration saved to profile '{}'. Exiting.", profile_name);
+        println!(
+            "Configuration saved to profile '{}'. Exiting.",
+            profile_name
+        );
         return Ok(());
     }
     // --- End Save Profile Check ---
@@ -53,7 +56,6 @@ async fn main() -> Result<()> {
     let config = if args.config_profile.is_some() {
         load_and_resolve_config(args.config_profile.clone(), &args)?
     } else {
-        // If no profile specified, create an EffectiveConfig directly from CLI args
         EffectiveConfig {
             log_group_pattern: args.log_group_pattern.clone(),
             stack_name: args.stack_name.clone(),
@@ -69,9 +71,9 @@ async fn main() -> Result<()> {
             poll_interval: args.poll_interval,
             session_timeout: args.session_timeout,
             verbose: args.verbose,
+            theme: args.theme.clone(),
         }
     };
-    // --- End Load Configuration Profile ---
 
     // Validate discovery parameters - either log_group_pattern or stack_name must be set
     if config.log_group_pattern.is_none() && config.stack_name.is_none() {
@@ -158,6 +160,7 @@ async fn main() -> Result<()> {
         event_severity_attribute: "event.severity".to_string(),
         config_profile: None,
         save_profile: None,
+        theme: "default".to_string(),
     };
     let aws_result = setup_aws_resources(&aws_setup_args).await?;
     let cwl_client = aws_result.cwl_client;
@@ -216,14 +219,14 @@ async fn main() -> Result<()> {
 
     if let Some(interval_secs) = config.poll_interval {
         // --- Polling Mode ---
-        tracing::info!(
+        tracing::debug!(
             interval = interval_secs,
             "Using FilterLogEvents polling mode."
         );
         start_polling_task(cwl_client, resolved_log_group_arns, interval_secs, tx);
     } else {
         // --- Live Tail Mode ---
-        tracing::info!(
+        tracing::debug!(
             timeout_minutes = config.session_timeout,
             "Using StartLiveTail streaming mode with timeout."
         );
@@ -236,7 +239,7 @@ async fn main() -> Result<()> {
     }
 
     // 10. Main Event Processing Loop
-    tracing::info!("Waiting for telemetry events...");
+    tracing::debug!("Waiting for telemetry events...");
     let mut telemetry_buffer: Vec<TelemetryData> = Vec::new();
     let mut ticker = interval(Duration::from_secs(1));
 
@@ -272,12 +275,15 @@ async fn main() -> Result<()> {
                     let batch_to_send = std::mem::take(&mut telemetry_buffer);
 
                     if console_enabled {
+                        // Convert string theme to Theme enum
+                        let theme = Theme::from_str(&config.theme);
                         display_console(
                             &batch_to_send,
                             config.timeline_width,
                             config.compact_display,
                             &event_attr_globs,
                             config.event_severity_attribute.as_str(),
+                            theme,
                         )?;
                     }
 
@@ -306,12 +312,15 @@ async fn main() -> Result<()> {
         let final_batch = std::mem::take(&mut telemetry_buffer);
 
         if console_enabled {
+            // Convert string theme to Theme enum
+            let theme = Theme::from_str(&config.theme);
             display_console(
                 &final_batch,
                 config.timeline_width,
                 config.compact_display,
                 &event_attr_globs,
                 &config.event_severity_attribute,
+                theme,
             )?;
         }
 

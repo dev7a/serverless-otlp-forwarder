@@ -1,4 +1,5 @@
-use clap::{ArgGroup, Parser};
+use crate::console_display::Theme;
+use clap::{builder::TypedValueParser, error::ErrorKind, ArgGroup, Parser};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
@@ -67,7 +68,7 @@ pub struct CliArgs {
     #[arg(long, default_value_t = 30, group = "mode")] // Re-add, add to group
     pub session_timeout: u64,
 
-    /// Attribute name to use for determining event severity level.
+    /// Event attribute name to use for determining event severity level.
     #[arg(long, default_value = "event.severity")]
     pub event_severity_attribute: String,
 
@@ -78,8 +79,56 @@ pub struct CliArgs {
     /// Save the current effective command-line arguments to the specified profile in livetrace.toml and exit.
     #[arg(long, value_name = "PROFILE_NAME")]
     pub save_profile: Option<String>,
+
+    /// Color theme for console output (default, tableau, colorbrewer, material, solarized, monochrome).
+    #[arg(long, default_value = "default", value_parser = ThemeValueParser)]
+    pub theme: String,
 }
 
+// Create a custom value parser for themes
+#[derive(Clone)]
+struct ThemeValueParser;
+
+impl TypedValueParser for ThemeValueParser {
+    type Value = String;
+
+    /// This method is called by Clap when validating the theme argument.
+    /// It receives the command, argument definition, and user-provided value.
+    /// We only use the value parameter to validate the theme name.
+    fn parse_ref(
+        &self,
+        _cmd: &clap::Command,
+        _arg: Option<&clap::Arg>,
+        value: &std::ffi::OsStr,
+    ) -> Result<Self::Value, clap::Error> {
+        // Convert OsStr to a regular string for validation
+        let theme_str = value.to_string_lossy().to_string();
+
+        // Check if the theme is valid
+        if !Theme::is_valid_theme(&theme_str) {
+            // Create a helpful error message with valid themes
+            let valid_themes = [
+                "default",
+                "tableau",
+                "colorbrewer",
+                "material",
+                "solarized",
+                "monochrome",
+            ]
+            .join(", ");
+
+            let err = format!(
+                "Invalid theme '{}'. Valid themes are: {}",
+                theme_str, valid_themes
+            );
+
+            return Err(clap::Error::raw(ErrorKind::InvalidValue, err));
+        }
+
+        // Valid theme, return it
+        Ok(theme_str)
+    }
+}
 
 /// Parses event attribute glob patterns from a string pattern.
 /// This is a more general function that doesn't depend on CliArgs or EffectiveConfig directly.

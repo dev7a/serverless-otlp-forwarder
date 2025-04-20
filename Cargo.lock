@@ -592,19 +592,19 @@ dependencies = [
 
 [[package]]
 name = "aws-span-processor"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "aws-config",
  "aws-credential-types",
  "aws_lambda_events",
  "lambda-otel-lite",
- "lambda-otlp-forwarder",
  "lambda_runtime",
  "opentelemetry-otlp",
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "otlp-sigv4-client",
+ "otlp-stdout-logs-processor",
  "prost",
  "reqwest",
  "serde_json",
@@ -2065,7 +2065,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-otel-lite"
-version = "0.11.3"
+version = "0.13.1"
 dependencies = [
  "aws_lambda_events",
  "bon",
@@ -2081,7 +2081,7 @@ dependencies = [
  "opentelemetry-aws",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.13.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pin-project",
  "rand 0.9.0",
  "reqwest",
@@ -2110,39 +2110,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-opentelemetry",
-]
-
-[[package]]
-name = "lambda-otlp-forwarder"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aws-config",
- "aws-credential-types",
- "aws-sdk-secretsmanager",
- "aws_lambda_events",
- "base64 0.22.1",
- "chrono",
- "flate2",
- "futures",
- "lambda-otel-lite",
- "lambda_runtime",
- "mockito",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry-proto",
- "opentelemetry_sdk",
- "otlp-sigv4-client",
- "otlp-stdout-span-exporter",
- "prost",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "url",
- "wiremock",
 ]
 
 [[package]]
@@ -2640,11 +2607,13 @@ dependencies = [
 
 [[package]]
 name = "otlp-stdout-kinesis-extension-layer"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "aws-config",
  "aws-sdk-kinesis",
+ "chrono",
  "lambda-extension",
+ "serde_json",
  "tokio",
  "tracing",
  "uuid",
@@ -2652,7 +2621,7 @@ dependencies = [
 
 [[package]]
 name = "otlp-stdout-kinesis-processor"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -2662,12 +2631,13 @@ dependencies = [
  "chrono",
  "flate2",
  "lambda-otel-lite",
- "lambda-otlp-forwarder",
  "lambda_runtime",
  "opentelemetry-otlp",
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "otlp-sigv4-client",
+ "otlp-stdout-logs-processor",
+ "otlp-stdout-span-exporter 0.13.0",
  "prost",
  "reqwest",
  "serde_json",
@@ -2676,8 +2646,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "otlp-stdout-logs-processor"
+version = "0.9.0"
+dependencies = [
+ "anyhow",
+ "aws-config",
+ "aws-credential-types",
+ "aws-sdk-secretsmanager",
+ "aws_lambda_events",
+ "base64 0.22.1",
+ "chrono",
+ "flate2",
+ "futures",
+ "lambda-otel-lite",
+ "lambda_runtime",
+ "mockito",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "otlp-sigv4-client",
+ "otlp-stdout-span-exporter 0.13.0",
+ "prost",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "url",
+ "wiremock",
+]
+
+[[package]]
 name = "otlp-stdout-span-exporter"
-version = "0.11.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2693,6 +2696,28 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "tokio",
+]
+
+[[package]]
+name = "otlp-stdout-span-exporter"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdcfc0595672bf6209930bb9a0a4158da5333693b17939b3b7e49d35492bad43"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bon",
+ "doc-comment",
+ "flate2",
+ "futures-util",
+ "log",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 

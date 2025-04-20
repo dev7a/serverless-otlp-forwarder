@@ -13,12 +13,160 @@ use std::collections::HashMap;
 
 use crate::processing::TelemetryData; // Need TelemetryData for display_console
 
-// --- Constants ---
+// Constants
 const SERVICE_NAME_WIDTH: usize = 25;
 const SPAN_NAME_WIDTH: usize = 40;
 const SPAN_ID_WIDTH: usize = 32;
 
-// --- Data Structures ---
+// Define a bright red color for errors
+const ERROR_COLOR: (u8, u8, u8) = (255, 0, 0); // Bright red
+
+// Define all color palettes
+// Default color palette
+const SERVICE_COLORS: [(u8, u8, u8); 12] = [
+    (46, 134, 193), // Blue
+    (142, 68, 173), // Purple
+    (39, 174, 96),  // Green
+    (41, 128, 185), // Medium Blue
+    (23, 165, 137), // Teal
+    (40, 116, 166), // Dark Blue
+    (156, 89, 182), // Medium Purple
+    (52, 152, 219), // Light Blue
+    (26, 188, 156), // Turquoise
+    (22, 160, 133), // Sea Green
+    (106, 90, 205), // Slate Blue
+    (52, 73, 94),   // Dark Slate
+];
+
+// Alternative color palettes
+const TABLEAU_12: [(u8, u8, u8); 12] = [
+    (31, 119, 180),  // Blue
+    (255, 127, 14),  // Orange
+    (44, 160, 44),   // Green
+    (214, 39, 40),   // Red
+    (148, 103, 189), // Purple
+    (140, 86, 75),   // Brown
+    (227, 119, 194), // Pink
+    (127, 127, 127), // Gray
+    (188, 189, 34),  // Olive
+    (23, 190, 207),  // Cyan
+    (199, 199, 199), // Light Gray
+    (255, 187, 120), // Light Orange
+];
+
+const COLORBREWER_SET3_12: [(u8, u8, u8); 12] = [
+    (141, 211, 199), // Teal
+    (255, 255, 179), // Light Yellow
+    (190, 186, 218), // Lavender
+    (251, 128, 114), // Salmon
+    (128, 177, 211), // Blue
+    (253, 180, 98),  // Orange
+    (179, 222, 105), // Light Green
+    (252, 205, 229), // Pink
+    (217, 217, 217), // Gray
+    (188, 128, 189), // Purple
+    (204, 235, 197), // Mint
+    (255, 237, 111), // Yellow
+];
+
+const MATERIAL_12: [(u8, u8, u8); 12] = [
+    (244, 67, 54),  // Red
+    (233, 30, 99),  // Pink
+    (156, 39, 176), // Purple
+    (103, 58, 183), // Deep Purple
+    (63, 81, 181),  // Indigo
+    (33, 150, 243), // Blue
+    (0, 188, 212),  // Cyan
+    (0, 150, 136),  // Teal
+    (76, 175, 80),  // Green
+    (205, 220, 57), // Lime
+    (255, 152, 0),  // Orange
+    (121, 85, 72),  // Brown
+];
+
+const SOLARIZED_12: [(u8, u8, u8); 12] = [
+    (38, 139, 210),  // Blue
+    (211, 54, 130),  // Magenta
+    (42, 161, 152),  // Cyan
+    (133, 153, 0),   // Green
+    (203, 75, 22),   // Orange
+    (220, 50, 47),   // Red
+    (181, 137, 0),   // Yellow
+    (108, 113, 196), // Violet
+    (147, 161, 161), // Base1 (Gray)
+    (101, 123, 131), // Base01 (Dark Gray)
+    (238, 232, 213), // Base3 (Light)
+    (7, 54, 66),     // Base02 (Very Dark)
+];
+
+const MONOCHROME_12: [(u8, u8, u8); 12] = [
+    (100, 100, 100),
+    (115, 115, 115),
+    (130, 130, 130),
+    (145, 145, 145),
+    (160, 160, 160),
+    (175, 175, 175),
+    (90, 90, 90),
+    (105, 105, 105),
+    (120, 120, 120),
+    (135, 135, 135),
+    (150, 150, 150),
+    (165, 165, 165),
+];
+
+// Theme enum to represent all available themes
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Theme {
+    Default,
+    Tableau,
+    ColorBrewer,
+    Material,
+    Solarized,
+    Monochrome,
+}
+
+impl Theme {
+    // Parse a theme name string to an enum value
+    pub fn from_str(theme_name: &str) -> Self {
+        match theme_name.to_lowercase().as_str() {
+            "tableau" => Theme::Tableau,
+            "colorbrewer" => Theme::ColorBrewer,
+            "material" => Theme::Material,
+            "solarized" => Theme::Solarized,
+            "monochrome" => Theme::Monochrome,
+            _ => Theme::Default,
+        }
+    }
+
+    // Get the color palette for the theme
+    pub fn get_palette(&self) -> &'static [(u8, u8, u8); 12] {
+        match self {
+            Theme::Default => &SERVICE_COLORS,
+            Theme::Tableau => &TABLEAU_12,
+            Theme::ColorBrewer => &COLORBREWER_SET3_12,
+            Theme::Material => &MATERIAL_12,
+            Theme::Solarized => &SOLARIZED_12,
+            Theme::Monochrome => &MONOCHROME_12,
+        }
+    }
+
+    // Get a color for a service based on its name hash
+    pub fn get_color_for_service(&self, service_name: &str) -> (u8, u8, u8) {
+        let service_hash = service_name.chars().fold(0, |acc, c| acc + (c as usize));
+        let palette = self.get_palette();
+        palette[service_hash % palette.len()]
+    }
+
+    // Helper method to check if a theme name is valid
+    pub fn is_valid_theme(theme_name: &str) -> bool {
+        matches!(
+            theme_name.to_lowercase().as_str(),
+            "default" | "tableau" | "colorbrewer" | "material" | "solarized" | "monochrome"
+        )
+    }
+}
+
+// Data Structures
 #[derive(Debug, Clone)]
 struct ConsoleSpan {
     id: String,
@@ -45,14 +193,18 @@ struct EventInfo {
     level: String,
 }
 
-// --- Public Display Function ---
+// Public Display Function
 pub fn display_console(
     batch: &[TelemetryData],
     timeline_width: usize,
     compact_display: bool,
     event_attr_globs: &Option<GlobSet>,
     event_severity_attribute_name: &str,
+    theme: Theme,
 ) -> Result<()> {
+    // Debug logging with theme
+    tracing::debug!("Display console called with theme={:?}", theme);
+
     let mut spans_with_service: Vec<(Span, String)> = Vec::new();
 
     for item in batch {
@@ -109,7 +261,7 @@ pub fn display_console(
     };
 
     for (trace_id, spans_in_trace_with_service) in traces {
-        // --- Print Trace ID Header ---
+        // Print Trace ID Header
         let trace_heading = format!("Trace ID: {}", trace_id);
         // Calculate padding based on total table width
         let trace_padding = total_table_width.saturating_sub(trace_heading.len() + 3); // 3 for " ─ " and spaces
@@ -235,13 +387,14 @@ pub fn display_console(
                 trace_duration_ns,
                 timeline_width,
                 compact_display,
+                theme,
             )?;
         }
         table.printstd();
 
         // Display sorted events *for this trace*
         if !trace_events.is_empty() {
-            // --- Print Events Header ---
+            // Print Events Header
             let events_heading = format!("Events for Trace: {}", trace_id);
             // Calculate padding based on total table width
             let events_padding = total_table_width.saturating_sub(events_heading.len() + 3);
@@ -263,25 +416,35 @@ pub fn display_console(
                     }
                 }
 
-                // Apply red color to span ID if it's an error span
+                // Get color based on theme and service name
+                let color = theme.get_color_for_service(&event.service_name);
+                let (r, g, b) = color;
+
+                // Apply service color to span ID unless it's an error
                 let colored_span_id = if event.is_error {
-                    event.span_id.red().to_string()
+                    event
+                        .span_id
+                        .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
+                        .to_string()
                 } else {
-                    event.span_id.cyan().to_string()
+                    event.span_id.truecolor(r, g, b).to_string()
                 };
 
                 // Color the level based on its value
                 let colored_level = match event.level.to_uppercase().as_str() {
-                    "ERROR" => event.level.red().bold(),
+                    "ERROR" => event
+                        .level
+                        .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
+                        .bold(),
                     "WARN" | "WARNING" => event.level.yellow().bold(),
-                    _ => event.level.normal().bold(), // Keep others bold but default color
+                    _ => event.level.bright_black().bold(), // Keep others bold but with subdued color
                 };
 
                 let log_line_start = format!(
                     "{} {} [{}] [{}] {}",
                     formatted_time.bright_black(),
                     colored_span_id,
-                    event.service_name.yellow(),
+                    event.service_name.truecolor(r, g, b), // Use service-specific color
                     colored_level,
                     event.name,
                 );
@@ -302,7 +465,7 @@ pub fn display_console(
     Ok(())
 }
 
-// --- Private Helper Functions ---
+// Private Helper Functions
 
 fn find_service_name(attrs: &[KeyValue]) -> String {
     attrs
@@ -372,6 +535,7 @@ fn build_console_span(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn add_span_to_table(
     table: &mut Table,
     node: &ConsoleSpan,
@@ -380,20 +544,30 @@ fn add_span_to_table(
     trace_duration_ns: u64,
     timeline_width: usize,
     compact_display: bool,
+    theme: Theme,
 ) -> Result<()> {
     let indent = "  ".repeat(depth);
+
+    // Get color based on theme and service name
+    let (r, g, b) = theme.get_color_for_service(&node.service_name);
+
     let service_name_content = node
         .service_name
         .chars()
         .take(SERVICE_NAME_WIDTH)
-        .collect::<String>();
+        .collect::<String>()
+        .truecolor(r, g, b) // More distinct color
+        .to_string();
+
     let span_name_width = SPAN_NAME_WIDTH.saturating_sub(indent.len());
     let truncated_span_name = node.name.chars().take(span_name_width).collect::<String>();
     let span_name_cell_content = format!("{} {}", indent, truncated_span_name);
 
     let duration_ms = node.duration_ns as f64 / 1_000_000.0;
     let colored_duration = if node.status_code == status::StatusCode::Error {
-        format!("{:.2}", duration_ms).red().to_string()
+        format!("{:.2}", duration_ms)
+            .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
+            .to_string()
     } else {
         format!("{:.2}", duration_ms).bright_black().to_string()
     };
@@ -405,6 +579,7 @@ fn add_span_to_table(
         trace_duration_ns,
         timeline_width,
         node.status_code,
+        (r, g, b), // Pass service color to render_bar
     );
 
     if compact_display {
@@ -416,18 +591,20 @@ fn add_span_to_table(
         ]);
     } else {
         let span_id_content = node.id.chars().take(SPAN_ID_WIDTH).collect::<String>();
-        // Color span ID if error
+        // Color span ID with service color unless it's an error
         let colored_span_id = if node.status_code == status::StatusCode::Error {
-            span_id_content.red().to_string()
+            span_id_content
+                .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
+                .to_string()
         } else {
-            span_id_content // No color change for non-error spans
+            span_id_content.truecolor(r, g, b).to_string() // Use service color for span IDs
         };
 
         table.add_row(row![
             service_name_content,
             span_name_cell_content,
             colored_duration,
-            colored_span_id, // Use colored span id
+            colored_span_id,
             bar_cell_content
         ]);
     }
@@ -444,6 +621,7 @@ fn add_span_to_table(
             trace_duration_ns,
             timeline_width,
             compact_display,
+            theme,
         )?;
     }
 
@@ -457,6 +635,7 @@ fn render_bar(
     trace_duration_ns: u64,
     timeline_width: usize,
     status_code: status::StatusCode,
+    service_color: (u8, u8, u8), // Add service color parameter
 ) -> String {
     if trace_duration_ns == 0 {
         return " ".repeat(timeline_width);
@@ -465,16 +644,23 @@ fn render_bar(
     let offset_ns = start_time_ns.saturating_sub(trace_start_time_ns);
     let offset_fraction = offset_ns as f64 / trace_duration_ns as f64;
     let duration_fraction = duration_ns as f64 / trace_duration_ns as f64;
-    let start_char_f = offset_fraction * timeline_width_f;
-    let end_char_f = start_char_f + (duration_fraction * timeline_width_f);
+    let start_pos = (offset_fraction * timeline_width_f).floor() as usize;
+    let end_pos = ((offset_fraction + duration_fraction) * timeline_width_f).ceil() as usize;
     let mut bar = String::with_capacity(timeline_width);
+
+    // Use a simpler, consistent block for better visualization
     for i in 0..timeline_width {
-        let cell_midpoint = i as f64 + 0.5;
-        if cell_midpoint >= start_char_f && cell_midpoint < end_char_f {
+        if i >= start_pos && i < end_pos.min(timeline_width) {
             if status_code == status::StatusCode::Error {
-                bar.push_str(&'▄'.to_string().red().to_string());
+                bar.push_str(
+                    &'▄'
+                        .to_string()
+                        .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
+                        .to_string(),
+                );
             } else {
-                bar.push_str(&'▄'.to_string().truecolor(128, 128, 128).to_string());
+                let (r, g, b) = service_color;
+                bar.push_str(&'▄'.to_string().truecolor(r, g, b).to_string());
             }
         } else {
             bar.push(' ');

@@ -300,7 +300,7 @@ async fn check_lambda_edge_variant(
                     lgs.iter()
                         .any(|lg| lg.log_group_name.as_deref() == Some(&edge_name))
                 }) {
-                    tracing::info!(log_group = %edge_name, "Found and validated Lambda@Edge log group variant"); // Keep info for success
+                    tracing::debug!(log_group = %edge_name, "Found and validated Lambda@Edge log group variant"); // Keep info for success
                     Ok(Some(edge_name))
                 } else {
                     tracing::warn!(log_group = %original_name, edge_variant = %edge_name, "Original log group and Lambda@Edge variant not found/matched. Skipping.");

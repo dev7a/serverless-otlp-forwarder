@@ -45,3 +45,4 @@ uv.lock
 
 .DS_Store
 notes/**
+forwarders/experimental/aws-span-processor/config/
