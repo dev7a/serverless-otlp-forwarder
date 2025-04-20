@@ -1,4 +1,4 @@
-# livetrace 🚀
+# OTLP Stdout livetrace
 
 `livetrace` is a command-line tool designed to enhance local development workflows when working with distributed tracing in serverless environments, particularly those following the **OTLP-stdout Forwarder Architecture**.
 
