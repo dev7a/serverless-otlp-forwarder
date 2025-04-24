@@ -118,10 +118,10 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine};
 use bon::bon;
 use flate2::{write::GzEncoder, Compression};
-use futures_util::future::BoxFuture;
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use opentelemetry_proto::transform::common::tonic::ResourceAttributesWithSchema;
 use opentelemetry_proto::transform::trace::tonic::group_spans_by_resource_and_scope;
+use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::resource::Resource;
 use opentelemetry_sdk::{
     error::OTelSdkError,
@@ -580,7 +580,10 @@ impl SpanExporter for OtlpStdoutSpanExporter {
     /// # Returns
     ///
     /// Returns a resolved future with `Ok(())` if the export was successful, or a `TraceError` if it failed
-    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, Result<(), OTelSdkError>> {
+    fn export(
+        &self,
+        batch: Vec<SpanData>,
+    ) -> impl std::future::Future<Output = OTelSdkResult> + Send {
         // Do all work synchronously
         let result = (|| {
             // Convert spans to OTLP format
@@ -866,7 +869,7 @@ mod tests {
 
         // Create exporter with no compression (level 0)
         let no_compression_output = Arc::new(TestOutput::new());
-        let mut no_compression_exporter = OtlpStdoutSpanExporter {
+        let no_compression_exporter = OtlpStdoutSpanExporter {
             compression_level: 0,
             resource: None,
             output: no_compression_output.clone() as Arc<dyn Output>,
@@ -878,7 +881,7 @@ mod tests {
 
         // Create exporter with max compression (level 9)
         let max_compression_output = Arc::new(TestOutput::new());
-        let mut max_compression_exporter = OtlpStdoutSpanExporter {
+        let max_compression_exporter = OtlpStdoutSpanExporter {
             compression_level: 9,
             resource: None,
             output: max_compression_output.clone() as Arc<dyn Output>,
@@ -941,7 +944,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_export_single_span() {
-        let (mut exporter, output) = OtlpStdoutSpanExporter::with_test_output();
+        let (exporter, output) = OtlpStdoutSpanExporter::with_test_output();
         let span = create_test_span();
 
         let result = exporter.export(vec![span]).await;
@@ -974,7 +977,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_export_empty_batch() {
-        let mut exporter = OtlpStdoutSpanExporter::default();
+        let exporter = OtlpStdoutSpanExporter::default();
         let result = exporter.export(vec![]).await;
         assert!(result.is_ok());
     }
@@ -1037,7 +1040,7 @@ mod tests {
         let explicit_output = Arc::new(TestOutput::new());
 
         // Create an exporter with the default() method which will use the environment variable
-        let mut explicit_exporter = OtlpStdoutSpanExporter::builder()
+        let explicit_exporter = OtlpStdoutSpanExporter::builder()
             .output(explicit_output.clone())
             .build();
 

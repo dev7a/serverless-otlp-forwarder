@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2024-06-07
+
+### Changed
+- Upgraded OpenTelemetry dependencies from 0.28.0 to 0.29.0
+- Updated API implementation to match OpenTelemetry SDK 0.29.0 changes
+- Addressed breaking changes and deprecations introduced in OpenTelemetry 0.29.0
+- Added separate example for named pipe and stdout output
+
 ## [0.13.0] - 2025-03-27
 
 ### Added
