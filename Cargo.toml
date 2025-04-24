@@ -8,7 +8,8 @@ members = [
     "demo/rust",
     "benchmark",
     "benchmark/proxy", 
-    "packages/rust/lambda-otel-lite/examples"
+    "packages/rust/lambda-otel-lite/examples",
+    "cli/livetrace"
 ]
 
 resolver = "2"
@@ -39,36 +40,38 @@ futures-executor = "0.3.31"
 tokio-test = "0.4.4"
 
 # OpenTelemetry and tracing
-opentelemetry = { version = "0.28.0", features = ["trace"] }
-opentelemetry-http = { version = "0.28.0" }
-opentelemetry_sdk = { version = "0.28.0", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.28.0", features = ["http-proto", "http-json", "reqwest-client"] }
-opentelemetry-proto = { version = "0.28.0", features = ["gen-tonic", "trace"] }
-opentelemetry-aws = { version = "0.16.0", features = ["detector-aws-lambda"] }
+opentelemetry = { version = "0.29.1", features = ["trace"] }
+opentelemetry-http = { version = "0.29.0" }
+opentelemetry_sdk = { version = "0.29.0", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.29.0", features = ["http-proto", "http-json", "reqwest-client"] }
+opentelemetry-proto = { version = "0.29.0", features = ["gen-tonic", "trace"] }
+opentelemetry-aws = { version = "0.17.0", features = ["detector-aws-lambda"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.29.0"
+tracing-opentelemetry = "0.30.0"
 log = "0.4"
 reqwest-tracing = { version = "0.5.6", features = ["opentelemetry_0_28"] }
 
 # AWS related
-aws-config = { version = "1.5.7", features = ["behavior-version-latest"] }
-aws-smithy-runtime-api = { version = "1.7.3", features = ["http-1x"] }
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-sts = { version = "1", features = ["behavior-version-latest"] }
+aws-smithy-runtime-api = { version = "1", features = ["http-1x"] }
 aws_lambda_events = { version = "0.16.0", default-features = false, features = ["apigw", "alb", "sqs"] }
 lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
-aws-credential-types = "1.1.4"
+aws-credential-types = "1"
 aws-sdk-secretsmanager = { version = "1.48.0", features = ["behavior-version-latest"] }
-aws-sigv4 = "1.2.6"
+aws-sigv4 = "1"
 lambda-extension = "0.11.0"
 serde_dynamo = { version = "4.2.14", features = ["aws-sdk-dynamodb+1"] }
-aws-sdk-lambda = "1.59.0"
-aws-sdk-cloudformation = "1.26.0"
-aws-sdk-dynamodb = "1.43.0"
+aws-sdk-lambda = "1"
+aws-sdk-cloudformation = "1"
+aws-sdk-dynamodb = "1"
 aws-sdk-kinesis = { version = "1", default-features = false, features = ["rt-tokio"] }
+aws-sdk-cloudwatchlogs = { version = "1.76.0", features = ["behavior-version-latest"] }
 
 # HTTP and networking
 reqwest = { version = "0.12.7", default-features = false, features = ["json", "rustls-tls"] }
-http = "1.1.0"
+http = "1.3.1"
 reqwest-middleware = "0.4.1"
 tower = "0.5.2"
 url = "2.5.3"
@@ -80,18 +83,18 @@ serde_yaml = "0.9"
 prost = "0.13.5"
 
 # Error handling
-thiserror = "2.0.4"
-anyhow = "1.0.94"
+thiserror = "2.0"
+anyhow = "1.0"
 
 # Utilities and helpers
 base64 = "0.22.1"
 flate2 = "1.0"
-regex = "1.11.1"
-pin-project = "1.1.8"
+regex = "1.11"
+pin-project = "1.1"
 bytes = "1.7"
-chrono = "0.4.39"
+chrono = "0.4"
 uuid = { version = "1.0", features = ["v4"] }
-urlencoding = "2.1.3"
+urlencoding = "2.1"
 bon = "3.5"
 lazy_static = "1.5.0"
 libc = "0.2"
@@ -101,6 +104,9 @@ statrs = "0.18.0"
 clap = { version = "4.4.8", features = ["derive"] }
 indicatif = { version = "0.17", features = ["improved_unicode"] }
 headless_chrome = "1.0.9"
+toml = "0.8.20"
+globset = "0.4"
+once_cell = "1.21.3"
 
 # Macros and code generation
 proc-macro2 = "1.0"
@@ -116,7 +122,13 @@ serial_test = "3.2.0"
 wiremock = "0.6"
 mockito = "1.2"
 doc-comment = "0.3"
-rand = "0.9.0"
+rand = "0.9"
+colored = "2.0"
+hex = "0.4"
+prettytable-rs = "0.10"
+nix = "0.29.0"
+scopeguard = "1.2"
+tempfile = "3.8"
 
 [profile.release]
 opt-level = "z"
