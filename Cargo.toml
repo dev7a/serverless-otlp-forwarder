@@ -50,24 +50,24 @@ tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-opentelemetry = "0.30.0"
 log = "0.4"
-reqwest-tracing = { version = "0.5.6", features = ["opentelemetry_0_28"] }
+reqwest-tracing = { version = "0.5.7", features = ["opentelemetry_0_29"] }
 
 # AWS related
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-sdk-sts = { version = "1", features = ["behavior-version-latest"] }
 aws-smithy-runtime-api = { version = "1", features = ["http-1x"] }
-aws_lambda_events = { version = "0.16.0", default-features = false, features = ["apigw", "alb", "sqs"] }
-lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
 aws-credential-types = "1"
-aws-sdk-secretsmanager = { version = "1.48.0", features = ["behavior-version-latest"] }
+aws-sdk-secretsmanager = { version = "1", features = ["behavior-version-latest"] }
 aws-sigv4 = "1"
-lambda-extension = "0.11.0"
-serde_dynamo = { version = "4.2.14", features = ["aws-sdk-dynamodb+1"] }
 aws-sdk-lambda = "1"
 aws-sdk-cloudformation = "1"
 aws-sdk-dynamodb = "1"
 aws-sdk-kinesis = { version = "1", default-features = false, features = ["rt-tokio"] }
-aws-sdk-cloudwatchlogs = { version = "1.76.0", features = ["behavior-version-latest"] }
+aws-sdk-cloudwatchlogs = { version = "1", features = ["behavior-version-latest"] }
+lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
+lambda-extension = "0.11.0"
+aws_lambda_events = { version = "0.16.0", default-features = false, features = ["apigw", "alb", "sqs"] }
+serde_dynamo = { version = "4.2.14", features = ["aws-sdk-dynamodb+1"] }
 
 # HTTP and networking
 reqwest = { version = "0.12.7", default-features = false, features = ["json", "rustls-tls"] }
@@ -135,3 +135,4 @@ opt-level = "z"
 lto = true
 codegen-units = 1
 panic = "abort"
+

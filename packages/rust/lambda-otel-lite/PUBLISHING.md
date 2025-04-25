@@ -13,6 +13,7 @@ Before publishing a new version of `lambda-otel-lite`, ensure all these items ar
 - [ ] `homepage` URL is valid
 - [ ] `documentation` URL is specified
 - [ ] Dependencies are up-to-date and correct
+- [ ] Validate that otlp-stdout-span-exporter is not just using the workspace version, but is pinned to the last version
 - [ ] No extraneous dependencies
 - [ ] Development dependencies are in `[dev-dependencies]`
 - [ ] Feature flags are correctly defined

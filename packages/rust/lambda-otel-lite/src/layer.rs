@@ -374,7 +374,6 @@ where
 mod tests {
     use super::*;
     use crate::ProcessorMode;
-    use futures_util::future::BoxFuture;
     use lambda_runtime::Context;
     use opentelemetry::trace::TracerProvider as _;
     use opentelemetry_sdk::{
@@ -404,11 +403,12 @@ mod tests {
 
     impl SpanExporter for CountingExporter {
         fn export(
-            &mut self,
+            &self,
             batch: Vec<SpanData>,
-        ) -> BoxFuture<'static, opentelemetry_sdk::error::OTelSdkResult> {
+        ) -> impl std::future::Future<Output = opentelemetry_sdk::error::OTelSdkResult> + Send
+        {
             self.export_count.fetch_add(batch.len(), Ordering::SeqCst);
-            Box::pin(futures_util::future::ready(Ok(())))
+            futures_util::future::ready(Ok(()))
         }
 
         fn shutdown(&mut self) -> opentelemetry_sdk::error::OTelSdkResult {

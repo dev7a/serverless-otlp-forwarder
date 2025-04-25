@@ -364,7 +364,7 @@ where
                 return Ok(());
             }
 
-            let mut exporter = self.exporter.lock().map_err(|_| {
+            let exporter = self.exporter.lock().map_err(|_| {
                 OTelSdkError::InternalFailure(
                     "Failed to acquire exporter lock in force_flush".to_string(),
                 )
@@ -422,7 +422,7 @@ mod tests {
         trace::{SpanEvents, SpanLinks},
     };
     use serial_test::serial;
-    use std::{borrow::Cow, future::Future, pin::Pin, sync::Arc};
+    use std::{borrow::Cow, sync::Arc};
     use tokio::sync::Mutex;
 
     fn setup_test_logger() -> Logger {
@@ -445,9 +445,10 @@ mod tests {
 
     impl SpanExporter for MockExporter {
         fn export(
-            &mut self,
+            &self,
             batch: Vec<SpanData>,
-        ) -> Pin<Box<dyn Future<Output = OTelSdkResult> + Send>> {
+        ) -> impl std::future::Future<Output = opentelemetry_sdk::error::OTelSdkResult> + Send
+        {
             let spans = self.spans.clone();
             Box::pin(async move {
                 let mut spans = spans.lock().await;

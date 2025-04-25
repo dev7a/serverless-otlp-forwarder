@@ -23,7 +23,13 @@ impl Display for ErrorType {
 /// Simple nested function that creates its own span.
 #[instrument(skip(event), level = "info", err)]
 async fn nested_function(event: &ApiGatewayV2httpRequest) -> Result<String, ErrorType> {
-    info!("Nested function called");
+    tracing::event!(
+        name: "example.info",
+        tracing::Level::INFO,
+        "event.body" = "Nested function called",
+        "event.severity_text" = "info",
+        "event.severity_number" = 9
+    );
 
     // Simulate random errors if the path is /error
     if event.raw_path.as_deref() == Some("/error") {
@@ -53,9 +59,12 @@ async fn handler(
     current_span.set_attribute("request.id", request_id.to_string());
 
     // Log the full event payload like in Python version
-    info!(
-        event = serde_json::to_string(&event.payload).unwrap_or_default(),
-        "handling request"
+    tracing::event!(
+        name: "example.info",
+        tracing::Level::INFO,
+        "event.body" = serde_json::to_string(&event.payload).unwrap_or_default(),
+        "event.severity_text" = "info",
+        "event.severity_number" = 9
     );
 
     // Call the nested function and handle potential errors
@@ -70,7 +79,13 @@ async fn handler(
         }
         Err(ErrorType::Expected) => {
             // Log the error and return a 400 Bad Request
-            error!("Expected error occurred");
+            tracing::event!(
+              name:"example.error",
+              tracing::Level::ERROR,
+              "event.body" = "This is an expected error",
+              "event.severity_text" = "error",
+              "event.severity_number" = 10,
+            );
 
             // Return a 400 Bad Request for expected errors
             Ok(ApiGatewayV2httpResponse {
@@ -81,13 +96,20 @@ async fn handler(
         }
         Err(ErrorType::Unexpected) => {
             // For other errors, propagate them up
-            error!("Unexpected error occurred");
+            tracing::event!(
+              name:"example.error",
+              tracing::Level::ERROR,
+              "event.body" = "This is an unexpected error",
+              "event.severity_text" = "error",
+              "event.severity_number" = 10,
+            );
 
             // Set span status to ERROR like in Python version
             current_span.set_status(Status::Error {
                 description: Cow::Borrowed("Unexpected error occurred"),
             });
 
+            // propagate the error
             Err(Error::from("Unexpected error occurred"))
         }
     }

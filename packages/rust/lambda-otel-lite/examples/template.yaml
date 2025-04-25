@@ -26,7 +26,7 @@ Resources:
       BuildProperties:
         Binary: handler-example
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-handler-example'
+      FunctionName: !Sub '${AWS::StackName}-handler-example'
       CodeUri: ./
       Handler: bootstrap
       Description: 'Demo Handler Example Lambda function to showcase OpenTelemetry integration'
@@ -44,7 +44,7 @@ Resources:
       BuildProperties:
         Binary: tower-example
     Properties:
-      FunctionName: !Sub '${AWS::StackName}-lambda-tower-example'
+      FunctionName: !Sub '${AWS::StackName}-tower-example'
       CodeUri: ./
       Handler: bootstrap
       Runtime: provided.al2023

@@ -1,0 +1,11 @@
+version = 0.1
+[default.global.parameters]
+beta_features = "yes"
+stack_name = "lambda-otel-lite-rust"
+
+[default.deploy.parameters]
+resolve_s3 = true
+s3_prefix = "lambda-otel-lite-rust"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []

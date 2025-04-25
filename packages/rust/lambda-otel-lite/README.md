@@ -325,7 +325,7 @@ use lambda_runtime::Error;
 async fn main() -> Result<(), Error> {
     let config = TelemetryConfig::builder()
         .with_span_processor(SimpleSpanProcessor::new(
-            Box::new(OtlpStdoutSpanExporter::default())
+            OtlpStdoutSpanExporter::default()
         ))
         .enable_fmt_layer(true)
         .build();

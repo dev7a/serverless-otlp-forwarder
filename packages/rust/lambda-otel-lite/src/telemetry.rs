@@ -70,7 +70,7 @@
 //! async fn main() -> Result<(), Error> {
 //!     let config = TelemetryConfig::builder()
 //!         .with_span_processor(SimpleSpanProcessor::new(
-//!             Box::new(OtlpStdoutSpanExporter::default())
+//!             OtlpStdoutSpanExporter::default()
 //!         ))
 //!         .enable_fmt_layer(true)
 //!         .build();
@@ -341,7 +341,7 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
     /// // Only use builder when adding custom processors
     /// let config = TelemetryConfig::builder()
     ///     .with_span_processor(SimpleSpanProcessor::new(
-    ///         Box::new(OtlpStdoutSpanExporter::default())
+    ///         OtlpStdoutSpanExporter::default()
     ///     ))
     ///     .build();
     /// ```
@@ -722,9 +722,7 @@ mod tests {
 
         // Test with explicit tracecontext propagator
         let config = TelemetryConfig::builder()
-            .with_span_processor(SimpleSpanProcessor::new(Box::new(
-                OtlpStdoutSpanExporter::default(),
-            )))
+            .with_span_processor(SimpleSpanProcessor::new(OtlpStdoutSpanExporter::default()))
             .with_named_propagator("tracecontext")
             .build();
         assert_eq!(config.propagators.len(), 1);
@@ -904,9 +902,7 @@ mod tests {
     fn test_completion_handler_sync_mode() {
         let provider = Arc::new(
             SdkTracerProvider::builder()
-                .with_span_processor(SimpleSpanProcessor::new(Box::new(
-                    OtlpStdoutSpanExporter::default(),
-                )))
+                .with_span_processor(SimpleSpanProcessor::new(OtlpStdoutSpanExporter::default()))
                 .build(),
         );
 
@@ -922,9 +918,7 @@ mod tests {
     async fn test_completion_handler_async_mode() {
         let provider = Arc::new(
             SdkTracerProvider::builder()
-                .with_span_processor(SimpleSpanProcessor::new(Box::new(
-                    OtlpStdoutSpanExporter::default(),
-                )))
+                .with_span_processor(SimpleSpanProcessor::new(OtlpStdoutSpanExporter::default()))
                 .build(),
         );
 
@@ -946,9 +940,7 @@ mod tests {
     fn test_completion_handler_finalize_mode() {
         let provider = Arc::new(
             SdkTracerProvider::builder()
-                .with_span_processor(SimpleSpanProcessor::new(Box::new(
-                    OtlpStdoutSpanExporter::default(),
-                )))
+                .with_span_processor(SimpleSpanProcessor::new(OtlpStdoutSpanExporter::default()))
                 .build(),
         );
 
@@ -966,9 +958,7 @@ mod tests {
     fn test_completion_handler_clone() {
         let provider = Arc::new(
             SdkTracerProvider::builder()
-                .with_span_processor(SimpleSpanProcessor::new(Box::new(
-                    OtlpStdoutSpanExporter::default(),
-                )))
+                .with_span_processor(SimpleSpanProcessor::new(OtlpStdoutSpanExporter::default()))
                 .build(),
         );
 
@@ -989,9 +979,7 @@ mod tests {
     fn test_completion_handler_sync_mode_error_handling() {
         let provider = Arc::new(
             SdkTracerProvider::builder()
-                .with_span_processor(SimpleSpanProcessor::new(Box::new(
-                    OtlpStdoutSpanExporter::default(),
-                )))
+                .with_span_processor(SimpleSpanProcessor::new(OtlpStdoutSpanExporter::default()))
                 .build(),
         );
 
@@ -1006,9 +994,7 @@ mod tests {
     async fn test_completion_handler_async_mode_error_handling() {
         let provider = Arc::new(
             SdkTracerProvider::builder()
-                .with_span_processor(SimpleSpanProcessor::new(Box::new(
-                    OtlpStdoutSpanExporter::default(),
-                )))
+                .with_span_processor(SimpleSpanProcessor::new(OtlpStdoutSpanExporter::default()))
                 .build(),
         );
 
