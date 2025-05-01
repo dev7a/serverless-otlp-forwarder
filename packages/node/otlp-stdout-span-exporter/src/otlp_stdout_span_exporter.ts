@@ -106,7 +106,7 @@ class StdOutput implements Output {
  * Named pipe output implementation
  */
 class NamedPipeOutput implements Output {
-  private readonly pipePath: string;
+  public readonly pipePath: string;
   private pipeExists: boolean;
 
   constructor() {
@@ -366,12 +366,41 @@ export class OTLPStdoutSpanExporter implements SpanExporter {
    * @param resultCallback - Callback to report the success/failure of the export
    */
   export(spans: ReadableSpan[], resultCallback: (result: ExportResult) => void): void {
+    // Check for empty batch and pipe output configuration
+    if (spans.length === 0 && this.output instanceof NamedPipeOutput) {
+      try {
+        // Perform the "pipe touch" operation: write an empty string to the pipe.
+        // fs.writeFile handles open/write/close.
+        fs.writeFile(this.output.pipePath, '', (err) => {
+          if (err) {
+            diag.error('Error touching pipe:', err);
+            resultCallback({ code: ExportResultCode.FAILED, error: err as Error });
+          } else {
+            resultCallback({ code: ExportResultCode.SUCCESS });
+          }
+        });
+      } catch (e) {
+        // Catch synchronous errors during writeFile setup (unlikely)
+        diag.error('Synchronous error during pipe touch setup:', e);
+        resultCallback({ code: ExportResultCode.FAILED, error: e as Error });
+      }
+      return; // Don't proceed with normal export logic
+    }
+
+    // Original export logic for non-empty batches or stdout output
     try {
+      // Add safety check: If spans somehow became empty after the initial check,
+      // or if output is not pipe, do nothing for stdout or return success.
+      if (spans.length === 0) {
+        return resultCallback({ code: ExportResultCode.SUCCESS });
+      }
+      
       // Serialize spans to protobuf format using the OTLP transformer
       const serializedData = ProtobufTraceSerializer.serializeRequest(spans);
-      if (!serializedData) {
-        diag.error('Failed to serialize spans');
-        return resultCallback({ code: ExportResultCode.FAILED });
+      if (!serializedData || serializedData.length === 0) {
+        // Handle case where serialization yields empty data (e.g., invalid spans)
+        diag.warn('ProtobufTraceSerializer.serializeRequest resulted in empty data.');
+        return resultCallback({ code: ExportResultCode.SUCCESS }); // Nothing valid to export
       }
 
       // Compress the serialized data using GZIP with configured compression level

@@ -7,6 +7,7 @@ import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 import { ExportResultCode } from '@opentelemetry/core';
 import * as zlib from 'zlib';
 import * as fs from 'fs';
+import { ProtobufTraceSerializer } from '@opentelemetry/otlp-transformer';
 
 jest.mock('zlib', () => ({
   gzipSync: jest.fn(() => Buffer.from('mock-compressed-data')),
@@ -71,10 +72,35 @@ describe('OTLPStdoutSpanExporter', () => {
     expect(mockWrite).not.toHaveBeenCalled();
   });
 
+  // Add a helper function to create a mock span at the top of the file
+  function createMockSpan(): ReadableSpan {
+    return {
+      name: 'test-span',
+      kind: 0,
+      spanContext: () => ({
+        traceId: '0af7651916cd43dd8448eb211c80319c',
+        spanId: 'b7ad6b7169203331',
+        traceFlags: 1,
+        isRemote: false,
+      }),
+      parentSpanId: undefined,
+      startTime: [1, 2],
+      endTime: [1, 3],
+      ended: true,
+      status: { code: 0 },
+      attributes: {},
+      links: [],
+      events: [],
+      duration: [0, 1],
+      resource: { attributes: {} },
+      instrumentationLibrary: { name: 'test', version: '1.0.0', schemaUrl: '' },
+    } as unknown as ReadableSpan;
+  }
+
   it('should use environment variables for service name', () => {
     process.env.OTEL_SERVICE_NAME = 'test-service';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -85,7 +111,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should fallback to AWS_LAMBDA_FUNCTION_NAME', () => {
     process.env.AWS_LAMBDA_FUNCTION_NAME = 'lambda-function';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -95,7 +121,7 @@ describe('OTLPStdoutSpanExporter', () => {
 
   it('should use custom gzip level from config', () => {
     const _exporter = new OTLPStdoutSpanExporter({ gzipLevel: zlib.constants.Z_BEST_COMPRESSION });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(zlib.gzipSync).toHaveBeenCalledWith(
@@ -108,7 +134,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should use compression level from environment variable', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = '3';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(zlib.gzipSync).toHaveBeenCalledWith(
@@ -121,7 +147,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should use environment variable over explicit config for compression level', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = '3';
     const _exporter = new OTLPStdoutSpanExporter({ gzipLevel: 8 });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(zlib.gzipSync).toHaveBeenCalledWith(
@@ -134,7 +160,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should handle invalid compression level in environment variable', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = 'invalid';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(zlib.gzipSync).toHaveBeenCalledWith(
@@ -147,7 +173,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should handle out-of-range compression level in environment variable', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL = '10'; // Out of range
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(zlib.gzipSync).toHaveBeenCalledWith(
@@ -171,7 +197,7 @@ describe('OTLPStdoutSpanExporter', () => {
     });
 
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(_result.code).toBe(ExportResultCode.FAILED);
@@ -180,7 +206,7 @@ describe('OTLPStdoutSpanExporter', () => {
 
   it('should return success on successful export', () => {
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(_result.code).toBe(ExportResultCode.SUCCESS);
@@ -189,7 +215,7 @@ describe('OTLPStdoutSpanExporter', () => {
 
   it('should include all required fields in output', () => {
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -211,7 +237,7 @@ describe('OTLPStdoutSpanExporter', () => {
   // Tests for log level support
   it('should not include level field when no log level is set', () => {
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -221,7 +247,7 @@ describe('OTLPStdoutSpanExporter', () => {
 
   it('should include log level from config', () => {
     const _exporter = new OTLPStdoutSpanExporter({ logLevel: LogLevel.Debug });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -232,7 +258,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should use log level from environment variable', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL = 'warn';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -243,7 +269,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should use environment variable over explicit config for log level', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL = 'error';
     const _exporter = new OTLPStdoutSpanExporter({ logLevel: LogLevel.Info });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -254,7 +280,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should handle invalid log level in environment variable', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_LOG_LEVEL = 'invalid';
     const _exporter = new OTLPStdoutSpanExporter({ logLevel: LogLevel.Info });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -265,7 +291,7 @@ describe('OTLPStdoutSpanExporter', () => {
   // Tests for named pipe output
   it('should use stdout by default', () => {
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(mockWrite).toHaveBeenCalled();
@@ -275,7 +301,7 @@ describe('OTLPStdoutSpanExporter', () => {
 
   it('should use named pipe when configured', () => {
     const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(fs.writeFile).toHaveBeenCalled();
@@ -286,7 +312,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should use output type from environment variable', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE = 'pipe';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(fs.writeFile).toHaveBeenCalled();
@@ -297,7 +323,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should use environment variable over explicit config for output type', () => {
     process.env.OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE = 'pipe';
     const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Stdout });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(fs.writeFile).toHaveBeenCalled();
@@ -308,7 +334,7 @@ describe('OTLPStdoutSpanExporter', () => {
   it('should fallback to stdout if pipe does not exist', () => {
     jest.spyOn(fs, 'existsSync').mockReturnValueOnce(false);
     const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(mockWrite).toHaveBeenCalled();
@@ -317,16 +343,56 @@ describe('OTLPStdoutSpanExporter', () => {
 
   it('should fallback to stdout if pipe write fails', () => {
     jest.spyOn(fs, 'writeFile').mockImplementationOnce((path, data, callback) => {
-      if (typeof callback === 'function') {
+      if (typeof callback === 'function' && typeof data === 'string' && data.length > 0) {
         callback(new Error('Write to pipe failed'));
+      } else if (typeof callback === 'function') {
+        callback(null); // Let empty string writes succeed for pipe touch operation
       }
     });
     
     const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createMockSpan()]; // Use non-empty spans
     
     _exporter.export(spans, (_result) => {
       expect(mockWrite).toHaveBeenCalled();
+    });
+  });
+
+  it('should perform pipe touch operation for empty spans with pipe output', () => {
+    const writeFileSpy = jest.spyOn(fs, 'writeFile');
+    const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
+    const emptySpans: ReadableSpan[] = [];
+    
+    _exporter.export(emptySpans, (result) => {
+      // Verify fs.writeFile was called with empty string
+      expect(writeFileSpy).toHaveBeenCalledWith(
+        '/tmp/otlp-stdout-span-exporter.pipe',
+        '',
+        expect.any(Function)
+      );
+      // Verify serializeRequest was not called for empty spans
+      expect(ProtobufTraceSerializer.serializeRequest)
+        .not.toHaveBeenCalled();
+      // Verify successful result
+      expect(result.code).toBe(ExportResultCode.SUCCESS);
+    });
+  });
+
+  it('should handle errors during pipe touch operation', () => {
+    jest.spyOn(fs, 'writeFile').mockImplementationOnce((path, data, callback) => {
+      if (typeof callback === 'function') {
+        callback(new Error('Pipe touch failed'));
+      }
+    });
+    
+    const _exporter = new OTLPStdoutSpanExporter({ outputType: OutputType.Pipe });
+    const emptySpans: ReadableSpan[] = [];
+    
+    _exporter.export(emptySpans, (result) => {
+      // Verify error is returned
+      expect(result.code).toBe(ExportResultCode.FAILED);
+      expect(result.error).toBeDefined();
+      expect(result.error?.message).toBe('Pipe touch failed');
     });
   });
 });
@@ -360,9 +426,34 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
     jest.clearAllMocks();
   });
 
+  // Create a mock span for all tests in this describe block
+  function createHeaderTestSpan(): ReadableSpan {
+    return {
+      name: 'header-test-span',
+      kind: 0,
+      spanContext: () => ({
+        traceId: '1af7651916cd43dd8448eb211c80319c',
+        spanId: 'a7ad6b7169203332',
+        traceFlags: 1,
+        isRemote: false,
+      }),
+      parentSpanId: undefined,
+      startTime: [1, 2],
+      endTime: [1, 3],
+      ended: true,
+      status: { code: 0 },
+      attributes: {},
+      links: [],
+      events: [],
+      duration: [0, 1],
+      resource: { attributes: {} },
+      instrumentationLibrary: { name: 'test', version: '1.0.0', schemaUrl: '' },
+    } as unknown as ReadableSpan;
+  }
+
   it('should not include headers section when no headers defined', () => {
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createHeaderTestSpan()]; // Use non-empty spans
     
     _exporter.export(spans, () => {});
     const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -372,7 +463,7 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
   it('should parse headers from OTEL_EXPORTER_OTLP_HEADERS', () => {
     process.env.OTEL_EXPORTER_OTLP_HEADERS = 'api-key=secret123,custom-header=value';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createHeaderTestSpan()]; // Use non-empty spans
     
     _exporter.export(spans, () => {});
     const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -385,7 +476,7 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
   it('should parse headers from OTEL_EXPORTER_OTLP_TRACES_HEADERS', () => {
     process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS = 'trace-key=value123,other-header=test';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createHeaderTestSpan()]; // Use non-empty spans
     
     _exporter.export(spans, () => {});
     const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -399,7 +490,7 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
     process.env.OTEL_EXPORTER_OTLP_HEADERS = 'api-key=secret123,shared-key=general';
     process.env.OTEL_EXPORTER_OTLP_TRACES_HEADERS = 'shared-key=specific,trace-key=value123';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createHeaderTestSpan()]; // Use non-empty spans
     
     _exporter.export(spans, () => {});
     const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -413,7 +504,7 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
   it('should handle headers with whitespace', () => {
     process.env.OTEL_EXPORTER_OTLP_HEADERS = ' api-key = secret123 , custom-header = value ';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createHeaderTestSpan()]; // Use non-empty spans
     
     _exporter.export(spans, () => {});
     const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -426,7 +517,7 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
   it('should filter out content-type and content-encoding headers', () => {
     process.env.OTEL_EXPORTER_OTLP_HEADERS = 'content-type=text/plain,content-encoding=none,api-key=secret123';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createHeaderTestSpan()]; // Use non-empty spans
     
     _exporter.export(spans, () => {});
     const output = JSON.parse(mockWrite.mock.calls[0][0] as string);
@@ -438,7 +529,7 @@ describe('OTLPStdoutSpanExporter Header Parsing', () => {
   it('should handle multiple equal signs in header value', () => {
     process.env.OTEL_EXPORTER_OTLP_HEADERS = 'authorization=Basic dXNlcjpwYXNzd29yZA==,api-key=secret=123=456';
     const _exporter = new OTLPStdoutSpanExporter();
-    const spans: ReadableSpan[] = [];
+    const spans: ReadableSpan[] = [createHeaderTestSpan()]; // Use non-empty spans
     
     _exporter.export(spans, () => {});
     const output = JSON.parse(mockWrite.mock.calls[0][0] as string);

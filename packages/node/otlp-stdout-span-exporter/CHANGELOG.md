@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2025-04-28
+
+### Added
+- Added support for generating EOF signals on named pipes when exporting empty span batches
+- Implemented "pipe touch" operation (open and immediately close the pipe) when export is called with empty spans
+
+### Fixed
+- Fixed issue where downstream extensions would hang waiting for EOF when no spans were sampled
+- Resolved edge case where named pipes wouldn't receive EOF signals during empty span flushes
+
+### Changed
+- Version bump to align with other packages in the monorepo
+
 ## [0.13.0] - 2025-04-14
 
 ### Added
