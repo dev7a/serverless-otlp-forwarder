@@ -186,17 +186,11 @@ def init_telemetry(
             EnvVars.QUEUE_SIZE, None, Defaults.QUEUE_SIZE, lambda value: value > 0
         )
 
-        # Get batch size
-        batch_size = get_int_env(
-            EnvVars.BATCH_SIZE, None, Defaults.BATCH_SIZE, lambda value: value > 0
-        )
-
         # Default case: Add LambdaSpanProcessor with OTLPStdoutSpanExporter
         tracer_provider.add_span_processor(
             LambdaSpanProcessor(
                 OTLPStdoutSpanExporter(gzip_level=compression_level),
                 max_queue_size=queue_size,
-                max_export_batch_size=batch_size,
             )
         )
     else:

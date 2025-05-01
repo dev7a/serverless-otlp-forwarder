@@ -85,7 +85,6 @@ def get_lambda_resource(custom_resource: Resource | None = None) -> Resource:
 
     # Parse numeric configuration values - only set if explicitly in environment
     parse_numeric_env(ResourceAttributes.QUEUE_SIZE, EnvVars.QUEUE_SIZE)
-    parse_numeric_env(ResourceAttributes.BATCH_SIZE, EnvVars.BATCH_SIZE)
     parse_numeric_env(ResourceAttributes.COMPRESSION_LEVEL, EnvVars.COMPRESSION_LEVEL)
 
     # OTEL_RESOURCE_ATTRIBUTES are automatically parsed by the Resource create method

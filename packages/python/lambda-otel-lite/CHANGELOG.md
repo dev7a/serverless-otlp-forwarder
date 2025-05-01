@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2025-04-30
+
+### Changed
+- Removed batching logic from `LambdaSpanProcessor.process_spans` - all spans are now exported in a single batch regardless of size
+- Modified `process_spans` to always call the exporter's `export` method, even when the span buffer is empty
+- Updated dependency on `otlp-stdout-span-exporter` to 0.15.0 or greater
+- Fixed issue where extension could hang waiting for EOF when no spans were sampled
+
 ## [0.13.0] - 2025-04-16
 
 ### Added

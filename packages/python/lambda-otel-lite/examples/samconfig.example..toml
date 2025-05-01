@@ -1,0 +1,13 @@
+version = 0.1
+[default.global.parameters]
+stack_name = "lambda-otel-lite-python"
+
+[default.build.parameters]
+build_in_source = true
+
+[default.deploy.parameters]
+resolve_s3 = true
+s3_prefix = "lambda-otel-lite-python"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+image_repositories = []
