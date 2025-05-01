@@ -317,15 +317,25 @@ impl BufferOutput {
     }
 
     /// Retrieves all lines currently in the buffer, clearing the buffer afterwards.
-    pub fn take_lines(&self) -> Vec<String> {
-        let mut guard = self.buffer.lock().expect("Failed to lock buffer mutex");
-        std::mem::take(&mut *guard) // Efficiently swaps the Vec with an empty one
+    pub fn take_lines(&self) -> Result<Vec<String>, OTelSdkError> {
+        let mut guard = self.buffer.lock().map_err(|e| {
+            OTelSdkError::InternalFailure(format!(
+                "Failed to lock buffer mutex for take_lines: {}",
+                e
+            ))
+        })?;
+        Ok(std::mem::take(&mut *guard)) // Efficiently swaps the Vec with an empty one and wraps in Ok
     }
 }
 
 impl Output for BufferOutput {
     fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
-        let mut guard = self.buffer.lock().expect("Failed to lock buffer mutex");
+        let mut guard = self.buffer.lock().map_err(|e| {
+            OTelSdkError::InternalFailure(format!(
+                "Failed to lock buffer mutex for write_line: {}",
+                e
+            ))
+        })?;
         guard.push(line.to_string());
         Ok(())
     }
