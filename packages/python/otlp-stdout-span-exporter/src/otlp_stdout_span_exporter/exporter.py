@@ -318,36 +318,31 @@ class OTLPStdoutSpanExporter(SpanExporter):
         Returns:
             SpanExportResult indicating success or failure
         """
-        # Check for empty batch and pipe output configuration
-        if not spans and isinstance(self._output, NamedPipeOutput):
-            try:
-                # Perform the "pipe touch" operation: open for writing and immediately close.
-                with open(self._output.pipe_path, "w"):
-                    pass  # Just need to open and close
-                return SpanExportResult.SUCCESS
-            except Exception as e:
-                logger.error(f"Error touching pipe: {e}")
-                return SpanExportResult.FAILURE
+        # Check for empty batch first to avoid duplicate checks
+        if not spans:
+            # For empty spans with named pipe, perform the "pipe touch" operation
+            if isinstance(self._output, NamedPipeOutput):
+                try:
+                    # Perform the "pipe touch" operation: open for writing and immediately close
+                    with open(self._output.pipe_path, "w"):
+                        pass  # Just need to open and close
+                    return SpanExportResult.SUCCESS
+                except Exception as e:
+                    logger.error(f"Error touching pipe: {e}")
+                    return SpanExportResult.FAILURE
+            # For stdout output with empty spans, return success without writing anything
+            return SpanExportResult.SUCCESS
 
-        # Original export logic for non-empty batches or stdout output
+        # Process non-empty batches
         try:
             # Serialize spans to protobuf format
-            # Check if spans is non-empty before attempting to serialize
-            if not spans:
-                # If spans somehow became empty after the initial check (unlikely but safe),
-                # or if output is not pipe, we should not proceed with empty serialization.
-                # For stdout, doing nothing is the correct behavior for an empty batch.
-                return SpanExportResult.SUCCESS
-
             serialized_data = encode_spans(spans).SerializeToString()
-            # Note: encode_spans might return an empty bytes string if spans is empty
-            # or contains only invalid data. Let's handle this case.
+
+            # Handle case where serialization returns empty data
             if not serialized_data:
                 logger.debug(
-                    "encode_spans resulted in empty data, likely empty/invalid batch."
+                    "encode_spans resulted in empty data, likely invalid batch."
                 )
-                # Consider if this should be SUCCESS or FAILURE.
-                # SUCCESS seems reasonable as there's nothing valid to export.
                 return SpanExportResult.SUCCESS
 
             # Compress the serialized data using GZIP

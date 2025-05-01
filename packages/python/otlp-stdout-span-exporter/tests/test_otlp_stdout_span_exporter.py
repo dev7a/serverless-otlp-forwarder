@@ -590,20 +590,23 @@ def test_empty_spans_with_pipe_output(
 ) -> None:
     """Test that empty span batch with named pipe output triggers pipe touch."""
     mock_exists, mock_file = mock_file_ops
+
+    # Use path object as expected by the implementation
+    expected_pipe_path = Path(Defaults.PIPE_PATH)
+
+    # Create the exporter with pipe output
     exporter = OTLPStdoutSpanExporter(output_type=OutputType.PIPE)
     spans: list[ReadableSpan] = []  # Empty spans list
 
-    result = exporter.export(spans)
-    assert result == SpanExportResult.SUCCESS
-
-    # Verify that file operations were performed correctly for pipe touch
-    # Verify that open was called with the correct pipe path
-    expected_pipe_path = Path(Defaults.PIPE_PATH)  # Use Path object, not string
-
-    # Check that open was called with the pipe path and write mode
+    # Patch the open function before calling export
     with patch("otlp_stdout_span_exporter.exporter.open") as mock_open:
-        # Re-call the export to capture the open call
-        exporter.export(spans)
+        # Call export once and capture result
+        result = exporter.export(spans)
+
+        # Verify the result was successful
+        assert result == SpanExportResult.SUCCESS
+
+        # Verify open was called with the correct pipe path and mode
         mock_open.assert_called_once_with(expected_pipe_path, "w")
 
     # Verify no write operations occurred
