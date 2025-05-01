@@ -529,7 +529,6 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
 ///         .with_span_processor(
 ///             LambdaSpanProcessor::builder()
 ///                 .exporter(lambda_exporter)
-///                 .max_batch_size(512)
 ///                 .max_queue_size(2048)
 ///                 .build()
 ///         )

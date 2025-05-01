@@ -472,7 +472,6 @@ The crate adds several resource attributes under the `lambda_otel_lite` namespac
 
 - `lambda_otel_lite.extension.span_processor_mode`: Current processing mode (`sync`, `async`, or `finalize`)
 - `lambda_otel_lite.lambda_span_processor.queue_size`: Maximum number of spans that can be queued
-- `lambda_otel_lite.lambda_span_processor.batch_size`: Maximum batch size for span export
 - `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`: GZIP compression level used for span export
 
 These attributes are automatically added to the resource and can be used to understand the telemetry configuration in your observability backend.
@@ -694,7 +693,6 @@ The library uses environment variables for configuration, with a clear precedenc
   - `"async"` for Async mode
   - `"finalize"` for Finalize mode
 - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Maximum spans to queue (default: 2048)
-- `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Maximum batch size (default: 512)
 
 You can also set the processor mode programmatically through the `TelemetryConfig`:
 

@@ -5,7 +5,7 @@ use opentelemetry::trace::Status;
 use rand::Rng;
 use std::borrow::Cow;
 use std::fmt::{self, Display};
-use tracing::{info, instrument};
+use tracing::instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 // Define error type as a simple enum
 #[derive(Debug)]

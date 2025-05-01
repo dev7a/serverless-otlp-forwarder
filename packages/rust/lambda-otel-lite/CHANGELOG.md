@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2025-04-30
+
+### Changed
+- Modified `LambdaSpanProcessor::force_flush` to export all buffered spans in a single batch, ensuring atomicity and supporting the pipe touch mechanism in the exporter.
+- Removed the `max_batch_size` configuration option and `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE` environment variable, as batching during flush is no longer performed.
+
+### Dependency Updates
+- Updated `otlp-stdout-span-exporter` dependency to `0.15.0`.
+
 ## [0.14.0] - 2025-04-21
 ### Changed
 - Updated otlp-stdout-span-exporter dependency to version 0.14.0

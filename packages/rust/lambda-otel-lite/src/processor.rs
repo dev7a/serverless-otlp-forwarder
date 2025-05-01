@@ -29,10 +29,6 @@
 //!   - Defaults to 2048 spans
 //!   - Should be tuned based on span volume
 //!
-//! - `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Controls batch size
-//!   - Defaults to 512 spans
-//!   - Should be tuned based on span volume
-//!
 //! # Usage Examples
 //!
 //! Basic setup with default configuration:
@@ -65,7 +61,6 @@
 //! let processor = LambdaSpanProcessor::builder()
 //!     .exporter(exporter)
 //!     .max_queue_size(4096)
-//!     .max_batch_size(1024)
 //!     .build();
 //! ```
 //!
@@ -203,10 +198,6 @@ impl SpanRingBuffer {
 
         result
     }
-
-    fn is_empty(&self) -> bool {
-        self.size == 0
-    }
 }
 
 /// A span processor optimized for AWS Lambda functions.
@@ -215,6 +206,7 @@ impl SpanRingBuffer {
 /// - Uses a fixed-size ring buffer to prevent memory growth
 /// - Supports synchronous and asynchronous export modes
 /// - Handles graceful shutdown for Lambda termination
+/// - Exports *all* buffered spans in a single batch when `force_flush` is called.
 ///
 /// # Examples
 ///
@@ -236,7 +228,6 @@ impl SpanRingBuffer {
 /// let processor = LambdaSpanProcessor::builder()
 ///     .exporter(OtlpStdoutSpanExporter::default())
 ///     .max_queue_size(1000)
-///     .max_batch_size(100)
 ///     .build();
 /// ```
 #[derive(Debug)]
@@ -255,9 +246,6 @@ where
 
     /// Counter for dropped spans
     dropped_count: AtomicUsize,
-
-    /// Maximum number of spans to export in a single batch
-    max_batch_size: usize,
 }
 
 #[bon]
@@ -275,26 +263,9 @@ where
     /// 3. Default values (lowest precedence)
     ///
     /// The relevant environment variables are:
-    /// - `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Controls the maximum batch size
     /// - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Controls the maximum queue size
     #[builder]
-    pub fn new(exporter: E, max_batch_size: Option<usize>, max_queue_size: Option<usize>) -> Self {
-        // Get batch size with proper precedence (env var > param > default)
-        let max_batch_size = match env::var(env_vars::BATCH_SIZE) {
-            Ok(value) => match value.parse::<usize>() {
-                Ok(size) => size,
-                Err(_) => {
-                    LOGGER.warn(format!(
-                        "Failed to parse {}: {}, using fallback",
-                        env_vars::BATCH_SIZE,
-                        value
-                    ));
-                    max_batch_size.unwrap_or(defaults::BATCH_SIZE)
-                }
-            },
-            Err(_) => max_batch_size.unwrap_or(defaults::BATCH_SIZE),
-        };
-
+    pub fn new(exporter: E, max_queue_size: Option<usize>) -> Self {
         // Get queue size with proper precedence (env var > param > default)
         let max_queue_size = match env::var(env_vars::QUEUE_SIZE) {
             Ok(value) => match value.parse::<usize>() {
@@ -316,7 +287,6 @@ where
             spans: Mutex::new(SpanRingBuffer::new(max_queue_size)),
             is_shutdown: Arc::new(AtomicBool::new(false)),
             dropped_count: AtomicUsize::new(0),
-            max_batch_size,
         }
     }
 }
@@ -359,34 +329,52 @@ where
 
     fn force_flush(&self) -> OTelSdkResult {
         LOGGER.debug("LambdaSpanProcessor.force_flush: flushing spans");
-        if let Ok(mut spans) = self.spans.lock() {
-            if spans.is_empty() {
-                return Ok(());
+
+        // Acquire lock on the span buffer
+        let spans_result = self.spans.lock();
+        let all_spans = match spans_result {
+            Ok(mut spans) => {
+                // Determine the number of spans currently in the buffer
+                let current_size = spans.size;
+                // Drain all spans from the buffer
+                spans.take_batch(current_size)
             }
+            Err(_) => {
+                // If locking the span buffer fails, return an internal error
+                return Err(OTelSdkError::InternalFailure(
+                    "Failed to acquire spans lock in force_flush".to_string(),
+                ));
+            }
+        };
+        // Mutex guard for spans is dropped here, releasing the lock
 
-            let exporter = self.exporter.lock().map_err(|_| {
-                OTelSdkError::InternalFailure(
-                    "Failed to acquire exporter lock in force_flush".to_string(),
-                )
-            })?;
+        // Acquire lock on the exporter
+        let exporter_result = self.exporter.lock();
+        match exporter_result {
+            Ok(exporter) => {
+                // Export all drained spans in a single batch
+                // This handles both empty (all_spans is empty Vec) and non-empty cases
+                let result = futures_executor::block_on(exporter.export(all_spans));
 
-            // Process spans in batches
-            while !spans.is_empty() {
-                let batch = spans.take_batch(self.max_batch_size);
-                if !batch.is_empty() {
-                    let result = futures_executor::block_on(exporter.export(batch));
-                    if let Err(err) = &result {
-                        LOGGER.debug(format!("LambdaSpanProcessor.force_flush.Error: {:?}", err));
-                        return result;
-                    }
+                // Log error if export failed
+                if let Err(ref err) = result {
+                    LOGGER.debug(format!(
+                        "LambdaSpanProcessor.force_flush export error: {:?}",
+                        err
+                    ));
                 }
+
+                // Return the result of the export operation
+                result
             }
-            Ok(())
-        } else {
-            Err(OTelSdkError::InternalFailure(
-                "Failed to acquire spans lock in force_flush".to_string(),
-            ))
+            Err(_) => {
+                // If locking the exporter fails, return an internal error
+                Err(OTelSdkError::InternalFailure(
+                    "Failed to acquire exporter lock in force_flush".to_string(),
+                ))
+            }
         }
+        // Mutex guard for exporter is dropped here, releasing the lock
     }
 
     fn shutdown(&self) -> OTelSdkResult {
@@ -489,7 +477,6 @@ mod tests {
     }
 
     fn cleanup_env() {
-        env::remove_var(env_vars::BATCH_SIZE);
         env::remove_var(env_vars::QUEUE_SIZE);
         env::remove_var(env_vars::PROCESSOR_MODE);
         env::remove_var(env_vars::COMPRESSION_LEVEL);
@@ -502,19 +489,19 @@ mod tests {
         let mut buffer = SpanRingBuffer::new(2);
 
         // Test empty buffer
-        assert!(buffer.is_empty());
+        assert!(buffer.size == 0);
         assert_eq!(buffer.take_batch(2), vec![]);
 
         // Test adding spans
         buffer.push(create_test_span("span1"));
         buffer.push(create_test_span("span2"));
 
-        assert!(!buffer.is_empty());
+        assert!(buffer.size != 0);
 
         // Test taking spans
         let spans = buffer.take_batch(2);
         assert_eq!(spans.len(), 2);
-        assert!(buffer.is_empty());
+        assert!(buffer.size == 0);
     }
 
     #[test]
@@ -549,7 +536,7 @@ mod tests {
         assert_eq!(buffer.take_batch(2).len(), 2);
         assert_eq!(buffer.take_batch(2).len(), 2);
         assert_eq!(buffer.take_batch(2).len(), 1);
-        assert!(buffer.is_empty());
+        assert!(buffer.size == 0);
     }
 
     #[tokio::test]
@@ -562,7 +549,6 @@ mod tests {
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
             .max_queue_size(10)
-            .max_batch_size(5)
             .build();
 
         // Test span processing
@@ -587,7 +573,6 @@ mod tests {
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
             .max_queue_size(10)
-            .max_batch_size(5)
             .build();
 
         // Add some spans
@@ -617,7 +602,6 @@ mod tests {
             LambdaSpanProcessor::builder()
                 .exporter(mock_exporter)
                 .max_queue_size(100)
-                .max_batch_size(25)
                 .build(),
         );
 
@@ -648,33 +632,6 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_batch_processing() {
-        let _logger = setup_test_logger();
-        let mock_exporter = MockExporter::new();
-        let processor = LambdaSpanProcessor::builder()
-            .exporter(mock_exporter)
-            .max_queue_size(10)
-            .max_batch_size(3)
-            .build();
-
-        // Add 5 spans
-        for i in 0..5 {
-            processor.on_end(create_test_span(&format!("span{}", i)));
-        }
-
-        // Force flush should process in batches of 3
-        processor.force_flush().unwrap();
-
-        // Add 2 more spans
-        processor.on_end(create_test_span("span5"));
-        processor.on_end(create_test_span("span6"));
-
-        // Final flush
-        processor.force_flush().unwrap();
-    }
-
-    #[test]
-    #[serial]
     fn test_builder_default_values() {
         cleanup_env();
 
@@ -685,7 +642,6 @@ mod tests {
             .build();
 
         // Check default values
-        assert_eq!(processor.max_batch_size, 512); // Default batch size
         assert_eq!(processor.spans.lock().unwrap().capacity, 2048); // Default queue size
     }
 
@@ -697,7 +653,6 @@ mod tests {
         let mock_exporter = MockExporter::new();
 
         // Set custom values via env vars
-        env::set_var(env_vars::BATCH_SIZE, "100");
         env::set_var(env_vars::QUEUE_SIZE, "1000");
 
         let processor = LambdaSpanProcessor::builder()
@@ -705,7 +660,6 @@ mod tests {
             .build();
 
         // Check that env var values were used
-        assert_eq!(processor.max_batch_size, 100);
         assert_eq!(processor.spans.lock().unwrap().capacity, 1000);
 
         cleanup_env();
@@ -719,18 +673,15 @@ mod tests {
         let mock_exporter = MockExporter::new();
 
         // Set custom values via env vars
-        env::set_var(env_vars::BATCH_SIZE, "100");
         env::set_var(env_vars::QUEUE_SIZE, "1000");
 
         // Create with explicit values (should be overridden by env vars)
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
-            .max_batch_size(50)
             .max_queue_size(500)
             .build();
 
         // Check that env var values took precedence
-        assert_eq!(processor.max_batch_size, 100);
         assert_eq!(processor.spans.lock().unwrap().capacity, 1000);
 
         cleanup_env();
@@ -744,18 +695,15 @@ mod tests {
         let mock_exporter = MockExporter::new();
 
         // Set invalid values via env vars
-        env::set_var(env_vars::BATCH_SIZE, "not_a_number");
         env::set_var(env_vars::QUEUE_SIZE, "invalid");
 
         // Create with explicit values (should be used as fallbacks)
         let processor = LambdaSpanProcessor::builder()
             .exporter(mock_exporter)
-            .max_batch_size(50)
             .max_queue_size(500)
             .build();
 
         // Check that fallback values were used
-        assert_eq!(processor.max_batch_size, 50);
         assert_eq!(processor.spans.lock().unwrap().capacity, 500);
 
         cleanup_env();
