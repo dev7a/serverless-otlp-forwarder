@@ -8,11 +8,8 @@ pub mod env_vars {
     /// Mode for the Lambda Extension span processor (sync or async).
     pub const PROCESSOR_MODE: &str = "LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE";
 
-    /// Maximum number of spans to queue in the LambdaSpanProcessor.
+    /// Maximum queue size for LambdaSpanProcessor.
     pub const QUEUE_SIZE: &str = "LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE";
-
-    /// Maximum batch size for span export.
-    pub const BATCH_SIZE: &str = "LAMBDA_SPAN_PROCESSOR_BATCH_SIZE";
 
     /// Compression level for OTLP stdout span exporter.
     pub const COMPRESSION_LEVEL: &str = "OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL";
@@ -40,9 +37,6 @@ pub mod defaults {
     /// Default maximum queue size for LambdaSpanProcessor.
     pub const QUEUE_SIZE: usize = 2048;
 
-    /// Default maximum batch size for LambdaSpanProcessor.
-    pub const BATCH_SIZE: usize = 512;
-
     /// Default compression level for OTLP stdout span exporter.
     pub const COMPRESSION_LEVEL: u8 = 6;
 
@@ -63,9 +57,6 @@ pub mod resource_attributes {
 
     /// Resource attribute key for queue size.
     pub const QUEUE_SIZE: &str = "lambda_otel_lite.lambda_span_processor.queue_size";
-
-    /// Resource attribute key for batch size.
-    pub const BATCH_SIZE: &str = "lambda_otel_lite.lambda_span_processor.batch_size";
 
     /// Resource attribute key for compression level.
     pub const COMPRESSION_LEVEL: &str =

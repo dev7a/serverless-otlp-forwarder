@@ -99,7 +99,6 @@ use std::env;
 ///
 /// - `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE`: Sets `lambda_otel_lite.extension.span_processor_mode`
 /// - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Sets `lambda_otel_lite.lambda_span_processor.queue_size`
-/// - `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Sets `lambda_otel_lite.lambda_span_processor.batch_size`
 /// - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: Sets `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`
 ///
 /// # Returns
@@ -224,12 +223,6 @@ pub fn get_lambda_resource() -> Resource {
         }
     }
 
-    if let Ok(batch_size) = env::var(env_vars::BATCH_SIZE) {
-        if let Ok(size) = batch_size.parse::<i64>() {
-            attributes.push(KeyValue::new(resource_attributes::BATCH_SIZE, size));
-        }
-    }
-
     if let Ok(compression_level) = env::var(env_vars::COMPRESSION_LEVEL) {
         if let Ok(level) = compression_level.parse::<i64>() {
             attributes.push(KeyValue::new(resource_attributes::COMPRESSION_LEVEL, level));
@@ -254,7 +247,6 @@ mod tests {
         env::remove_var("AWS_LAMBDA_LOG_STREAM_NAME");
         env::remove_var(env_vars::SERVICE_NAME);
         env::remove_var(env_vars::RESOURCE_ATTRIBUTES);
-        env::remove_var(env_vars::BATCH_SIZE);
         env::remove_var(env_vars::QUEUE_SIZE);
         env::remove_var(env_vars::PROCESSOR_MODE);
         env::remove_var(env_vars::COMPRESSION_LEVEL);
@@ -434,13 +426,11 @@ mod tests {
 
         // Verify that configuration attributes are not set
         assert!(find_attr(&attrs, resource_attributes::QUEUE_SIZE).is_none());
-        assert!(find_attr(&attrs, resource_attributes::BATCH_SIZE).is_none());
         assert!(find_attr(&attrs, resource_attributes::PROCESSOR_MODE).is_none());
         assert!(find_attr(&attrs, resource_attributes::COMPRESSION_LEVEL).is_none());
 
         // Set environment variables
         env::set_var(env_vars::QUEUE_SIZE, "4096");
-        env::set_var(env_vars::BATCH_SIZE, "1024");
         env::set_var(env_vars::PROCESSOR_MODE, "async");
         env::set_var(env_vars::COMPRESSION_LEVEL, "9");
 
@@ -455,10 +445,6 @@ mod tests {
         assert_eq!(
             find_attr(&attrs_with_env, resource_attributes::QUEUE_SIZE),
             Some(&opentelemetry::Value::I64(4096))
-        );
-        assert_eq!(
-            find_attr(&attrs_with_env, resource_attributes::BATCH_SIZE),
-            Some(&opentelemetry::Value::I64(1024))
         );
         assert_eq!(
             find_attr(&attrs_with_env, resource_attributes::PROCESSOR_MODE),
@@ -479,7 +465,6 @@ mod tests {
 
         // Set invalid environment variables
         env::set_var(env_vars::QUEUE_SIZE, "not_a_number");
-        env::set_var(env_vars::BATCH_SIZE, "invalid");
         env::set_var(env_vars::COMPRESSION_LEVEL, "high");
 
         // Create resource with invalid environment variables
@@ -488,7 +473,6 @@ mod tests {
 
         // Verify that configuration attributes with invalid values are not set
         assert!(find_attr(&attrs, resource_attributes::QUEUE_SIZE).is_none());
-        assert!(find_attr(&attrs, resource_attributes::BATCH_SIZE).is_none());
         assert!(find_attr(&attrs, resource_attributes::COMPRESSION_LEVEL).is_none());
 
         // But the mode attribute should be set since it's a string
