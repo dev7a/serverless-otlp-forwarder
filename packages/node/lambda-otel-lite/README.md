@@ -336,7 +336,6 @@ The package adds several resource attributes under the `lambda_otel_lite` namesp
 
 - `lambda_otel_lite.extension.span_processor_mode`: Current processing mode (`sync`, `async`, or `finalize`)
 - `lambda_otel_lite.lambda_span_processor.queue_size`: Maximum number of spans that can be queued
-- `lambda_otel_lite.lambda_span_processor.batch_size`: Maximum batch size for span export
 - `lambda_otel_lite.otlp_stdout_span_exporter.compression_level`: GZIP compression level used for span export
 
 These attributes are **only added to the resource when the corresponding environment variables are explicitly set**. This ensures that the recorded resource attributes accurately reflect the actual configuration values used by the components.
@@ -510,7 +509,6 @@ The package can be configured using the following environment variables. All con
   - `async`: Deferred export via extension
   - `finalize`: Custom export strategy
 - `LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE`: Maximum number of spans to queue (default: 2048)
-- `LAMBDA_SPAN_PROCESSOR_BATCH_SIZE`: Maximum number of spans to export in each batch (default: 512)
 
 ### Resource Configuration
 - `OTEL_SERVICE_NAME`: Override the service name (defaults to function name)

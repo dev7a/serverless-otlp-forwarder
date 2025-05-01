@@ -66,14 +66,14 @@ describe('LambdaSpanProcessor', () => {
     expect(exporter.spans.length).toBe(numSpans);
   });
 
-  it('should shutdown and flush remaining spans', async () => {
+  it('should shutdown cleanly without exporting after shutdown flag', async () => {
     const span = createTestSpan();
     processor.onStart(createSpan(), context.active());
     processor.onEnd(span);
 
     await processor.shutdown();
     expect(exporter.shutdownOnce).toBe(true);
-    expect(exporter.spans.length).toBe(1);
+    expect(exporter.spans.length).toBe(0);
   });
 
   it('should drop spans when maxQueueSize is reached', async () => {
@@ -93,19 +93,19 @@ describe('LambdaSpanProcessor', () => {
     expect(exporter.spans[0].name).toBe('span-1');
   });
 
-  it('should handle multiple shutdown calls gracefully', async () => {
+  it('should handle multiple shutdown calls gracefully without duplicate exports', async () => {
     const span = createTestSpan();
     processor.onStart(createSpan(), context.active());
     processor.onEnd(span);
 
     await processor.shutdown();
     expect(exporter.shutdownOnce).toBe(true);
-    expect(exporter.spans.length).toBe(1);
+    expect(exporter.spans.length).toBe(0);
 
     // Second shutdown should be no-op
     await processor.shutdown();
     expect(exporter.shutdownOnce).toBe(true); // Should not change
-    expect(exporter.spans.length).toBe(1); // Should not change
+    expect(exporter.spans.length).toBe(0); // Should not change
   });
 
   it('should not accept spans after shutdown', async () => {
@@ -174,5 +174,26 @@ describe('LambdaSpanProcessor', () => {
     await processor.forceFlush();
     expect(exporter.spans.length).toBe(1);
     expect(exporter.spans[0].attributes).toEqual(testAttributes);
+  });
+
+  it('should always call exporter even with empty span buffer', async () => {
+    // Create empty processor with no spans
+    const emptyProcessor = new LambdaSpanProcessor(exporter);
+    
+    // Mock exporter to track calls with empty arrays
+    let exportCalledWithEmptyArray = false;
+    const originalExport = exporter.export;
+    exporter.export = function(spans, callback) {
+      if (spans.length === 0) {
+        exportCalledWithEmptyArray = true;
+      }
+      callback({ code: ExportResultCode.SUCCESS });
+    };
+
+    await emptyProcessor.forceFlush();
+    expect(exportCalledWithEmptyArray).toBe(true);
+    
+    // Restore original export function
+    exporter.export = originalExport;
   });
 });

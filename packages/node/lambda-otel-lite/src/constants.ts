@@ -23,11 +23,6 @@ export const ENV_VARS = {
   QUEUE_SIZE: 'LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE',
 
   /**
-   * Maximum number of spans to export in each batch (default: 512)
-   */
-  BATCH_SIZE: 'LAMBDA_SPAN_PROCESSOR_BATCH_SIZE',
-
-  /**
    * GZIP compression level for stdout exporter:
    * - 0: No compression
    * - 1: Best speed
@@ -63,11 +58,6 @@ export const DEFAULTS = {
   QUEUE_SIZE: 2048,
 
   /**
-   * Default maximum number of spans to export in each batch
-   */
-  BATCH_SIZE: 512,
-
-  /**
    * Default GZIP compression level
    */
   COMPRESSION_LEVEL: 6,
@@ -96,11 +86,6 @@ export const RESOURCE_ATTRIBUTES = {
    * Maximum number of spans that can be queued
    */
   QUEUE_SIZE: 'lambda_otel_lite.lambda_span_processor.queue_size',
-
-  /**
-   * Maximum batch size for span export
-   */
-  BATCH_SIZE: 'lambda_otel_lite.lambda_span_processor.batch_size',
 
   /**
    * GZIP compression level used for span export

@@ -91,9 +91,6 @@ export function getLambdaResource(): Resource {
   // Add queue size attribute only when environment variable is set
   parseNumericAttribute(RESOURCE_ATTRIBUTES.QUEUE_SIZE, process.env[ENV_VARS.QUEUE_SIZE]);
 
-  // Add batch size attribute only when environment variable is set
-  parseNumericAttribute(RESOURCE_ATTRIBUTES.BATCH_SIZE, process.env[ENV_VARS.BATCH_SIZE]);
-
   // Add compression level attribute only when environment variable is set
   parseNumericAttribute(
     RESOURCE_ATTRIBUTES.COMPRESSION_LEVEL,

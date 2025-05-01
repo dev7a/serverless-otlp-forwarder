@@ -111,7 +111,6 @@ export { getLambdaResource } from './resource';
  * Environment Variables:
  * - LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: Processing mode (sync, async, finalize)
  * - LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: Maximum spans to queue (default: 2048)
- * - LAMBDA_SPAN_PROCESSOR_BATCH_SIZE: Maximum batch size (default: 512)
  * - OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL: GZIP level (default: 6)
  * - OTEL_SERVICE_NAME: Service name (defaults to function name)
  * - OTEL_RESOURCE_ATTRIBUTES: Additional resource attributes (key=value,...)

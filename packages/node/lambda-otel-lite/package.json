@@ -1,6 +1,6 @@
 {
   "name": "@dev7a/lambda-otel-lite",
-  "version": "0.13.0",
+  "version": "0.15.0",
   "description": "Lightweight OpenTelemetry instrumentation for AWS Lambda",
   "license": "MIT",
   "keywords": [
@@ -62,7 +62,7 @@
     "test:watch": "jest -c jest.config.ts --watch"
   },
   "dependencies": {
-    "@dev7a/otlp-stdout-span-exporter": "^0.13.0",
+    "@dev7a/otlp-stdout-span-exporter": "^0.15.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/core": "^1.30.1",
     "@opentelemetry/propagator-aws-xray": "^1.3.1",

@@ -1,7 +1,7 @@
 import { Span } from '@opentelemetry/sdk-trace-base';
 import { Context, TraceFlags } from '@opentelemetry/api';
 import { SpanProcessor, ReadableSpan, SpanExporter } from '@opentelemetry/sdk-trace-base';
-import { ExportResult } from '@opentelemetry/core';
+import { ExportResult, ExportResultCode } from '@opentelemetry/core';
 import { createLogger } from '../logger';
 import { ENV_VARS, DEFAULTS } from '../../constants';
 import { getNumericValue } from '../config';
@@ -99,21 +99,14 @@ export interface LambdaSpanProcessorConfig {
    * Environment variable LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE takes precedence if set.
    */
   maxQueueSize?: number;
-
-  /**
-   * Maximum number of spans to export in each batch (default: 512).
-   * Lower values reduce event loop blocking but may decrease throughput.
-   * Environment variable LAMBDA_SPAN_PROCESSOR_BATCH_SIZE takes precedence if set.
-   */
-  maxExportBatchSize?: number;
 }
 
 /**
- * Implementation of the SpanProcessor that batches spans exported by the SDK.
+ * Implementation of the SpanProcessor that buffers spans exported by the SDK.
  * This processor is specifically designed for AWS Lambda environments, optimizing for:
  * 1. Memory efficiency using a circular buffer
- * 2. Non-blocking batch exports that yield to the event loop
- * 3. Configurable batch sizes to balance throughput and latency
+ * 2. Non-blocking exports that yield to the event loop
+ * 3. Configurable queue size to manage memory usage
  *
  * Configuration Precedence:
  * 1. Environment variables (highest precedence)
@@ -122,14 +115,12 @@ export interface LambdaSpanProcessorConfig {
  *
  * Environment Variables:
  * - LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: Maximum spans to queue (default: 2048)
- * - LAMBDA_SPAN_PROCESSOR_BATCH_SIZE: Maximum batch size (default: 512)
  *
  * @example
  * ```typescript
  * const exporter = new OTLPExporter();
  * const processor = new LambdaSpanProcessor(exporter, {
- *   maxQueueSize: 2048,      // Maximum number of spans that can be buffered
- *   maxExportBatchSize: 512  // Maximum number of spans to export in each batch
+ *   maxQueueSize: 2048      // Maximum number of spans that can be buffered
  * });
  * ```
  */
@@ -137,7 +128,6 @@ export class LambdaSpanProcessor implements SpanProcessor {
   private readonly buffer: CircularBuffer<ReadableSpan>;
   private isShutdown = false;
   private droppedSpansCount = 0;
-  private readonly maxExportBatchSize: number;
 
   /**
    * Creates a new LambdaSpanProcessor.
@@ -147,9 +137,6 @@ export class LambdaSpanProcessor implements SpanProcessor {
    * @param config.maxQueueSize - Maximum number of spans that can be buffered.
    *                              Environment variable LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE takes precedence if set.
    *                              Defaults to 2048 if neither environment variable nor parameter is provided.
-   * @param config.maxExportBatchSize - Maximum number of spans to export in each batch.
-   *                                    Environment variable LAMBDA_SPAN_PROCESSOR_BATCH_SIZE takes precedence if set.
-   *                                    Defaults to 512 if neither environment variable nor parameter is provided.
    */
   constructor(
     private readonly exporter: SpanExporter,
@@ -160,14 +147,6 @@ export class LambdaSpanProcessor implements SpanProcessor {
       ENV_VARS.QUEUE_SIZE,
       config?.maxQueueSize,
       DEFAULTS.QUEUE_SIZE,
-      (value) => value > 0
-    );
-
-    // Set batch size with proper precedence using helper function
-    this.maxExportBatchSize = getNumericValue(
-      ENV_VARS.BATCH_SIZE,
-      config?.maxExportBatchSize,
-      DEFAULTS.BATCH_SIZE,
       (value) => value > 0
     );
 
@@ -186,7 +165,20 @@ export class LambdaSpanProcessor implements SpanProcessor {
       logger.warn('Cannot force flush - span processor is shutdown');
       return Promise.resolve();
     }
-    return this.flush();
+    
+    // Get all spans from buffer (might be empty)
+    const spansToExport = this.buffer.drain();
+    
+    // Always call export, even with empty spans array, to ensure EOF signal is properly triggered
+    return new Promise<void>((resolve, reject) => {
+      this.exporter.export(spansToExport, (result: ExportResult) => {
+        if (result.code === ExportResultCode.SUCCESS) {
+          resolve();
+        } else {
+          reject(result.error || new Error('Failed to export spans'));
+        }
+      });
+    });
   }
 
   /**
@@ -242,44 +234,6 @@ export class LambdaSpanProcessor implements SpanProcessor {
     }
   }
 
-  private async flush(): Promise<void> {
-    if (this.buffer.size === 0) {
-      logger.debug('no spans to flush');
-      return;
-    }
-
-    // Use a recursive pattern with setImmediate to ensure each batch processing
-    // occurs in its own event loop tick. This prevents event loop blocking by:
-    // 1. Processing one batch at a time
-    // 2. Yielding to the event loop between batches via setImmediate
-    // 3. Allowing other operations to interleave between batch processing
-    logger.debug(`flushing ${this.buffer.size} spans`);
-    return new Promise<void>((resolve, reject) => {
-      const processNextBatch = () => {
-        // Get next batch using configured batch size
-        const spansToExport = this.buffer.drainBatch(this.maxExportBatchSize);
-
-        if (spansToExport.length === 0) {
-          resolve();
-          return;
-        }
-
-        // Export without additional Promise wrapping
-        this.exporter.export(spansToExport, (result: ExportResult) => {
-          if (result.code === 0) {
-            // Schedule next batch in a new event loop tick
-            setImmediate(processNextBatch);
-          } else {
-            reject(result.error || new Error('Failed to export spans'));
-          }
-        });
-      };
-
-      // Start processing
-      processNextBatch();
-    });
-  }
-
   /**
    * Shuts down the processor and flushes any remaining spans.
    * After shutdown, no new spans will be accepted.
@@ -288,7 +242,7 @@ export class LambdaSpanProcessor implements SpanProcessor {
    */
   async shutdown(): Promise<void> {
     this.isShutdown = true;
-    await this.flush();
+    await this.forceFlush();
     await this.exporter.shutdown();
   }
 }

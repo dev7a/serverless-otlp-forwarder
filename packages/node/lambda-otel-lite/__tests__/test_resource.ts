@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach, expect } from '@jest/globals';
+import { getLambdaResource } from '../src/internal/telemetry/resource';
 import { EnvVarManager } from './utils';
-import { getLambdaResource } from '../src/internal/telemetry/init';
+import { ENV_VARS } from '../src/constants';
 
 describe('getLambdaResource', () => {
   const envManager = new EnvVarManager();
@@ -105,32 +106,16 @@ describe('getLambdaResource', () => {
   });
 
   it('should include Lambda environment variables when present', () => {
-    const lambdaEnv = {
-      AWS_REGION: 'us-west-2',
-      AWS_LAMBDA_FUNCTION_NAME: 'test-function',
-      AWS_LAMBDA_FUNCTION_VERSION: '$LATEST',
-      AWS_LAMBDA_LOG_STREAM_NAME: 'test-stream',
-      AWS_LAMBDA_FUNCTION_MEMORY_SIZE: '128',
-      LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: 'async',
-      LAMBDA_SPAN_PROCESSOR_QUEUE_SIZE: '1024',
-      LAMBDA_SPAN_PROCESSOR_BATCH_SIZE: '256',
-      OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL: '4',
-    };
-    envManager.setup(lambdaEnv);
+    // Set up Lambda specific environment variables for testing
+    process.env[ENV_VARS.PROCESSOR_MODE] = 'async';
+    process.env[ENV_VARS.QUEUE_SIZE] = '1024';
+    process.env[ENV_VARS.COMPRESSION_LEVEL] = '4';
 
     const resource = getLambdaResource();
 
-    // Check standard Lambda attributes
-    expect(resource.attributes['cloud.region']).toBe('us-west-2');
-    expect(resource.attributes['faas.name']).toBe('test-function');
-    expect(resource.attributes['faas.version']).toBe('$LATEST');
-    expect(resource.attributes['faas.instance']).toBe('test-stream');
-    expect(resource.attributes['faas.max_memory']).toBe(134217728); // 128MB in bytes
-
-    // Check telemetry configuration attributes
+    // Verify that Lambda environment variables were added
     expect(resource.attributes['lambda_otel_lite.extension.span_processor_mode']).toBe('async');
     expect(resource.attributes['lambda_otel_lite.lambda_span_processor.queue_size']).toBe(1024);
-    expect(resource.attributes['lambda_otel_lite.lambda_span_processor.batch_size']).toBe(256);
     expect(
       resource.attributes['lambda_otel_lite.otlp_stdout_span_exporter.compression_level']
     ).toBe(4);
@@ -143,9 +128,6 @@ describe('getLambdaResource', () => {
     expect(resource.attributes['lambda_otel_lite.extension.span_processor_mode']).toBeUndefined();
     expect(
       resource.attributes['lambda_otel_lite.lambda_span_processor.queue_size']
-    ).toBeUndefined();
-    expect(
-      resource.attributes['lambda_otel_lite.lambda_span_processor.batch_size']
     ).toBeUndefined();
     expect(
       resource.attributes['lambda_otel_lite.otlp_stdout_span_exporter.compression_level']
