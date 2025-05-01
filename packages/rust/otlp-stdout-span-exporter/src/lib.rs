@@ -132,13 +132,13 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     env,
-    fmt::Display,
+    fmt::{self, Display},
     fs::OpenOptions,
     io::{self, Write},
     path::PathBuf,
     result::Result,
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 mod constants;
@@ -201,7 +201,7 @@ impl Display for LogLevel {
 ///
 /// This trait defines the interface for writing output lines. It is implemented
 /// by both the standard output handler and named pipe output handlers.
-trait Output: Send + Sync + std::fmt::Debug + std::any::Any {
+pub trait Output: Send + Sync + std::fmt::Debug + std::any::Any {
     /// Writes a single line of output
     ///
     /// # Arguments
@@ -212,6 +212,27 @@ trait Output: Send + Sync + std::fmt::Debug + std::any::Any {
     ///
     /// Returns `Ok(())` if the write was successful, or a `TraceError` if it failed
     fn write_line(&self, line: &str) -> Result<(), OTelSdkError>;
+
+    /// Checks if the output target is a named pipe.
+    ///
+    /// Returns `true` if the output is configured to write to a named pipe,
+    /// `false` otherwise (e.g., stdout).
+    fn is_pipe(&self) -> bool;
+
+    /// Performs a "touch" operation on the output target, primarily for named pipes.
+    ///
+    /// For named pipes, this should open and immediately close the pipe for writing
+    /// to generate an EOF signal for readers.
+    /// For other output types (like stdout), this is typically a no-op.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if the touch was successful or is a no-op,
+    /// or a `TraceError` if opening/closing the pipe failed.
+    fn touch_pipe(&self) -> Result<(), OTelSdkError> {
+        // Default implementation is a no-op
+        Ok(())
+    }
 }
 
 /// Standard output implementation that writes to stdout
@@ -228,6 +249,10 @@ impl Output for StdOutput {
         writeln!(handle, "{}", line).map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
 
         Ok(())
+    }
+
+    fn is_pipe(&self) -> bool {
+        false // Stdout is not a pipe
     }
 }
 
@@ -263,6 +288,58 @@ impl Output for NamedPipeOutput {
         })?;
 
         Ok(())
+    }
+
+    fn is_pipe(&self) -> bool {
+        true // This implementation is for named pipes
+    }
+
+    fn touch_pipe(&self) -> Result<(), OTelSdkError> {
+        // Open the pipe for writing and immediately close it (RAII handles close)
+        let _file = OpenOptions::new()
+            .write(true)
+            .open(&self.path)
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to touch pipe: {}", e)))?;
+        Ok(())
+    }
+}
+
+/// An Output implementation that writes lines to an internal buffer.
+#[derive(Clone, Default)]
+pub struct BufferOutput {
+    buffer: Arc<Mutex<Vec<String>>>,
+}
+
+impl BufferOutput {
+    /// Creates a new, empty BufferOutput.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Retrieves all lines currently in the buffer, clearing the buffer afterwards.
+    pub fn take_lines(&self) -> Vec<String> {
+        let mut guard = self.buffer.lock().expect("Failed to lock buffer mutex");
+        std::mem::take(&mut *guard) // Efficiently swaps the Vec with an empty one
+    }
+}
+
+impl Output for BufferOutput {
+    fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
+        let mut guard = self.buffer.lock().expect("Failed to lock buffer mutex");
+        guard.push(line.to_string());
+        Ok(())
+    }
+
+    fn is_pipe(&self) -> bool {
+        false // BufferOutput is not a pipe
+    }
+}
+
+// Need to implement Debug manually as Mutex doesn't implement Debug
+impl fmt::Debug for BufferOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Avoid locking the mutex in debug formatting if possible, or provide minimal info
+        f.debug_struct("BufferOutput").finish_non_exhaustive()
     }
 }
 
@@ -584,7 +661,14 @@ impl SpanExporter for OtlpStdoutSpanExporter {
         &self,
         batch: Vec<SpanData>,
     ) -> impl std::future::Future<Output = OTelSdkResult> + Send {
-        // Do all work synchronously
+        // Check for empty batch and pipe output configuration
+        if batch.is_empty() && self.output.is_pipe() {
+            // Perform the "pipe touch" operation: open for writing and immediately close.
+            let touch_result = self.output.touch_pipe();
+            return Box::pin(std::future::ready(touch_result));
+        }
+
+        // Original export logic for non-empty batches or stdout output
         let result = (|| {
             // Convert spans to OTLP format
             let resource = self
@@ -686,9 +770,6 @@ use doc_comment::doctest;
 #[cfg(doctest)]
 doctest!("../README.md", readme);
 
-#[cfg(test)]
-use std::sync::Mutex;
-
 /// Test output implementation that captures to a buffer
 #[cfg(test)]
 #[derive(Debug, Default)]
@@ -715,6 +796,12 @@ impl Output for TestOutput {
         self.buffer.lock().unwrap().push(line.to_string());
         Ok(())
     }
+
+    fn is_pipe(&self) -> bool {
+        false // TestOutput is not a pipe
+    }
+
+    // touch_pipe uses the default no-op implementation
 }
 
 #[cfg(test)]

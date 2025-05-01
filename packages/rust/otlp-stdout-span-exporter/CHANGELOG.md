@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2025-04-30
+
+### Fixed
+- Ensure named pipe output performs an open/close operation (generating EOF) even when exporting an empty batch of spans. This guarantees downstream pipe readers receive a signal after every flush, even if no spans were sampled.
+
+### Added
+- Added `BufferOutput` struct, an `Output` implementation useful for testing that captures lines to an internal buffer.
+- Added `is_pipe()` and `touch_pipe()` methods to the public `Output` trait.
+
+### Changed
+- Made the `Output` trait public (`pub trait Output`).
+- Updated `nix` dependency to use workspace version.
+- Removed unused `futures-util` dependency.
+
 ## [0.14.0] - 2024-06-07
 
 ### Changed
