@@ -1,0 +1,148 @@
+# .github/workflows/reusable-release-cli.yml
+name: Reusable CLI Release
+
+on:
+  workflow_call:
+    inputs:
+      cli_name:
+        description: 'Short name of the CLI (e.g., "livetrace")'
+        required: true
+        type: string
+      manifest_path:
+        description: 'Path to the Cargo.toml for the CLI'
+        required: true
+        type: string
+      binary_name:
+        description: 'Name of the executable binary file'
+        required: true
+        type: string
+      tag_name:
+        description: 'The Git tag that triggered this release (e.g., "cli/livetrace-v0.1.0")'
+        required: true
+        type: string
+      build_features:
+        description: 'Comma-separated list of features to enable during build (e.g., "screenshots")'
+        required: false
+        type: string
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.75" 
+
+jobs:
+  build_and_upload_binaries:
+    name: Build ${{ inputs.cli_name }} on ${{ matrix.target_os }}-${{ matrix.target_arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_os: linux
+            target_arch: x86_64
+            os: ubuntu-latest
+            target_triple: x86_64-unknown-linux-gnu
+            artifact_suffix: linux-amd64
+          - target_os: macos
+            target_arch: x86_64
+            os: macos-latest
+            target_triple: x86_64-apple-darwin
+            artifact_suffix: macos-amd64
+          - target_os: macos
+            target_arch: arm64
+            os: macos-latest 
+            target_triple: aarch64-apple-darwin
+            artifact_suffix: macos-arm64
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: ${{ matrix.target_triple }}
+
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . 
+
+      - name: Configure cross-compilation for macOS ARM64
+        if: matrix.target_triple == 'aarch64-apple-darwin'
+        run: |
+          echo "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=clang" >> $GITHUB_ENV
+          echo "CC_aarch64_apple_darwin=clang" >> $GITHUB_ENV
+
+      - name: Build CLI
+        run: |
+          FEATURES_ARG=""
+          if [[ -n "${{ inputs.build_features }}" ]]; then
+            FEATURES_ARG="--features ${{ inputs.build_features }}"
+          fi
+          cargo build --release --manifest-path ${{ inputs.manifest_path }} --target ${{ matrix.target_triple }} $FEATURES_ARG
+        env:
+          OPENSSL_STATIC: ${{ matrix.target_os == 'linux' && 'true' || '' }}
+
+      - name: Prepare artifact
+        id: prepare_artifact
+        run: |
+          ARTIFACT_DIR="staging/${{ inputs.cli_name }}-${{ matrix.artifact_suffix }}"
+          mkdir -p "$ARTIFACT_DIR"
+          SOURCE_BINARY_PATH="target/${{ matrix.target_triple }}/release/${{ inputs.binary_name }}"
+          DEST_BINARY_NAME="${{ inputs.binary_name }}-${{ matrix.artifact_suffix }}"
+          # Handle .exe for Windows if added later
+          # if [[ "${{ matrix.target_os }}" == "windows" ]]; then DEST_BINARY_NAME="${DEST_BINARY_NAME}.exe"; fi
+          cp "$SOURCE_BINARY_PATH" "$ARTIFACT_DIR/$DEST_BINARY_NAME"
+          echo "artifact_path=$ARTIFACT_DIR/$DEST_BINARY_NAME" >> $GITHUB_OUTPUT
+          echo "artifact_upload_name=${{ inputs.cli_name }}-${{ matrix.artifact_suffix }}" >> $GITHUB_OUTPUT
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.prepare_artifact.outputs.artifact_upload_name }}
+          path: ${{ steps.prepare_artifact.outputs.artifact_path }}
+          if-no-files-found: error
+
+  create_github_release:
+    name: Create GitHub Release for ${{ inputs.cli_name }}
+    needs: build_and_upload_binaries
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+    steps:
+      - name: Download all binary artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-cli-binaries
+
+      - name: List downloaded files
+        run: ls -R all-cli-binaries
+
+      - name: Generate Release Name
+        id: release_name_generator
+        run: |
+          TAG_NAME="${{ inputs.tag_name }}"
+          CLI_NAME="${{ inputs.cli_name }}"
+          # Remove "cli/<cli_name>-" prefix, e.g., "cli/livetrace-v0.1.0" -> "v0.1.0"
+          VERSION_PART="${TAG_NAME#cli/$CLI_NAME-}"
+          RELEASE_NAME="$CLI_NAME $VERSION_PART"
+          echo "release_name=$RELEASE_NAME" >> $GITHUB_OUTPUT
+          echo "Generated Release Name: $RELEASE_NAME"
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: ${{ steps.release_name_generator.outputs.release_name }} # Use the generated name
+          draft: false
+          prerelease: false 
+          files: |
+            all-cli-binaries/${{ inputs.cli_name }}-linux-amd64/*
+            all-cli-binaries/${{ inputs.cli_name }}-macos-amd64/*
+            all-cli-binaries/${{ inputs.cli_name }}-macos-arm64/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,54 @@
+# .github/workflows/pr-check-livetrace.yml
+name: PR Checks for livetrace CLI
+
+on:
+  pull_request:
+    paths:
+      - 'cli/livetrace/**'
+    types: [opened, synchronize, reopened, ready_for_review]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.75" 
+
+jobs:
+  check_livetrace:
+    name: Check livetrace on ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os_name: ubuntu-latest # Standard x86_64 runner
+            arch: amd64
+            rust_target: x86_64-unknown-linux-gnu
+          - os_name: ubuntu-latest-arm64 # ARM64 runner
+            arch: arm64
+            rust_target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.os_name }}
+    defaults:
+      run:
+        working-directory: cli/livetrace
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: rustfmt, clippy
+          # target: ${{ matrix.rust_target }} # Not strictly needed for host checks unless cross-compiling tests
+
+      - name: Set up Rust cache for livetrace (${{ matrix.arch }})
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: pr-livetrace-${{ matrix.arch }}-${{ runner.os }}-${{ hashFiles('cli/livetrace/Cargo.lock') }}
+
+      - name: Run quality checks for livetrace (${{ matrix.arch }})
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings # --all-targets can help catch platform-specific lints
+          cargo test --all-features
+
+      - name: Attempt to build livetrace (${{ matrix.arch }})
+        run: cargo build --all-features

@@ -1,0 +1,19 @@
+# .github/workflows/release-livetrace.yml
+name: Release livetrace CLI
+
+on:
+  push:
+    tags:
+      - 'cli/livetrace-v*'
+
+jobs:
+  release_cli:
+    name: Build and Release livetrace
+    uses: ./.github/workflows/reusable-release-cli.yml@main # Pin to a specific SHA/tag for stability
+    with:
+      cli_name: "livetrace"
+      manifest_path: "cli/livetrace/Cargo.toml"
+      binary_name: "livetrace"
+      tag_name: ${{ github.ref_name }}
+      # build_features: "" # Default is empty, explicitly shown for clarity
+    secrets: inherit
