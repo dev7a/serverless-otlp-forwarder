@@ -7,6 +7,7 @@ use crate::stats::{
 use crate::types::{BenchmarkConfig, BenchmarkReport};
 use anyhow::{Context, Result};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use pulldown_cmark::{html, Options, Parser};
 use rust_decimal::prelude::FromPrimitive;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::Decimal;
@@ -18,7 +19,6 @@ use std::{
     time::Duration,
 };
 use tera::{Context as TeraContext, Tera};
-use pulldown_cmark::{Parser, Options, html};
 
 /// Define a type alias for the report structure
 type ReportStructure = BTreeMap<String, Vec<String>>;
@@ -36,11 +36,11 @@ struct SeriesRenderData {
 
 #[derive(Serialize)]
 struct BarChartRenderData {
-    title: String,          // e.g., "Cold Start - Init Duration"
-    unit: String,           // e.g., "ms"
+    title: String,                  // e.g., "Cold Start - Init Duration"
+    unit: String,                   // e.g., "ms"
     y_axis_categories: Vec<String>, // e.g., ["AVG", "P99", "P95", "P50"]
     series: Vec<SeriesRenderData>,
-    page_type: String,      // e.g., "cold_init", for context in JS if needed
+    page_type: String, // e.g., "cold_init", for context in JS if needed
 }
 
 #[derive(Serialize)]
@@ -59,11 +59,11 @@ struct LineSeriesRenderData {
 #[derive(Serialize)]
 struct LineChartRenderData {
     title: String,
-    x_axis_label: String, 
-    y_axis_label: String, 
-    unit: String, 
+    x_axis_label: String,
+    y_axis_label: String,
+    unit: String,
     series: Vec<LineSeriesRenderData>,
-    total_x_points: usize, 
+    total_x_points: usize,
     page_type: String,
 }
 
@@ -106,13 +106,21 @@ async fn generate_chart(
                 glob_pattern
             )
         })?;
-        if tera_html.get_template_names().find(|&n| n == "chart.html").is_none() {
+        if tera_html
+            .get_template_names()
+            .find(|&n| n == "chart.html")
+            .is_none()
+        {
             anyhow::bail!(
                 "Essential HTML template 'chart.html' not found in custom directory: {}",
                 custom_template_dir
             );
         }
-        if tera_html.get_template_names().find(|&n| n == "_sidebar.html").is_none() {
+        if tera_html
+            .get_template_names()
+            .find(|&n| n == "_sidebar.html")
+            .is_none()
+        {
             anyhow::bail!(
                 "Essential HTML template '_sidebar.html' not found in custom directory: {}",
                 custom_template_dir
@@ -125,7 +133,7 @@ async fn generate_chart(
 
     // Create kebab-case chart directory name
     let kebab_name = snake_to_kebab(name);
-    
+
     // Create directory for this chart
     let chart_dir = html_dir.join(&kebab_name);
     fs::create_dir_all(&chart_dir)?;
@@ -153,16 +161,16 @@ async fn generate_chart(
     ctx.insert("chart_id", "chart");
     ctx.insert("page_type", page_type);
     ctx.insert("chart_data_js", data_js_filename);
-    
+
     // Add sidebar context
     ctx.insert("report_structure", report_structure);
     ctx.insert("current_group", current_group);
     ctx.insert("current_subgroup", current_subgroup);
     ctx.insert("base_path", &calculate_base_path(html_dir, base_url)?);
-    
+
     // Use the kebab-case name for URL references
     ctx.insert("kebab_name", &kebab_name);
-    
+
     // Render the index.html file inside the chart directory
     let html_path = chart_dir.join("index.html");
     pb.set_message(format!("Rendering {}...", html_path.display()));
@@ -193,20 +201,20 @@ fn calculate_base_path(current_dir: &Path, base_url: Option<&str>) -> Result<Str
         }
         return Ok(base);
     }
-    
+
     // Otherwise calculate relative paths as before
     // Calculate depth by counting directory components
     // For node/128mb/chart-name/ that would be 3 levels deep, resulting in "../../../"
     let path_components = current_dir.components().count();
-    
+
     // When calculating the base path, we'll be one level deeper in the chart-type directory
     // So we need to add 1 to the standard depth calculation
     let depth = match path_components {
         0 => 0,
         // Count actual directory levels + 1 for chart subdirectory (but at most 3 levels deep)
-        _ => std::cmp::min(path_components + 1, 3)
+        _ => std::cmp::min(path_components + 1, 3),
     };
-    
+
     Ok("../".repeat(depth))
 }
 
@@ -340,7 +348,7 @@ async fn generate_landing_page(
     ctx.insert("report_structure", report_structure);
     ctx.insert("current_group", "");
     ctx.insert("current_subgroup", "");
-    
+
     // Handle base_url parameter
     let base_path = if let Some(base) = base_url {
         // Ensure it ends with a trailing slash for path concatenation
@@ -366,25 +374,28 @@ async fn generate_landing_page(
                 options.insert(Options::ENABLE_FOOTNOTES);
                 options.insert(Options::ENABLE_STRIKETHROUGH);
                 options.insert(Options::ENABLE_TASKLISTS);
-                
+
                 let parser = Parser::new_ext(&markdown_content, options);
-                
+
                 // Convert markdown to HTML
                 let mut html_output = String::new();
                 html::push_html(&mut html_output, parser);
-                
+
                 // Add the HTML content to the template context
                 ctx.insert("readme_html", &html_output);
                 ctx.insert("has_readme", &true);
-            },
+            }
             Err(e) => {
                 // Set progress bar message
                 pb.set_message(format!("Warning: Failed to read markdown file: {}", e));
-                
+
                 // Print warning to stderr for better visibility
-                eprintln!("\n⚠️  Warning: Failed to read readme file '{}': {}", readme_path, e);
+                eprintln!(
+                    "\n⚠️  Warning: Failed to read readme file '{}': {}",
+                    readme_path, e
+                );
                 eprintln!("    Report will be generated without readme content.\n");
-                
+
                 ctx.insert("has_readme", &false);
             }
         }
@@ -397,10 +408,7 @@ async fn generate_landing_page(
     for (group_name, subgroups) in report_structure {
         let first_subgroup_name = subgroups.first().map(|s| s.as_str()).unwrap_or("");
         // Link to the first subgroup's default chart - use kebab-case with trailing slash
-        let link_path = format!(
-            "{}/{}/cold-start-init/",
-            group_name, first_subgroup_name
-        );
+        let link_path = format!("{}/{}/cold-start-init/", group_name, first_subgroup_name);
         items.push(
             IndexItem::new(group_name, link_path)
                 .with_subtitle(format!("{} configurations", subgroups.len())),
@@ -545,15 +553,22 @@ pub async fn generate_reports(
     let js_lib_dst = js_dir.join("lib.js");
 
     if let Some(custom_template_dir_str) = &template_dir {
-        let js_lib_src_path = PathBuf::from(custom_template_dir_str).join("js").join("lib.js");
-        
+        let js_lib_src_path = PathBuf::from(custom_template_dir_str)
+            .join("js")
+            .join("lib.js");
+
         if !js_lib_src_path.exists() {
-            anyhow::bail!("lib.js not found in custom template directory: {}", js_lib_src_path.display());
+            anyhow::bail!(
+                "lib.js not found in custom template directory: {}",
+                js_lib_src_path.display()
+            );
         }
-        
-        fs::copy(&js_lib_src_path, &js_lib_dst)
-            .context(format!("Failed to copy lib.js from custom template directory: {}", js_lib_src_path.display()))?;
-        
+
+        fs::copy(&js_lib_src_path, &js_lib_dst).context(format!(
+            "Failed to copy lib.js from custom template directory: {}",
+            js_lib_src_path.display()
+        ))?;
+
         println!("✓ lib.js copied (contains all chart generation code).");
     } else {
         let js_lib_src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/templates/js/lib.js");
@@ -699,7 +714,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
 
         let cold_server_render_data = prepare_bar_chart_render_data(
             &function_names,
@@ -721,7 +737,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
 
         let cold_ext_overhead_render_data = prepare_bar_chart_render_data(
             &function_names,
@@ -743,7 +760,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
 
         let cold_total_duration_render_data = prepare_bar_chart_render_data(
             &function_names,
@@ -765,7 +783,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
     }
 
     // Generate client duration chart if we have data
@@ -790,7 +809,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
 
         // // Restore client_duration_time.html - UNCOMMENT AND UPDATE
         let client_time_render_data = prepare_line_chart_render_data(
@@ -798,7 +818,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             custom_title.unwrap_or("Warm Start: Client Duration Over Time"),
             "ms",
-            "client_time"
+            "client_time",
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -839,7 +859,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
 
         let warm_extension_overhead_stats: Vec<_> = results
             .iter()
@@ -868,7 +889,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
 
         let memory_render_data = prepare_bar_chart_render_data(
             &function_names,
@@ -890,7 +912,8 @@ pub async fn generate_reports_for_directory(
             current_subgroup,
             template_dir,
             base_url,
-        ).await?;
+        )
+        .await?;
     }
 
     Ok(())
@@ -915,7 +938,12 @@ fn prepare_bar_chart_render_data(
     BarChartRenderData {
         title: title.to_string(),
         unit: unit.to_string(),
-        y_axis_categories: vec!["AVG".to_string(), "P99".to_string(), "P95".to_string(), "P50".to_string()],
+        y_axis_categories: vec![
+            "AVG".to_string(),
+            "P99".to_string(),
+            "P95".to_string(),
+            "P50".to_string(),
+        ],
         series: series_render_data,
         page_type: page_type.to_string(),
     }
@@ -939,12 +967,13 @@ fn prepare_line_chart_render_data(
             let x_offset = current_offset;
             let num_points = report.client_measurements.len();
             current_offset += num_points + gap; // Update offset for next series
-            if current_offset > gap { // Update max_x only if points were added
+            if current_offset > gap {
+                // Update max_x only if points were added
                 max_x = current_offset - gap;
             } else {
                 // If a series has 0 points, don't let max_x be negative or zero based on gap
-                max_x = max_x.max(0); 
-            } 
+                max_x = max_x.max(0);
+            }
 
             let mut points_sum = 0.0;
             let points_data: Vec<ScatterPoint> = report
@@ -952,7 +981,11 @@ fn prepare_line_chart_render_data(
                 .iter()
                 .enumerate()
                 .map(|(index, m)| {
-                    let duration = Decimal::from_f64(m.client_duration).unwrap_or_default().round_dp(2).to_f64().unwrap_or(0.0); 
+                    let duration = Decimal::from_f64(m.client_duration)
+                        .unwrap_or_default()
+                        .round_dp(2)
+                        .to_f64()
+                        .unwrap_or(0.0);
                     points_sum += duration;
                     ScatterPoint {
                         x: x_offset + index,
@@ -962,7 +995,9 @@ fn prepare_line_chart_render_data(
                 .collect();
 
             let mean = if num_points > 0 {
-                let mean_decimal = Decimal::from_f64(points_sum / num_points as f64).unwrap_or_default().round_dp(2);
+                let mean_decimal = Decimal::from_f64(points_sum / num_points as f64)
+                    .unwrap_or_default()
+                    .round_dp(2);
                 Some(mean_decimal.to_f64().unwrap_or(0.0))
             } else {
                 None

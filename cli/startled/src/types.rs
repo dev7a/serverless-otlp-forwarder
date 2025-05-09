@@ -86,6 +86,13 @@ pub struct InvocationMetrics {
     pub memory_size: i64,
     pub init_duration: Option<f64>,
     pub total_cold_start_duration: Option<f64>,
+
+    // New fields for platform.runtimeDone metrics
+    pub response_latency_ms: Option<f64>,
+    pub response_duration_ms: Option<f64>,
+    pub runtime_overhead_ms: Option<f64>,
+    pub produced_bytes: Option<i64>,
+    pub runtime_done_metrics_duration_ms: Option<f64>,
 }
 
 impl InvocationMetrics {
@@ -205,4 +212,39 @@ pub struct ProxyResponse {
     pub invocation_time_ms: f64,
     /// Response from the target function
     pub response: serde_json::Value,
+}
+
+// Added structs for platform.runtimeDone
+#[derive(Deserialize, Debug, Clone)]
+pub struct PlatformRuntimeDoneReport {
+    pub time: String,
+    #[serde(rename = "type")]
+    pub event_type: String, // Should be "platform.runtimeDone"
+    pub record: RuntimeDoneRecord,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RuntimeDoneRecord {
+    #[serde(rename = "requestId")]
+    pub request_id: String,
+    pub status: String,
+    // pub tracing: serde_json::Value, // Omitted for now
+    pub spans: Vec<RuntimeDoneSpan>,
+    pub metrics: RuntimeDoneRecordMetrics,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RuntimeDoneSpan {
+    pub name: String,
+    // pub start: String, // Omitted for now
+    #[serde(rename = "durationMs")]
+    pub duration_ms: f64,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct RuntimeDoneRecordMetrics {
+    #[serde(rename = "durationMs")]
+    pub duration_ms: f64,
+    #[serde(rename = "producedBytes")]
+    pub produced_bytes: i64,
 }

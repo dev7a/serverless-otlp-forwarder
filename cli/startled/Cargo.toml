@@ -41,7 +41,7 @@ aws-sdk-cloudformation = { workspace = true }
 opentelemetry-aws.workspace = true
 statrs = { workspace = true }
 colored = { workspace = true }
-comfy-table = { workspace = true }
-regex = "1.11.1"
-rust_decimal = { version = "1.37.1", features = ["serde-with-arbitrary-precision"] }
-pulldown-cmark = "0.13.0"
+comfy-table = { workspace = true, features = ["tty", "custom_styling"] }
+regex.workspace = true
+rust_decimal = { workspace = true, features = ["serde-with-arbitrary-precision"] }
+pulldown-cmark.workspace = true

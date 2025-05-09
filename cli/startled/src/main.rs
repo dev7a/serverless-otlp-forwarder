@@ -132,7 +132,7 @@ enum Commands {
         /// Custom template directory for report generation
         #[arg(long = "template-dir")]
         template_dir: Option<String>,
-        
+
         /// Markdown file to include as content on the landing page
         #[arg(long = "readme", value_name = "MARKDOWN_FILE")]
         readme_file: Option<String>,

@@ -519,7 +519,8 @@ pub async fn run_stack_benchmark(
             .await?;
 
         // Correctly handle the slice returned by stack_resource_summaries()
-        let summaries_slice: &[aws_sdk_cloudformation::types::StackResourceSummary] = resp.stack_resource_summaries();
+        let summaries_slice: &[aws_sdk_cloudformation::types::StackResourceSummary] =
+            resp.stack_resource_summaries();
         all_stack_resources.extend(summaries_slice.to_vec());
 
         next_token = resp.next_token().map(|s| s.to_string());
@@ -538,7 +539,10 @@ pub async fn run_stack_benchmark(
                     |re_str| match Regex::new(re_str) {
                         Ok(re) => re.is_match(physical_id),
                         Err(e) => {
-                            eprintln!("Invalid regex '{}': {}. Skipping match for this resource.", re_str, e);
+                            eprintln!(
+                                "Invalid regex '{}': {}. Skipping match for this resource.",
+                                re_str, e
+                            );
                             false
                         }
                     },
@@ -600,7 +604,7 @@ pub async fn run_stack_benchmark(
 
         if let Err(e) = run_function_benchmark(
             lambda_client,
-            function_arn_or_name, 
+            function_arn_or_name,
             config.memory_size,
             config.concurrent_invocations as u32,
             config.rounds as u32,
@@ -611,14 +615,18 @@ pub async fn run_stack_benchmark(
                 .iter()
                 .map(|e| (e.key.as_str(), e.value.as_str()))
                 .collect::<Vec<_>>(),
-            true, // client_metrics_mode is true for stack benchmarks
+            true,                             // client_metrics_mode is true for stack benchmarks
             config.proxy_function.as_deref(), // Corrected: Option<String> to Option<&str>
         )
-        .await {
-            eprintln!("Error running benchmark for {}: {}", function_arn_or_name, e);
+        .await
+        {
+            eprintln!(
+                "Error running benchmark for {}: {}",
+                function_arn_or_name, e
+            );
             // Decide if we should continue with other functions or stop
         }
-        
+
         let progress_percentage = ((index + 1) as f64 / total_functions as f64) * 100.0;
         println!("{:.2}% complete", progress_percentage);
     }

@@ -1,4 +1,6 @@
-use crate::types::{InvocationMetrics, PlatformReport, ProxyRequest, ProxyResponse};
+use crate::types::{
+    InvocationMetrics, PlatformReport, PlatformRuntimeDoneReport, ProxyRequest, ProxyResponse,
+};
 use anyhow::{anyhow, Result};
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::{error::ProvideErrorMetadata, error::SdkError, Client as LambdaClient};
@@ -181,6 +183,11 @@ pub async fn invoke_function(
                     billed_duration: 0,
                     memory_size: memory_size.unwrap_or(128) as i64,
                     max_memory_used: 0,
+                    response_latency_ms: None,
+                    response_duration_ms: None,
+                    runtime_overhead_ms: None,
+                    produced_bytes: None,
+                    runtime_done_metrics_duration_ms: None,
                 })
             } else {
                 let logs = output
@@ -241,12 +248,39 @@ pub async fn invoke_function(
 }
 
 pub fn extract_metrics(logs: &str) -> Result<InvocationMetrics> {
-    let report = logs
-        .lines()
-        .filter_map(|line| serde_json::from_str::<PlatformReport>(line).ok())
-        .filter(|report| report.report_type == "platform.report")
-        .next_back()
-        .ok_or_else(|| anyhow!("No platform.report found in logs"))?;
+    let mut platform_report_data: Option<PlatformReport> = None;
+    let mut runtime_done_report_data: Option<PlatformRuntimeDoneReport> = None;
+
+    // Iterate lines in reverse to find the last occurrence of each report type
+    for line in logs.lines().rev() {
+        // Try to parse as PlatformReport
+        if platform_report_data.is_none() {
+            if let Ok(report) = serde_json::from_str::<PlatformReport>(line) {
+                if report.report_type == "platform.report" {
+                    platform_report_data = Some(report);
+                }
+            }
+        }
+
+        // Try to parse as PlatformRuntimeDoneReport
+        if runtime_done_report_data.is_none() {
+            if let Ok(report) = serde_json::from_str::<PlatformRuntimeDoneReport>(line) {
+                // Ensure it's the correct type, field name in struct is event_type
+                if report.event_type == "platform.runtimeDone" {
+                    runtime_done_report_data = Some(report);
+                }
+            }
+        }
+
+        // Optimization: if both are found, no need to parse further lines
+        if platform_report_data.is_some() && runtime_done_report_data.is_some() {
+            break;
+        }
+    }
+
+    let report = platform_report_data.ok_or_else(|| anyhow!("No platform.report found in logs"))?;
+
+    // Metrics from platform.report (existing logic)
     let extension_overhead = report
         .record
         .spans
@@ -256,16 +290,45 @@ pub fn extract_metrics(logs: &str) -> Result<InvocationMetrics> {
     let duration = report.record.metrics.duration_ms;
     let init_duration = report.record.metrics.init_duration_ms;
     let total_cold_start_duration = init_duration.map(|init| init + duration);
+
+    // Initialize new metrics fields as None
+    let mut response_latency_ms: Option<f64> = None;
+    let mut response_duration_ms: Option<f64> = None;
+    let mut runtime_overhead_ms: Option<f64> = None; // Simplified variable name
+    let mut produced_bytes: Option<i64> = None;
+    let mut runtime_done_metrics_duration_ms: Option<f64> = None;
+
+    // Extract metrics from platform.runtimeDone if found
+    if let Some(rd_report) = runtime_done_report_data {
+        for span in rd_report.record.spans {
+            match span.name.as_str() {
+                "responseLatency" => response_latency_ms = Some(span.duration_ms),
+                "responseDuration" => response_duration_ms = Some(span.duration_ms),
+                "runtimeOverhead" => runtime_overhead_ms = Some(span.duration_ms), // Use simplified name
+                _ => {} // Ignore other spans
+            }
+        }
+        produced_bytes = Some(rd_report.record.metrics.produced_bytes);
+        runtime_done_metrics_duration_ms = Some(rd_report.record.metrics.duration_ms);
+    }
+
     Ok(InvocationMetrics {
         timestamp: report.time.clone(),
-        client_duration: 0.0,
+        client_duration: 0.0, // This is typically set outside this function for the non-client_metrics_mode path
         init_duration,
-        duration,
+        duration, // Function execution duration from platform.report
         extension_overhead,
         total_cold_start_duration,
         billed_duration: report.record.metrics.billed_duration_ms,
         memory_size: report.record.metrics.memory_size_mb,
         max_memory_used: report.record.metrics.max_memory_used_mb,
+
+        // Populate new fields
+        response_latency_ms,
+        response_duration_ms,
+        runtime_overhead_ms, // Assign from simplified local variable
+        produced_bytes,
+        runtime_done_metrics_duration_ms,
     })
 }
 
@@ -337,10 +400,12 @@ pub async fn update_function_config(
     if let Some(memory) = memory_size {
         update = update.memory_size(memory);
     }
+    // Get the current environment variables
     let mut env_vars = HashMap::new();
     if let Some(current_env) = current_config.environment().and_then(|e| e.variables()) {
         env_vars.extend(current_env.iter().map(|(k, v)| (k.clone(), v.clone())));
     }
+    // Add the new environment variables
     for (key, value) in environment {
         env_vars.insert(key.clone(), value.clone());
     }
@@ -351,6 +416,14 @@ pub async fn update_function_config(
                 .build(),
         );
     }
+    // Set log format to JSON and system log level to DEBUG
+    update = update.logging_config(
+        aws_sdk_lambda::types::LoggingConfig::builder()
+            .system_log_level(aws_sdk_lambda::types::SystemLogLevel::Debug)
+            .log_format(aws_sdk_lambda::types::LogFormat::Json)
+            .build(),
+    );
+
     match update.send().await {
         Ok(_) => {
             tokio::time::sleep(Duration::from_secs(5)).await;

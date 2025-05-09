@@ -5,6 +5,7 @@ pub struct MetricsStats {
     pub p50: f64,
     pub p95: f64,
     pub p99: f64,
+    pub std_dev: f64,
 }
 
 pub fn calculate_stats(values: &[f64]) -> MetricsStats {
@@ -14,19 +15,33 @@ pub fn calculate_stats(values: &[f64]) -> MetricsStats {
             p50: 0.0,
             p95: 0.0,
             p99: 0.0,
+            std_dev: 0.0,
         };
     }
+    if values.len() < 2 {
+        let val = values[0];
+        return MetricsStats {
+            mean: val,
+            p50: val,
+            p95: val,
+            p99: val,
+            std_dev: 0.0,
+        };
+    }
+
     let mut data = Data::new(values.to_vec());
-    let mean = data.mean().unwrap_or(0.0);
+    let mean = data.mean().unwrap_or(f64::NAN);
     let p50 = data.percentile(50);
     let p95 = data.percentile(95);
     let p99 = data.percentile(99);
+    let std_dev = data.std_dev().unwrap_or(f64::NAN);
 
     MetricsStats {
         mean,
         p50,
         p95,
         p99,
+        std_dev,
     }
 }
 

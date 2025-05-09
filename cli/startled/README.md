@@ -25,7 +25,7 @@
     -   Set temporary **environment variables** for the Lambda function during the benchmark.
 -   **Comprehensive HTML Reports**:
     -   Generates detailed HTML reports featuring interactive charts (using Apache ECharts) for clear visualization of benchmark data.
-    -   Provides statistical summaries (Average, P50, P95, P99) for key metrics across different functions and configurations.
+    -   Provides statistical summaries (Average, P50, P95, P99 and Standard Deviation) for key metrics across different functions and configurations.
     -   Includes scatter plots to visualize client duration over time for warm starts, helping to identify trends or outliers.
     -   Saves raw benchmark data in **JSON format** for custom analysis or integration with other tools.
     -   Supports custom templates, allowing users to completely customize the report appearance and behavior.
@@ -170,18 +170,19 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
 
 ### Benchmarking Process Stages
 
-1.  **Configuration Adjustment (Optional)**: If `--memory` or `--env` options are provided, `startled` first retrieves the target Lambda function's existing configuration. It then applies the specified temporary changes, saving the original configuration for later restoration.
+1.  **Configuration Adjustment**: The function logging configuration is modified to:
+    -   Use JSON loggind and enable platform DEBUG logs, This will cause the Lambda platform to include the `platform.report` and `platform.runtimeDone` records in the logs.
+    -   If `--memory` or `--env` options are provided, `startled` first retrieves the target Lambda function's existing configuration. It then applies the specified temporary changes, saving the original configuration for later restoration.
 2.  **Cold Start Invocations**: The CLI initiates a series of concurrent invocations (matching the `--concurrent` value). These initial invocations are considered cold starts.
 3.  **Warm Start Invocations**: Following the cold starts, `startled` executes `--rounds` number of warm start batches. Each batch comprises `--concurrent` invocations to the (now likely initialized) Lambda execution environments.
-4.  **Configuration Restoration**: Upon completion of all invocations, or if the process is interrupted, `startled` attempts to restore the Lambda function to its original memory and environment variable settings.
+4.  **Configuration Restoration**: Upon completion of all invocations, or if the process is interrupted, `startled` attempts to restore the Lambda function to its original logging configuration and memory and environment variable settings.
 
 ### Metric Collection Details
 
 `startled` gathers metrics from both server-side and client-side perspectives:
 
--   **Server-Side Metrics**:
-    -   These are obtained by requesting the last 4KB of execution logs from AWS Lambda (`LogType::Tail`).
-    -   `startled` parses the `platform.report` lines within these logs to extract key metrics:
+-   **Server-Side Metrics**: These are obtained by requesting the last 4KB of execution logs from AWS Lambda (`LogType::Tail`). `startled` parses these logs to extract key performance indicators.
+    -   Metrics from `platform.report` lines:
         -   `initDurationMs`: Initialization time for the function environment (relevant for cold starts).
         -   `durationMs`: Execution time of the function handler.
         -   `billedDurationMs`: The duration for billing purposes.
@@ -189,6 +190,12 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
         -   `maxMemoryUsedMB`: The maximum memory utilized during the invocation.
         -   `extensionOverhead`: Derived from spans named `extensionOverhead` within the `spans` array of the `platform.report`. This metric quantifies the performance impact of Lambda Extensions.
         -   `totalColdStartDuration`: Calculated as the sum of `initDurationMs` and `durationMs`.
+    -   Additional metrics from `platform.runtimeDone` lines (when system log level is DEBUG and format is JSON):
+        -   `responseLatencyMs`: Time from function return to when the Lambda platform completes sending the response.
+        -   `responseDurationMs`: Time taken to transmit the response bytes.
+        -   `runtimeOverheadMs`: Overhead by the Lambda runtime after the handler completes but before the platform considers the runtime phase done.
+        -   `runtimeDoneMetricsDurationMs`: The `durationMs` field from the `platform.runtimeDone` log entry's metrics.
+    -   **Statistical Summary**: For all collected duration and memory metrics, `startled` now calculates and displays Mean, P50 (Median), P95, P99, and Standard Deviation (StdDev) in the console output, providing insights into performance consistency.
 
 -   **Client-Side Metrics**:
     -   These metrics represent the total invocation time as observed by the client.
@@ -209,6 +216,7 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
     -   Median (P50)
     -   95th Percentile (P95)
     -   99th Percentile (P99)
+    -   Standard Deviation (StdDev)
 3.  **Markdown Rendering**: If a markdown file is provided via the `--readme` option, the file is parsed and rendered as HTML to be included on the landing page of the report. This allows for adding custom documentation, explanations of the benchmark setup, or summary of findings.
 4.  **Template Loading**: 
     -   By default, `startled` uses embedded HTML templates, CSS, and JavaScript files for report generation.
