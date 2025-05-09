@@ -9,10 +9,9 @@ on:
 jobs:
   release_cli:
     name: Build and Release startled
-    # IMPORTANT: The reusable workflow must exist on the 'main' branch (or the specified ref)
-    # for this 'uses' directive to be valid during a real workflow run.
-    # A linter might show an error if 'reusable-release-cli.yml' is not yet on 'main'.
-    uses: ./.github/workflows/reusable-release-cli.yml@main # Pin to a specific SHA/tag for stability in production
+    # When calling a local reusable workflow, do not specify a version (e.g., @main).
+    # It automatically uses the version from the same commit.
+    uses: ./.github/workflows/reusable-release-cli.yml
     with:
       cli_name: "startled"
       manifest_path: "cli/startled/Cargo.toml"

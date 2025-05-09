@@ -9,7 +9,9 @@ on:
 jobs:
   release_cli:
     name: Build and Release livetrace
-    uses: ./.github/workflows/reusable-release-cli.yml@main # Pin to a specific SHA/tag for stability
+    # When calling a local reusable workflow, do not specify a version (e.g., @main).
+    # It automatically uses the version from the same commit.
+    uses: ./.github/workflows/reusable-release-cli.yml
     with:
       cli_name: "livetrace"
       manifest_path: "cli/livetrace/Cargo.toml"
