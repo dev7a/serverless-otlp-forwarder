@@ -358,7 +358,7 @@ pub async fn get_function_config(
         )
     })?;
     Ok(OriginalConfig {
-        memory_size: config.memory_size().unwrap_or(128) as i32,
+        memory_size: config.memory_size().unwrap_or(128),
         environment: config
             .environment()
             .and_then(|e| e.variables())
