@@ -106,21 +106,13 @@ async fn generate_chart(
                 glob_pattern
             )
         })?;
-        if tera_html
-            .get_template_names()
-            .find(|&n| n == "chart.html")
-            .is_none()
-        {
+        if !tera_html.get_template_names().any(|n| n == "chart.html") {
             anyhow::bail!(
                 "Essential HTML template 'chart.html' not found in custom directory: {}",
                 custom_template_dir
             );
         }
-        if tera_html
-            .get_template_names()
-            .find(|&n| n == "_sidebar.html")
-            .is_none()
-        {
+        if !tera_html.get_template_names().any(|n| n == "_sidebar.html") {
             anyhow::bail!(
                 "Essential HTML template '_sidebar.html' not found in custom directory: {}",
                 custom_template_dir
@@ -314,21 +306,13 @@ async fn generate_landing_page(
             )
         })?;
 
-        if tera
-            .get_template_names()
-            .find(|&n| n == "index.html")
-            .is_none()
-        {
+        if !tera.get_template_names().any(|n| n == "index.html") {
             anyhow::bail!(
                 "Essential template 'index.html' not found in custom directory: {}",
                 custom_template_dir
             );
         }
-        if tera
-            .get_template_names()
-            .find(|&n| n == "_sidebar.html")
-            .is_none()
-        {
+        if !tera.get_template_names().any(|n| n == "_sidebar.html") {
             anyhow::bail!(
                 "Essential template '_sidebar.html' not found in custom directory: {}",
                 custom_template_dir

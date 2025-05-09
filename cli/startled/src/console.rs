@@ -69,7 +69,8 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
                 Cell::new(format_value_or_na(stats.p50, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms"))
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
         let durations: Vec<f64> = results.cold_starts.iter().map(|m| m.duration).collect();
@@ -81,7 +82,8 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
                 Cell::new(format_value_or_na(stats.p50, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms"))
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
         let extension_overheads: Vec<f64> = results
@@ -97,7 +99,8 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
                 Cell::new(format_value_or_na(stats.p50, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms"))
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
         let total_cold_start_durations: Vec<f64> = results
@@ -113,7 +116,8 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
                 Cell::new(format_value_or_na(stats.p50, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms"))
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
         let billed_durations: Vec<f64> = results
@@ -129,9 +133,12 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
                 Cell::new(format_value_or_na(stats.p50, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms"))
+                    .set_alignment(CellAlignment::Right),
             ]);
-            table.add_row(vec![Cell::new("┄".repeat(DESCRIPTION_WIDTH as usize).bright_black())]);
+            table.add_row(vec![Cell::new(
+                "┄".repeat(DESCRIPTION_WIDTH as usize).bright_black(),
+            )]);
         }
 
         let response_latencies_cold: Vec<f64> = results
@@ -143,11 +150,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&response_latencies_cold);
             table.add_row(vec![
                 Cell::new("Response Latency".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -160,11 +172,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&response_durations_cold);
             table.add_row(vec![
                 Cell::new("Response Duration".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -177,11 +194,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&runtime_overheads_cold);
             table.add_row(vec![
                 Cell::new("Runtime Overhead".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -194,11 +216,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&rt_done_durations_cold);
             table.add_row(vec![
                 Cell::new("Runtime Done".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -209,14 +236,17 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             .collect();
         if !memory_used_cold.is_empty() {
             let stats = calculate_stats(&memory_used_cold);
-            table.add_row(vec![Cell::new("┄".repeat(DESCRIPTION_WIDTH as usize).bright_black())]);
+            table.add_row(vec![Cell::new(
+                "┄".repeat(DESCRIPTION_WIDTH as usize).bright_black(),
+            )]);
             table.add_row(vec![
                 Cell::new("Memory Used"),
                 Cell::new(format_value_or_na(stats.mean, "MB")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p50, "MB")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "MB")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "MB")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "MB")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "MB"))
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -258,11 +288,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
         let stats_warm_duration = calculate_stats(&durations_warm);
         table.add_row(vec![
             Cell::new("Server Duration"),
-            Cell::new(format_value_or_na(stats_warm_duration.mean, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_duration.p50, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_duration.p95, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_duration.p99, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_duration.std_dev, "ms")).set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_duration.mean, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_duration.p50, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_duration.p95, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_duration.p99, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_duration.std_dev, "ms"))
+                .set_alignment(CellAlignment::Right),
         ]);
         let extension_overheads_warm: Vec<f64> = results
             .warm_starts
@@ -272,11 +307,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
         let stats_warm_ext_overhead = calculate_stats(&extension_overheads_warm);
         table.add_row(vec![
             Cell::new("Extension Overhead"),
-            Cell::new(format_value_or_na(stats_warm_ext_overhead.mean, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_ext_overhead.p50, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_ext_overhead.p95, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_ext_overhead.p99, "ms")).set_alignment(CellAlignment::Right),
-            Cell::new(format_value_or_na(stats_warm_ext_overhead.std_dev, "ms")).set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_ext_overhead.mean, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_ext_overhead.p50, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_ext_overhead.p95, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_ext_overhead.p99, "ms"))
+                .set_alignment(CellAlignment::Right),
+            Cell::new(format_value_or_na(stats_warm_ext_overhead.std_dev, "ms"))
+                .set_alignment(CellAlignment::Right),
         ]);
         let billed_durations_warm: Vec<f64> = results
             .warm_starts
@@ -287,13 +327,20 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
         table.add_rows(vec![
             vec![
                 Cell::new("Billed Duration"),
-                Cell::new(format_value_or_na(stats_warm_billed.mean, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats_warm_billed.p50, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats_warm_billed.p95, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats_warm_billed.p99, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats_warm_billed.std_dev, "ms")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats_warm_billed.mean, "ms"))
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats_warm_billed.p50, "ms"))
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats_warm_billed.p95, "ms"))
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats_warm_billed.p99, "ms"))
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats_warm_billed.std_dev, "ms"))
+                    .set_alignment(CellAlignment::Right),
             ],
-            vec![Cell::new("┄".repeat(DESCRIPTION_WIDTH as usize).bright_black())],
+            vec![Cell::new(
+                "┄".repeat(DESCRIPTION_WIDTH as usize).bright_black(),
+            )],
         ]);
 
         let response_latencies_warm: Vec<f64> = results
@@ -305,11 +352,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&response_latencies_warm);
             table.add_row(vec![
                 Cell::new("Response Latency".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -322,11 +374,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&response_durations_warm);
             table.add_row(vec![
                 Cell::new("Response Duration".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -339,11 +396,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&runtime_overheads_warm);
             table.add_row(vec![
                 Cell::new("Runtime Overhead".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -356,11 +418,16 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             let stats = calculate_stats(&rt_done_durations_warm);
             table.add_row(vec![
                 Cell::new("Runtime Done".bright_black()),
-                Cell::new(format_value_or_na(stats.mean, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p50, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p95, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.p99, "ms").bright_black()).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black()).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.mean, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p50, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p95, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.p99, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms").bright_black())
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -371,14 +438,17 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
             .collect();
         if !memory_used_warm.is_empty() {
             let stats = calculate_stats(&memory_used_warm);
-            table.add_row(vec![Cell::new("┄".repeat(DESCRIPTION_WIDTH as usize).bright_black())]);
+            table.add_row(vec![Cell::new(
+                "┄".repeat(DESCRIPTION_WIDTH as usize).bright_black(),
+            )]);
             table.add_row(vec![
                 Cell::new("Memory Used"),
                 Cell::new(format_value_or_na(stats.mean, "MB")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p50, "MB")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "MB")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "MB")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "MB")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "MB"))
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
 
@@ -429,7 +499,8 @@ pub fn print_benchmark_results(function_name: &str, results: &crate::benchmark::
                 Cell::new(format_value_or_na(stats.p50, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p95, "ms")).set_alignment(CellAlignment::Right),
                 Cell::new(format_value_or_na(stats.p99, "ms")).set_alignment(CellAlignment::Right),
-                Cell::new(format_value_or_na(stats.std_dev, "ms")).set_alignment(CellAlignment::Right),
+                Cell::new(format_value_or_na(stats.std_dev, "ms"))
+                    .set_alignment(CellAlignment::Right),
             ]);
         }
         println!("{}\n", table);
