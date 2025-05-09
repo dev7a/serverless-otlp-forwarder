@@ -25,7 +25,7 @@ Mappings:
     Generic: # Dummy TopLevelKey
       otel: 'arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-arm64-0_14_0:1' # Generic Otel Collector
       adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-collector-arm64-ver-0-115-0:3' # ADOT Collector (for Rust)
-      rotel: 'arn:aws:lambda:us-east-1:418653438961:layer:rotel-extension-arm64-alpha:20'     # Rotel Collector (for Rust)
+      rotel: 'arn:aws:lambda:us-east-1:418653438961:layer:rotel-extension-arm64-alpha:21'     # Rotel Collector (for Rust)
   LanguageLayers:
     python:
       adot: 'arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-arm64-ver-1-29-0:2'
@@ -236,8 +236,6 @@ Resources:
           OTEL_SERVICE_NAME: !Sub 'node-rotel'
           AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-handler
           ROTEL_ENV_FILE: /opt/rotel/rotel.env
-          OTEL_OTLP_ENDPOINT: http://localhost:4318
-          OTEL_OTLP_PROTOCOL: http/protobuf
       Layers:
         - !FindInMap [LanguageLayers, nodejs, rotel]
         - !FindInMap [CollectorLayers, Generic, rotel]

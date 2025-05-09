@@ -135,6 +135,8 @@ nix = "0.30.0"
 scopeguard = "1.2"
 tempfile = "3.8"
 terminal_size = "0.4.2"
+pulldown-cmark = "0.13.0"
+rust_decimal = "1.37.1"
 
 [profile.release]
 opt-level = "z"
