@@ -171,7 +171,7 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
 ### Benchmarking Process Stages
 
 1.  **Configuration Adjustment**: The function logging configuration is modified to:
-    -   Use JSON loggind and enable platform DEBUG logs, This will cause the Lambda platform to include the `platform.report` and `platform.runtimeDone` records in the logs.
+    -   Use JSON logging and enable platform DEBUG logs, This will cause the Lambda platform to include the `platform.report` and `platform.runtimeDone` records in the logs.
     -   If `--memory` or `--env` options are provided, `startled` first retrieves the target Lambda function's existing configuration. It then applies the specified temporary changes, saving the original configuration for later restoration.
 2.  **Cold Start Invocations**: The CLI initiates a series of concurrent invocations (matching the `--concurrent` value). These initial invocations are considered cold starts.
 3.  **Warm Start Invocations**: Following the cold starts, `startled` executes `--rounds` number of warm start batches. Each batch comprises `--concurrent` invocations to the (now likely initialized) Lambda execution environments.
