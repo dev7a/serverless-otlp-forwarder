@@ -5,12 +5,12 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "CLI tool for live tracing of AWS Lambda invocations via CloudWatch Logs"
+description = "CLI tool for live tailing of OTLP traces and logs in the Serverless OTLP Forwarder architecture."
 repository = "https://github.com/dev7a/serverless-otlp-forwarder/tree/main/cli/livetrace"
 documentation = "https://docs.rs/livetrace"
 readme = "README.md"
-keywords = ["aws", "lambda", "cli", "tracing", "logs", "cloudwatch", "serverless", "otel", "faas"]
-categories = ["command-line-utilities", "development-tools::debugging", "cloud-computing", "network-programming"]
+keywords = [ "lambda", "cli", "tracing", "logs", "serverless", "otel"]
+categories = ["command-line-utilities", "development-tools::debugging"]
 
 [dependencies]
 # AWS SDK (Inherit from workspace where possible, specify version if not)
@@ -42,7 +42,8 @@ opentelemetry-proto = { workspace = true } # Inherit version and features
 otlp-stdout-span-exporter = { workspace = true }
 
 # CLI Arguments (Inherit from workspace)
-clap = { workspace = true, features = ["derive", "env"] } # Add required features
+clap = { workspace = true, features = ["derive", "env", "cargo"] } # Add required features
+clap_complete = { workspace = true }
 
 # Logging (Inherit from workspace)
 tracing = { workspace = true }

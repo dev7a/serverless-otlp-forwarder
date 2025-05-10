@@ -1,3 +1,14 @@
+//! Handles AWS SDK setup, client creation, and discovery of CloudWatch Log Groups.
+//!
+//! This module is responsible for:
+//! 1. Initializing AWS configuration (region, credentials).
+//! 2. Creating AWS service clients (CloudWatch Logs, CloudFormation, STS).
+//! 3. Discovering relevant log group names based on user-provided patterns or
+//!    CloudFormation stack names.
+//! 4. Validating the existence of these log groups, including handling common
+//!    Lambda@Edge naming conventions.
+//! 5. Constructing ARNs for the validated log groups.
+
 use anyhow::{Context, Result};
 use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_cloudformation::Client as CfnClient;
@@ -345,7 +356,7 @@ pub async fn validate_log_groups(
     for result in results {
         match result {
             Ok(Some(name)) => validated_names.push(name),
-            Ok(None) => {} // Logged within the check, skip
+            Ok(None) => {}            // Logged within the check, skip
             Err(e) => errors.push(e), // Collect error
         }
     }
@@ -359,11 +370,8 @@ pub async fn validate_log_groups(
 }
 
 /// Helper to describe a single log group by exact name.
-async fn describe_exact_log_group(
-    client: &CwlClient,
-    name: &str,
-) -> Result<Option<String>> {
-     match client
+async fn describe_exact_log_group(client: &CwlClient, name: &str) -> Result<Option<String>> {
+    match client
         .describe_log_groups()
         .log_group_name_prefix(name) // Use prefix for API
         .limit(1)
@@ -372,7 +380,10 @@ async fn describe_exact_log_group(
     {
         Ok(output) => {
             // Check if the *exact* name was returned
-            if output.log_groups.is_some_and(|lgs| lgs.iter().any(|lg| lg.log_group_name.as_deref() == Some(name))) {
+            if output.log_groups.is_some_and(|lgs| {
+                lgs.iter()
+                    .any(|lg| lg.log_group_name.as_deref() == Some(name))
+            }) {
                 Ok(Some(name.to_string()))
             } else {
                 Ok(None) // Prefix matched something else, or nothing
@@ -383,11 +394,11 @@ async fn describe_exact_log_group(
             if let Some(service_error) = e.as_service_error() {
                 // Compare the error code string directly
                 if service_error.meta().code() == Some("ResourceNotFoundException") {
-                     return Ok(None);
+                    return Ok(None);
                 }
             }
             // Otherwise, it's an actual error
-             Err(anyhow::Error::new(e).context(format!("Failed to describe log group '{}'", name)))
+            Err(anyhow::Error::new(e).context(format!("Failed to describe log group '{}'", name)))
         }
     }
 }

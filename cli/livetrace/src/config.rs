@@ -1,7 +1,20 @@
+//! Manages configuration loading, parsing, and merging for `livetrace`.
+//!
+//! This module defines structures for representing the configuration file (`.livetrace.toml`),
+//! individual profiles within that file, and the final `EffectiveConfig` that results
+//! from merging CLI arguments, environment variables (handled in `lib.rs`/`main.rs` for OTLP),
+//! and profile settings.
+//!
+//! Key functionalities include:
+//! - Loading the `.livetrace.toml` file.
+//! - Parsing TOML into Rust structs.
+//! - Applying a precedence order: CLI arguments > Profile settings > Global settings.
+//! - Saving CLI arguments to a named profile in the configuration file.
+
 use crate::cli::{CliArgs, ColoringMode};
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 use std::{fs, io::Write, path::Path};
 
 // Default filename for the configuration
@@ -22,7 +35,7 @@ pub struct ConfigFile {
 }
 
 /// Represents the configuration settings within a profile (or global section).
-/// Fields should generally mirror CliArgs, using Option<T> and serde attributes.
+/// Fields should generally mirror CliArgs, using `Option<T>` and serde attributes.
 #[derive(Debug, Deserialize, Serialize, Default, Clone)] // Added Clone
 #[serde(deny_unknown_fields)]
 pub struct ProfileConfig {
@@ -510,6 +523,7 @@ mod tests {
             color_by: ColoringMode::Service,
             events_only: true,
             trace_timeout: 10,
+            command: None, // Add the new field
         }
     }
 
@@ -780,21 +794,21 @@ aws-region = "us-west-1"
         };
 
         let overrides = ProfileConfig {
-            log_group_pattern: None, // Keep base
-            stack_name: Some("override-stack".to_string()), // Override base
-            otlp_endpoint: None,     // Keep base
-            otlp_headers: Some(vec!["override-header".to_string()]), // Add new
-            aws_region: Some("us-west-2".to_string()), // Override base
-            aws_profile: None, // Keep base (None)
-            forward_only: Some(true), // Override base
-            attrs: None,       // Keep base
+            log_group_pattern: None,                                         // Keep base
+            stack_name: Some("override-stack".to_string()),                  // Override base
+            otlp_endpoint: None,                                             // Keep base
+            otlp_headers: Some(vec!["override-header".to_string()]),         // Add new
+            aws_region: Some("us-west-2".to_string()),                       // Override base
+            aws_profile: None,                                               // Keep base (None)
+            forward_only: Some(true),                                        // Override base
+            attrs: None,                                                     // Keep base
             event_severity_attribute: Some("override.severity".to_string()), // Add new
-            poll_interval: None, // Keep base
-            session_timeout: Some(99), // Add new
-            theme: None, // Keep base
-            color_by: Some(ColoringMode::Span), // Override base
-            events_only: None, // Keep base
-            trace_timeout: Some(20), // Add new
+            poll_interval: None,                                             // Keep base
+            session_timeout: Some(99),                                       // Add new
+            theme: None,                                                     // Keep base
+            color_by: Some(ColoringMode::Span),                              // Override base
+            events_only: None,                                               // Keep base
+            trace_timeout: Some(20),                                         // Add new
             monochrome: None,
         };
 

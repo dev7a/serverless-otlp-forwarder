@@ -1,9 +1,22 @@
+//! Handles the rendering of trace and event data to the console.
+//!
+//! This module is responsible for:
+//! - Defining color themes and palettes.
+//! - Structuring trace data into a hierarchical, readable format (waterfall view).
+//! - Formatting individual spans and events with appropriate colors and indentation.
+//! - Generating a timeline scale for trace visualization.
+//! - Displaying span attributes and event attributes, with optional filtering.
+//! - Managing terminal width for responsive output.
+
 use crate::cli::ColoringMode;
 use crate::processing::TelemetryData;
 use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use colored::*;
-use comfy_table::{presets, TableComponent, Attribute, Cell, CellAlignment, ContentArrangement, Table, ColumnConstraint, Width::Fixed};
+use comfy_table::{
+    presets, Attribute, Cell, CellAlignment, ColumnConstraint, ContentArrangement, Table,
+    TableComponent, Width::Fixed,
+};
 use globset::GlobSet;
 use opentelemetry_proto::tonic::{
     collector::trace::v1::ExportTraceServiceRequest,
@@ -12,6 +25,7 @@ use opentelemetry_proto::tonic::{
 };
 use prost::Message;
 use std::collections::HashMap;
+use std::str::FromStr; // Added for FromStr trait
 use terminal_size::{self, Height, Width}; // Need TelemetryData for display_console
 
 // Constants
@@ -129,19 +143,25 @@ pub enum Theme {
     Monochrome,
 }
 
-impl Theme {
+impl FromStr for Theme {
+    type Err = String; // Define an error type for parsing
+
     // Parse a theme name string to an enum value
-    pub fn from_str(theme_name: &str) -> Self {
-        match theme_name.to_lowercase().as_str() {
-            "tableau" => Theme::Tableau,
-            "colorbrewer" => Theme::ColorBrewer,
-            "material" => Theme::Material,
-            "solarized" => Theme::Solarized,
-            "monochrome" => Theme::Monochrome,
-            _ => Theme::Default,
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "default" => Ok(Theme::Default),
+            "tableau" => Ok(Theme::Tableau),
+            "colorbrewer" => Ok(Theme::ColorBrewer),
+            "material" => Ok(Theme::Material),
+            "solarized" => Ok(Theme::Solarized),
+            "monochrome" => Ok(Theme::Monochrome),
+            _ => Err(format!("Invalid theme name: {}", s)),
         }
     }
+}
 
+// Keep the original methods for Theme, but from_str is now part of FromStr
+impl Theme {
     // Get the color palette for the theme
     pub fn get_palette(&self) -> &'static [(u8, u8, u8); 12] {
         match self {
@@ -374,7 +394,11 @@ pub fn display_console(
     for (trace_id, spans_in_trace_with_service) in traces {
         // 1. Define base and suffix
         let base_heading = format!("Trace ID: {}", trace_id);
-        let suffix = if root_span_received { "" } else { " (Missing Root)" };
+        let suffix = if root_span_received {
+            ""
+        } else {
+            " (Missing Root)"
+        };
 
         // 2. Calculate total visible length
         let visible_heading_len = base_heading.len() + suffix.len();
@@ -396,7 +420,6 @@ pub fn display_console(
             styled_heading, // Already styled
             "─".repeat(right_dashes).dimmed()
         );
-
 
         if spans_in_trace_with_service.is_empty() {
             continue;
@@ -615,7 +638,6 @@ pub fn display_console(
                 color_by,
             )?;
         }
-
 
         println!("{}", table);
 
@@ -856,7 +878,6 @@ fn add_span_to_table(
     };
 
     let status_content_str = format_span_status(node.status_code);
-
 
     table.add_row(vec![
         Cell::new(service_name_content),

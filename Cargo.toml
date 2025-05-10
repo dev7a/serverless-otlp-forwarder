@@ -94,7 +94,7 @@ flate2 = "1.0"
 regex = "1.11.1"
 pin-project = "1.1"
 bytes = "1.7"
-chrono = "0.4.1"
+chrono = "0.4.41"
 uuid = { version = "1.0", features = ["v4"] }
 urlencoding = "2.1"
 bon = "3.5"
@@ -103,8 +103,9 @@ libc = "0.2"
 sha2 = "0.10.9"
 tera = "1.20.0"
 statrs = "0.18.0"
-clap = { version = "4.4.8", features = ["derive"] }
-indicatif = { version = "0.17", features = ["improved_unicode"] }
+clap = { version = "4.4.8", features = ["derive", "cargo"] }
+clap_complete = { version = "4.5.50" }
+indicatif = { version = "0.17.8", features = ["improved_unicode"] }
 headless_chrome = "1.0.17"
 toml = "0.8.22"
 globset = "0.4"
@@ -131,7 +132,7 @@ hex = "0.4"
 prettytable-rs = "0.10"
 comfy-table = "7.1.4"
 tabled = "0.19.0"
-nix = "0.30.0"
+nix = "0.30.1"
 scopeguard = "1.2"
 tempfile = "3.8"
 terminal_size = "0.4.2"

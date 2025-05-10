@@ -1,3 +1,14 @@
+//! Provides functionality for polling AWS CloudWatch Logs using the `FilterLogEvents` API.
+//!
+//! This module is responsible for:
+//! - Spawning an asynchronous task that periodically polls a set of log group ARNs.
+//! - Managing timestamps for each log group to fetch only new events since the last poll.
+//! - Handling pagination for `FilterLogEvents` responses.
+//! - Processing log event messages from the polled data using functions from the
+//!   `processing` module.
+//! - Sending the resulting `TelemetryData` (or errors) over an MPSC channel to the main
+//!   application logic.
+
 use anyhow::Result;
 use aws_sdk_cloudwatchlogs::Client as CwlClient;
 use chrono::Utc;

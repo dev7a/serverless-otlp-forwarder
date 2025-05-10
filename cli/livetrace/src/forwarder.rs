@@ -1,3 +1,13 @@
+//! Manages the forwarding of OTLP (OpenTelemetry Protocol) trace data to a configured endpoint.
+//!
+//! This module includes functionality for:
+//! - Parsing OTLP headers from string representations.
+//! - Compacting a batch of telemetry data (multiple `TelemetryData` items) into a single
+//!   `ExportTraceServiceRequest` by merging resource spans. This is done before compression
+//!   and sending.
+//! - Sending the (potentially compacted and then gzipped) OTLP payload via HTTP POST
+//!   to the specified OTLP receiver.
+
 use anyhow::{Context, Result};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},

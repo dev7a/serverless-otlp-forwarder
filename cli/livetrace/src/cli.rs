@@ -1,5 +1,16 @@
+//! Defines the command-line interface structure and argument parsing for `livetrace`.
+//!
+//! This module uses the `clap` crate to define the CLI arguments, their types,
+//! help messages, and any validation rules (like mutually exclusive groups).
+//! It also includes custom parsers for specific argument types (e.g., themes)
+//! and helper functions related to CLI argument processing (e.g., parsing glob patterns).
+
 use crate::console_display::Theme;
-use clap::{builder::TypedValueParser, error::ErrorKind, ArgGroup, Parser, ValueEnum};
+use clap::{
+    builder::TypedValueParser, crate_authors, crate_description, error::ErrorKind, ArgGroup,
+    Parser, Subcommand, ValueEnum, // Added Subcommand
+};
+use clap_complete::Shell; // Added for shell completions
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
@@ -13,10 +24,26 @@ pub enum ColoringMode {
     Span,
 }
 
+const USAGE_EXAMPLES: &str = "\
+EXAMPLES:
+    # Tail logs from a CloudFormation stack (Live Tail mode)
+    livetrace --stack-name my-api-stack
+
+    # Tail logs matching a pattern and forward to a local OTLP collector
+    livetrace --log-group-pattern \"/aws/lambda/my-service-\" -e http://localhost:4318
+
+    # Poll logs every 30 seconds from a stack, showing only events, with a specific theme
+    livetrace --stack-name my-data-processing --poll-interval 30 --events-only --theme solarized
+
+    # Discover log groups by pattern and save the configuration to a profile named \"dev\"
+    livetrace --log-group-pattern \"/aws/lambda/user-service-\" --save-profile dev
+
+    # Load configuration from the \"dev\" profile and override the OTLP endpoint
+    livetrace --config-profile dev -e http://localhost:4319";
 
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
 #[derive(Parser, Debug, Clone)] // Added Clone
-#[command(author = "Dev7A", version, about, long_about = None)]
+#[command(author = crate_authors!(", "), version, about = crate_description!(), long_about = None, after_help = USAGE_EXAMPLES)]
 #[clap(group( // Add group to make poll/timeout mutually exclusive
     ArgGroup::new("mode")
         .required(false) // One or neither can be specified
@@ -122,6 +149,20 @@ pub struct CliArgs {
     /// Maximum time in seconds to wait for spans belonging to a trace before displaying/forwarding it.
     #[arg(long, default_value_t = 5, help_heading = "Processing Options")]
     pub trace_timeout: u64,
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Commands {
+    /// Generate shell completion script
+    #[command(name = "generate-completions", hide = true)]
+    GenerateCompletions {
+        /// Shell for which to generate completions
+        #[arg(value_enum)]
+        shell: Shell,
+    },
 }
 
 // Create a custom value parser for themes

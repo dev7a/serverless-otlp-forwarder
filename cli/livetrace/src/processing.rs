@@ -1,3 +1,15 @@
+//! Handles the processing of raw log event messages into structured `TelemetryData`.
+//!
+//! This module is responsible for:
+//! - Parsing log messages (expected to be in `otlp-stdout-span-exporter` JSON format).
+//! - Decoding base64 encoded payloads.
+//! - Decompressing gzipped payloads.
+//! - Converting payloads from JSON OTLP format to protobuf OTLP format if necessary.
+//! - Compacting multiple `TelemetryData` items into a single item by merging
+//!   `ExportTraceServiceRequest` resource spans.
+//! - Compressing payloads using Gzip.
+//! - Sending telemetry payloads to an OTLP HTTP endpoint.
+
 use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose, Engine};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};

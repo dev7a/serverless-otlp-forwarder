@@ -1,22 +1,22 @@
 # OTLP Stdout livetrace
 
-`livetrace` is a command-line tool designed to enhance local development workflows when working with distributed tracing in serverless environments, particularly those following the **OTLP-stdout Forwarder Architecture**.
+`livetrace` is a command-line tool designed to enhance local development workflows when working with distributed tracing in serverless environments using the [Serverless OTLP Forwarder Architecture](https://dev7a.github.io/serverless-otlp-forwarder/architecture/).
 
 ## Overview
 
-In architectures where Lambda functions (or other ephemeral compute) log OpenTelemetry (OTLP) trace data to standard output, which is then captured by services like CloudWatch Logs, correlating and visualizing a complete trace during development can be challenging. Logs for different services involved in a single request might be spread across multiple Log Groups.
+In the Serverless OTLP Forwarder architecture, Lambda functions (or other compute resources) emit OpenTelemetry (OTLP) trace data to standard output. This tool enables you to correlate and visualize complete traces—especially valuable during development. Because logs from different services involved in a single request may be distributed across multiple Log Groups, _livetrace_ can tail several log groups simultaneously and reconstruct traces spanning all participating services.
 
-`livetrace` addresses this by:
+`livetrace` supports:
 
 1.  **Discovering** relevant CloudWatch Log Groups based on naming patterns or CloudFormation stack resources.
 2.  **Validating** the existence of these Log Groups, intelligently handling standard Lambda and Lambda@Edge naming conventions.
-3.  **Tailing** or **Polling** these Log Groups simultaneously using either the efficient `StartLiveTail` API or the `FilterLogEvents` API.
+3.  **Tailing** or **Polling** these Log Groups simultaneously using either the `StartLiveTail`or the `FilterLogEvents` APIs.
 4.  **Parsing** OTLP trace data embedded within log messages in the format produced by the _otlp-stdout-span-exporter_ ([npm](https://www.npmjs.com/package/@dev7a/otlp-stdout-span-exporter), [pypi](https://pypi.org/project/otlp-stdout-span-exporter/), [crates.io](https://crates.io/crates/otlp-stdout-span-exporter)).
 5.  **Displaying** traces in a user-friendly waterfall view directly in your terminal, including service names, durations, and timelines.
 6.  **Showing** span events associated with the trace.
 7.  **Optionally forwarding** the raw OTLP protobuf data to a specified OTLP-compatible endpoint (like a local OpenTelemetry Collector or Jaeger instance).
 
-It acts as a local observability companion, giving you immediate feedback on trace behavior without needing to navigate the AWS console or wait for logs to propagate fully to a backend system.
+It acts as a local observability companion, giving you immediate feedback on trace behavior without needing to navigate the AWS console, your o11y tool, or wait for logs to propagate fully to a backend system.
 
 ## Features
 
@@ -26,7 +26,7 @@ It acts as a local observability companion, giving you immediate feedback on tra
     *   Find log groups matching one or more patterns (`--log-group-pattern`).
     *   Find log groups belonging to a CloudFormation stack (`--stack-name`), including implicitly created Lambda log groups.
     *   **Combine pattern and stack discovery:** Use both options simultaneously to aggregate log groups.
-*   **Log Group Validation:** Checks existence and handles Lambda@Edge naming conventions (`/aws/lambda/us-east-1.<function-name>`).
+*   **Support for Lambda@Edge:** Checks existence and handles Lambda@Edge naming conventions (`/aws/lambda/<region>.<function-name>`).
 *   **OTLP/stdout Parsing:** Decodes trace data logged via the `otlp-stdout-span-exporter` format (JSON wrapping base64-encoded, gzipped OTLP protobuf).
 *   **Console Trace Visualization:**
     *   Waterfall view showing span hierarchy, service names, durations, and relative timing.
@@ -48,19 +48,30 @@ It acts as a local observability companion, giving you immediate feedback on tra
 
 ### Prerequisites
 
-*   Rust toolchain (latest stable recommended)
-*   AWS Credentials configured (via environment variables, shared credentials file, etc.) accessible to the tool.
+*   Rust toolchain (latest stable recommended). You can install it from [rustup.rs](https://rustup.rs/).
+*   AWS Credentials configured (via environment variables, shared credentials file, etc.) accessible to the tool, with permissions to read CloudWatch Logs and, if using stack discovery, CloudFormation resources.
+
+### From Crates.io (Recommended)
+
+```bash
+cargo install livetrace
+```
 
 ### From Source
 
-```bash
-# Clone the repository (if you haven't already)
-# git clone <repository-url>
-# cd <repository-path>
+If you want to build from the latest source code or contribute to development:
 
-# Build and install the livetrace binary
-cargo install --path cli/livetrace
-```
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/dev7a/serverless-otlp-forwarder.git
+    cd serverless-otlp-forwarder
+    ```
+
+2.  **Build and install the `livetrace` binary:**
+    ```bash
+    cargo install --path cli/livetrace
+    ```
+    This will compile the `livetrace` crate and place the binary in your Cargo bin directory (e.g., `~/.cargo/bin/livetrace`). Ensure this directory is in your system's `PATH`.
 
 ## Usage
 
@@ -104,6 +115,8 @@ You can specify *at most one* of the following:
     # Use Live Tail, but exit after 60 minutes
     livetrace --pattern "my-service-" --session-timeout 60
     ```
+[!NOTE]
+> Live Tail mode is the default, but it's not free, at 1c/minute. For long sessions, it's probably better to use the `FilterLogEvents` API with a polling interval.
 
 ### OTLP Forwarding (Optional)
 
@@ -190,7 +203,7 @@ To save your current command-line options as a named profile:
 
 ```bash
 # Save the current settings as "dev-profile"
-livetrace --pattern "my-service-" --timeline-width 120 --attrs "http.*" --save-profile dev-profile
+livetrace --pattern "my-service-" --attrs "http.*" --save-profile dev-profile
 ```
 
 ### Using a Profile
@@ -224,7 +237,6 @@ event-severity-attribute = "event.severity"
 # Profile-specific settings
 [profiles.dev-profile]
 log-group-pattern = ["my-service-"]
-timeline-width = 120
 attrs = "http.*"
 theme = "solarized"
 events-only = true
@@ -237,6 +249,68 @@ otlp-endpoint = "http://localhost:4318"
 ```
 
 This file is meant to be local to your project or environment and should typically not be committed to version control.
+
+## Shell Completions
+
+`livetrace` can generate shell completion scripts for Bash, Elvish, Fish, PowerShell, and Zsh.
+This allows you to get command-line suggestions by pressing the Tab key.
+
+To generate a script, use the `generate-completions` subcommand:
+
+```bash
+livetrace generate-completions <SHELL>
+```
+
+Replace `<SHELL>` with your desired shell (e.g., `bash`, `zsh`, `fish`).
+
+### Installation Examples
+
+The exact installation method varies by shell. Here are some common examples:
+
+**Bash:**
+
+1.  Ensure you have `bash-completion` installed (often available via your system's package manager).
+2.  Create the completions directory if it doesn't exist:
+    ```bash
+    mkdir -p ~/.local/share/bash-completion/completions
+    ```
+3.  Generate the script and save it:
+    ```bash
+    livetrace generate-completions bash > ~/.local/share/bash-completion/completions/livetrace
+    ```
+    You may need to restart your shell or source your `.bashrc` for changes to take effect.
+
+**Zsh:**
+
+1.  Create a directory for completions if you don't have one (e.g., `~/.zsh/completions`).
+    ```bash
+    mkdir -p ~/.zsh/completions
+    ```
+2.  Add this directory to your `fpath` in your `.zshrc` file *before* `compinit` is called:
+    ```zsh
+    # In ~/.zshrc
+    fpath=(~/.zsh/completions $fpath)
+    # ... (ensure compinit is called after this, e.g., autoload -U compinit && compinit)
+    ```
+3.  Generate the script:
+    ```bash
+    livetrace generate-completions zsh > ~/.zsh/completions/_livetrace
+    ```
+    You may need to restart your shell or run `compinit` again.
+
+**Fish:**
+
+1.  Create the completions directory if it doesn't exist:
+    ```bash
+    mkdir -p ~/.config/fish/completions
+    ```
+2.  Generate the script:
+    ```bash
+    livetrace generate-completions fish > ~/.config/fish/completions/livetrace.fish
+    ```
+    Fish should pick up the completions automatically on next launch.
+
+Refer to your shell's documentation for the most up-to-date and specific instructions.
 
 ## Development
 
@@ -253,4 +327,4 @@ cargo clippy -p livetrace -- -D warnings
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](https://github.com/dev7a/serverless-otlp-forwarder/blob/main/cli/livetrace/LICENSE) file for details.

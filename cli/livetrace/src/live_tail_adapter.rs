@@ -1,3 +1,14 @@
+//! Adapts the AWS CloudWatch Logs `StartLiveTail` API for use in `livetrace`.
+//!
+//! This module is responsible for:
+//! - Spawning an asynchronous task that initiates a `StartLiveTail` session for
+//!   a given set of log group ARNs.
+//! - Receiving `StartLiveTailResponseStream` events (session start, updates with log data).
+//! - Processing log event messages from the stream using functions from the `processing` module.
+//! - Sending the resulting `TelemetryData` (or errors) over an MPSC channel to the main
+//!   application logic.
+//! - Handling session timeouts.
+
 use anyhow::Result;
 use aws_sdk_cloudwatchlogs::{types::StartLiveTailResponseStream, Client as CwlClient};
 use std::time::Duration;
