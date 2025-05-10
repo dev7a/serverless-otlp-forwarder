@@ -33,7 +33,7 @@ impl std::str::FromStr for EnvVar {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkConfig {
     pub function_name: String,
     pub memory_size: Option<i32>,
@@ -46,7 +46,7 @@ pub struct BenchmarkConfig {
     pub environment: Vec<EnvVar>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColdStartMetrics {
     pub timestamp: String,
     pub init_duration: f64,
@@ -58,7 +58,7 @@ pub struct ColdStartMetrics {
     pub memory_size: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WarmStartMetrics {
     pub timestamp: String,
     pub duration: f64,
@@ -68,7 +68,7 @@ pub struct WarmStartMetrics {
     pub memory_size: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClientMetrics {
     pub timestamp: String,
     pub client_duration: f64,
@@ -129,7 +129,7 @@ impl InvocationMetrics {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkReport {
     pub config: BenchmarkConfig,
     pub cold_starts: Vec<ColdStartMetrics>,

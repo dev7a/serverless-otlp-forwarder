@@ -138,3 +138,241 @@ pub fn calculate_cold_start_total_duration_stats(
     let stats = calculate_stats(&durations);
     Some((stats.mean, stats.p99, stats.p95, stats.p50))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{ClientMetrics, ColdStartMetrics, WarmStartMetrics};
+
+    const EPSILON: f64 = 1e-9;
+
+    fn assert_f64_eq(a: f64, b: f64, msg: &str) {
+        assert!((a - b).abs() < EPSILON, "{} | {} vs {}", msg, a, b);
+    }
+
+    fn assert_metrics_stats_eq(actual: &MetricsStats, expected: &MetricsStats, context: &str) {
+        assert_f64_eq(actual.mean, expected.mean, &format!("{}: mean mismatch", context));
+        assert_f64_eq(actual.p50, expected.p50, &format!("{}: p50 mismatch", context));
+        assert_f64_eq(actual.p95, expected.p95, &format!("{}: p95 mismatch", context));
+        assert_f64_eq(actual.p99, expected.p99, &format!("{}: p99 mismatch", context));
+        assert_f64_eq(actual.std_dev, expected.std_dev, &format!("{}: std_dev mismatch", context));
+    }
+
+    fn assert_option_tuple_eq(
+        actual: Option<(f64, f64, f64, f64)>,
+        expected: Option<(f64, f64, f64, f64)>,
+        context: &str,
+    ) {
+        match (actual, expected) {
+            (Some(a), Some(e)) => {
+                assert_f64_eq(a.0, e.0, &format!("{}: mean (tuple.0) mismatch", context));
+                assert_f64_eq(a.1, e.1, &format!("{}: p99 (tuple.1) mismatch", context));
+                assert_f64_eq(a.2, e.2, &format!("{}: p95 (tuple.2) mismatch", context));
+                assert_f64_eq(a.3, e.3, &format!("{}: p50 (tuple.3) mismatch", context));
+            }
+            (None, None) => {} // Both are None, which is fine.
+            _ => panic!(
+                "{}: Option mismatch. Actual: {:?}, Expected: {:?}",
+                context, actual, expected
+            ),
+        }
+    }
+
+    #[test]
+    fn test_calculate_stats_empty_slice() {
+        let values: [f64; 0] = [];
+        let stats = calculate_stats(&values);
+        let expected = MetricsStats {
+            mean: 0.0,
+            p50: 0.0,
+            p95: 0.0,
+            p99: 0.0,
+            std_dev: 0.0,
+        };
+        assert_metrics_stats_eq(&stats, &expected, "empty_slice");
+    }
+
+    #[test]
+    fn test_calculate_stats_single_value() {
+        let values = [5.0];
+        let stats = calculate_stats(&values);
+        let expected = MetricsStats {
+            mean: 5.0,
+            p50: 5.0,
+            p95: 5.0,
+            p99: 5.0,
+            std_dev: 0.0,
+        };
+        assert_metrics_stats_eq(&stats, &expected, "single_value");
+    }
+
+    #[test]
+    fn test_calculate_stats_multiple_values() {
+        let values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 100.0]; // N=11
+        let stats = calculate_stats(&values);
+        let mut data = statrs::statistics::Data::new(values.to_vec());
+        let expected = MetricsStats {
+            mean: data.mean().unwrap(),
+            p50: data.percentile(50),
+            p95: data.percentile(95),
+            p99: data.percentile(99),
+            std_dev: data.std_dev().unwrap(),
+        };
+        assert_metrics_stats_eq(&stats, &expected, "multiple_values");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_init_stats_empty() {
+        let cold_starts: [ColdStartMetrics; 0] = [];
+        let result = calculate_cold_start_init_stats(&cold_starts);
+        assert_eq!(result, None, "cs_init_empty");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_init_stats_happy_path() {
+        let cold_starts = [
+            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
+            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: Some(352.0), billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+        ];
+        let result = calculate_cold_start_init_stats(&cold_starts);
+        let durations = [100.0, 120.0];
+        let stats = calculate_stats(&durations);
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        assert_option_tuple_eq(result, expected, "cs_init_happy");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_server_stats_empty() {
+        let cold_starts: [ColdStartMetrics; 0] = [];
+        let result = calculate_cold_start_server_stats(&cold_starts);
+        assert_eq!(result, None, "cs_server_empty");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_server_stats_happy_path() {
+        let cold_starts = [
+            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
+            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: Some(352.0), billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+        ];
+        let result = calculate_cold_start_server_stats(&cold_starts);
+        let durations = [200.0, 220.0];
+        let stats = calculate_stats(&durations);
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        assert_option_tuple_eq(result, expected, "cs_server_happy");
+    }
+    
+    fn get_warm_duration(ws: &WarmStartMetrics) -> f64 {
+        ws.duration
+    }
+
+    #[test]
+    fn test_calculate_warm_start_stats_empty() {
+        let warm_starts: [WarmStartMetrics; 0] = [];
+        let result = calculate_warm_start_stats(&warm_starts, get_warm_duration);
+        assert_eq!(result, None, "ws_empty");
+    }
+
+    #[test]
+    fn test_calculate_warm_start_stats_happy_path() {
+        let warm_starts = [
+            WarmStartMetrics { timestamp: "ts1".to_string(), duration: 50.0, extension_overhead: 5.0, billed_duration: 50, max_memory_used: 128, memory_size: 256 },
+            WarmStartMetrics { timestamp: "ts2".to_string(), duration: 60.0, extension_overhead: 6.0, billed_duration: 60, max_memory_used: 130, memory_size: 256 },
+        ];
+        let result = calculate_warm_start_stats(&warm_starts, get_warm_duration);
+        let durations = [50.0, 60.0];
+        let stats = calculate_stats(&durations);
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        assert_option_tuple_eq(result, expected, "ws_happy");
+    }
+
+    #[test]
+    fn test_calculate_client_stats_empty() {
+        let client_metrics: [ClientMetrics; 0] = [];
+        let result = calculate_client_stats(&client_metrics);
+        assert_eq!(result, None, "client_empty");
+    }
+
+    #[test]
+    fn test_calculate_client_stats_happy_path() {
+        let client_metrics = [
+            ClientMetrics { timestamp: "ts1".to_string(), client_duration: 30.0, memory_size: 256 },
+            ClientMetrics { timestamp: "ts2".to_string(), client_duration: 35.0, memory_size: 256 },
+        ];
+        let result = calculate_client_stats(&client_metrics);
+        let durations = [30.0, 35.0];
+        let stats = calculate_stats(&durations);
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        assert_option_tuple_eq(result, expected, "client_happy");
+    }
+
+    #[test]
+    fn test_calculate_memory_stats_empty() {
+        let warm_starts: [WarmStartMetrics; 0] = [];
+        let result = calculate_memory_stats(&warm_starts);
+        assert_eq!(result, None, "mem_empty");
+    }
+
+    #[test]
+    fn test_calculate_memory_stats_happy_path() {
+        let warm_starts = [
+            WarmStartMetrics { timestamp: "ts1".to_string(), duration: 50.0, extension_overhead: 5.0, billed_duration: 50, max_memory_used: 128, memory_size: 256 },
+            WarmStartMetrics { timestamp: "ts2".to_string(), duration: 60.0, extension_overhead: 6.0, billed_duration: 60, max_memory_used: 256, memory_size: 512 },
+        ];
+        let result = calculate_memory_stats(&warm_starts);
+        let memory_values = [128.0, 256.0];
+        let stats = calculate_stats(&memory_values);
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        assert_option_tuple_eq(result, expected, "mem_happy");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_extension_overhead_stats_empty() {
+        let cold_starts: [ColdStartMetrics; 0] = [];
+        let result = calculate_cold_start_extension_overhead_stats(&cold_starts);
+        assert_eq!(result, None, "cs_ext_overhead_empty");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_extension_overhead_stats_happy_path() {
+        let cold_starts = [
+            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
+            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: Some(352.0), billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+        ];
+        let result = calculate_cold_start_extension_overhead_stats(&cold_starts);
+        let overheads = [10.0, 12.0];
+        let stats = calculate_stats(&overheads);
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        assert_option_tuple_eq(result, expected, "cs_ext_overhead_happy");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_total_duration_stats_empty_input() {
+        let cold_starts: [ColdStartMetrics; 0] = [];
+        let result = calculate_cold_start_total_duration_stats(&cold_starts);
+        assert_eq!(result, None, "cs_total_dur_empty_input");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_total_duration_stats_all_none() {
+        let cold_starts = [
+            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: None, billed_duration: 300, max_memory_used: 128, memory_size: 256 },
+            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: None, billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+        ];
+        let result = calculate_cold_start_total_duration_stats(&cold_starts);
+        assert_eq!(result, None, "cs_total_dur_all_none");
+    }
+
+    #[test]
+    fn test_calculate_cold_start_total_duration_stats_happy_path() {
+        let cold_starts = [
+            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
+            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: None, billed_duration: 320, max_memory_used: 130, memory_size: 256 }, // One None
+            ColdStartMetrics { timestamp: "ts3".to_string(), init_duration: 130.0, duration: 230.0, extension_overhead: 13.0, total_cold_start_duration: Some(373.0), billed_duration: 330, max_memory_used: 140, memory_size: 256 },
+        ];
+        let result = calculate_cold_start_total_duration_stats(&cold_starts);
+        let durations = [310.0, 373.0]; // Only Some values
+        let stats = calculate_stats(&durations);
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        assert_option_tuple_eq(result, expected, "cs_total_dur_happy");
+    }
+}

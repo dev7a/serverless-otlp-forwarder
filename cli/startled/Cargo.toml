@@ -1,6 +1,6 @@
 [package]
 name = "startled"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -51,3 +51,6 @@ comfy-table = { workspace = true, features = ["tty", "custom_styling"] }
 regex.workspace = true
 rust_decimal = { workspace = true, features = ["serde-with-arbitrary-precision"] }
 pulldown-cmark.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10.1"

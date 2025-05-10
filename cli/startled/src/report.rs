@@ -1005,3 +1005,172 @@ fn prepare_line_chart_render_data(
         page_type: page_type.to_string(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{BenchmarkConfig, BenchmarkReport, ClientMetrics}; // Removed unused ColdStartMetrics, EnvVar, WarmStartMetrics
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_snake_to_kebab() {
+        assert_eq!(snake_to_kebab("hello_world"), "hello-world");
+        assert_eq!(snake_to_kebab("another_test_case"), "another-test-case");
+        assert_eq!(snake_to_kebab("single"), "single");
+        assert_eq!(snake_to_kebab(""), "");
+        assert_eq!(snake_to_kebab("_leading_underscore"), "-leading-underscore");
+        assert_eq!(snake_to_kebab("trailing_underscore_"), "trailing-underscore-");
+    }
+
+    #[test]
+    fn test_calculate_base_path_no_base_url() {
+        let _path0 = PathBuf::from(""); // Represents being at the root before any group/subgroup
+        let _path1 = PathBuf::from("group1");
+        let _path2 = PathBuf::from("group1/subgroupA");
+        let _path3 = PathBuf::from("group1/subgroupA/chart_type"); // Max depth for calculation logic
+        let _path4 = PathBuf::from("group1/subgroupA/chart_type/another_level");
+
+
+        // The logic in calculate_base_path adds 1 to component count, then caps at 3.
+        // current_dir is the output_directory/group_name/subgroup_name
+        // The actual HTML file will be one level deeper (e.g., .../chart_name/index.html)
+        // So, if current_dir is "group1/subgroupA", components = 2. depth = min(2+1, 3) = 3. Result: "../../../"
+        
+        // If html_dir is root of output (e.g. "output_dir")
+        // This case is not directly hit by generate_chart's usage, as html_dir is usually deeper.
+        // However, testing the function directly:
+        // If current_dir is "output_dir", components = 1. depth = min(1+1, 3) = 2. Result: "../../"
+        assert_eq!(calculate_base_path(&PathBuf::from("output_dir"), None).unwrap(), "../../");
+
+
+        // If html_dir is "output_dir/group1"
+        // This means the chart's index.html will be at "output_dir/group1/chart_name/index.html"
+        // current_dir for calculate_base_path is "output_dir/group1"
+        // components = 2. depth = min(2+1, 3) = 3. Result: "../../../"
+        assert_eq!(calculate_base_path(&PathBuf::from("output_dir/group1"), None).unwrap(), "../../../");
+
+
+        // If html_dir is "output_dir/group1/subgroupA" (typical case for generate_chart)
+        // Chart's index.html will be at "output_dir/group1/subgroupA/chart_name/index.html"
+        // current_dir for calculate_base_path is "output_dir/group1/subgroupA"
+        // components = 3. depth = min(3+1, 3) = 3. Result: "../../../"
+        assert_eq!(calculate_base_path(&PathBuf::from("output_dir/group1/subgroupA"), None).unwrap(), "../../../");
+
+        // Test with a path that would exceed max depth if not capped
+        assert_eq!(calculate_base_path(&PathBuf::from("output_dir/group1/subgroupA/extra"), None).unwrap(), "../../../");
+    }
+
+    #[test]
+    fn test_calculate_base_path_with_base_url() {
+        let current_dir = PathBuf::from("any/path");
+        assert_eq!(calculate_base_path(&current_dir, Some("http://example.com")).unwrap(), "http://example.com/");
+        assert_eq!(calculate_base_path(&current_dir, Some("http://example.com/")).unwrap(), "http://example.com/");
+        assert_eq!(calculate_base_path(&current_dir, Some("https://cdn.test/reports/")).unwrap(), "https://cdn.test/reports/");
+        assert_eq!(calculate_base_path(&current_dir, Some("")).unwrap(), "/"); // Empty base_url becomes "/"
+    }
+
+    #[test]
+    fn test_prepare_bar_chart_render_data() {
+        let function_names = vec!["func_a".to_string(), "func_b".to_string()];
+        let stats = vec![
+            (10.5, 15.1, 14.2, 12.3), // avg, p99, p95, p50 for func_a
+            (20.0, 25.5, 24.0, 22.5), // avg, p99, p95, p50 for func_b
+        ];
+        let title = "Test Bar Chart";
+        let unit = "ms";
+        let page_type = "test_bar";
+
+        let render_data = prepare_bar_chart_render_data(&function_names, &stats, title, unit, page_type);
+
+        assert_eq!(render_data.title, title);
+        assert_eq!(render_data.unit, unit);
+        assert_eq!(render_data.page_type, page_type);
+        assert_eq!(render_data.y_axis_categories, vec!["AVG", "P99", "P95", "P50"]);
+        
+        assert_eq!(render_data.series.len(), 2);
+        // Series 1 (func_a)
+        assert_eq!(render_data.series[0].name, "func_a");
+        assert_eq!(render_data.series[0].values, vec![11.0, 15.0, 14.0, 12.0]); // Rounded
+        // Series 2 (func_b)
+        assert_eq!(render_data.series[1].name, "func_b");
+        assert_eq!(render_data.series[1].values, vec![20.0, 26.0, 24.0, 23.0]); // Rounded
+    }
+
+    #[test]
+    fn test_prepare_line_chart_render_data() {
+        let func_a_metrics = vec![
+            ClientMetrics { timestamp: "t1".to_string(), client_duration: 10.12, memory_size: 128 },
+            ClientMetrics { timestamp: "t2".to_string(), client_duration: 12.34, memory_size: 128 },
+        ];
+        let func_b_metrics = vec![
+            ClientMetrics { timestamp: "t3".to_string(), client_duration: 20.56, memory_size: 128 },
+        ];
+
+        let results = vec![
+            BenchmarkReport { 
+                config: BenchmarkConfig { function_name: "func_a".to_string(), memory_size: Some(128), concurrent_invocations: 1, rounds: 1, timestamp: "".to_string(), runtime: None, architecture: None, environment: vec![] },
+                cold_starts: vec![], warm_starts: vec![], client_measurements: func_a_metrics 
+            },
+            BenchmarkReport { 
+                config: BenchmarkConfig { function_name: "func_b".to_string(), memory_size: Some(128), concurrent_invocations: 1, rounds: 1, timestamp: "".to_string(), runtime: None, architecture: None, environment: vec![] },
+                cold_starts: vec![], warm_starts: vec![], client_measurements: func_b_metrics
+            },
+        ];
+        let function_names = vec!["func_a".to_string(), "func_b".to_string()];
+        let title = "Test Line Chart";
+        let unit = "ms";
+        let page_type = "test_line";
+
+        let render_data = prepare_line_chart_render_data(&results, &function_names, title, unit, page_type);
+
+        assert_eq!(render_data.title, title);
+        assert_eq!(render_data.unit, unit);
+        assert_eq!(render_data.page_type, page_type);
+        assert_eq!(render_data.x_axis_label, "Test Sequence");
+        assert_eq!(render_data.y_axis_label, "Duration (ms)");
+
+        assert_eq!(render_data.series.len(), 2);
+
+        // Series 1 (func_a)
+        assert_eq!(render_data.series[0].name, "func_a");
+        assert_eq!(render_data.series[0].points.len(), 2);
+        assert_eq!(render_data.series[0].points[0].x, 0); // offset 0, index 0
+        assert_eq!(render_data.series[0].points[0].y, 10.12);
+        assert_eq!(render_data.series[0].points[1].x, 1); // offset 0, index 1
+        assert_eq!(render_data.series[0].points[1].y, 12.34);
+        assert_eq!(render_data.series[0].mean, Some(11.23)); // (10.12 + 12.34) / 2 = 11.23
+
+        // Series 2 (func_b)
+        // current_offset for func_b starts at num_points_func_a (2) + gap (5) = 7
+        assert_eq!(render_data.series[1].name, "func_b");
+        assert_eq!(render_data.series[1].points.len(), 1);
+        assert_eq!(render_data.series[1].points[0].x, 7); // offset 7, index 0
+        assert_eq!(render_data.series[1].points[0].y, 20.56);
+        assert_eq!(render_data.series[1].mean, Some(20.56));
+        
+        // total_x_points = last_offset (7) + num_points_func_b (1) - gap (if series added)
+        // current_offset after func_a = 2 (len) + 5 (gap) = 7
+        // max_x after func_a = 7 - 5 = 2
+        // current_offset after func_b = 7 (prev_offset) + 1 (len) + 5 (gap) = 13
+        // max_x after func_b = 13 - 5 = 8
+        assert_eq!(render_data.total_x_points, 8);
+    }
+
+    #[test]
+    fn test_prepare_line_chart_render_data_empty_measurements() {
+        let results = vec![
+            BenchmarkReport { 
+                config: BenchmarkConfig { function_name: "func_a".to_string(), memory_size: Some(128), concurrent_invocations: 1, rounds: 1, timestamp: "".to_string(), runtime: None, architecture: None, environment: vec![] },
+                cold_starts: vec![], warm_starts: vec![], client_measurements: vec![] // Empty
+            },
+        ];
+        let function_names = vec!["func_a".to_string()];
+        let render_data = prepare_line_chart_render_data(&results, &function_names, "Empty", "ms", "empty_line");
+
+        assert_eq!(render_data.series.len(), 1);
+        assert_eq!(render_data.series[0].name, "func_a");
+        assert_eq!(render_data.series[0].points.len(), 0);
+        assert_eq!(render_data.series[0].mean, None);
+        assert_eq!(render_data.total_x_points, 0); // max_x remains 0 if no points
+    }
+}
