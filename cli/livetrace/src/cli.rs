@@ -7,8 +7,14 @@
 
 use crate::console_display::Theme;
 use clap::{
-    builder::TypedValueParser, crate_authors, crate_description, error::ErrorKind, ArgGroup,
-    Parser, Subcommand, ValueEnum, // Added Subcommand
+    builder::TypedValueParser,
+    crate_authors,
+    crate_description,
+    error::ErrorKind,
+    ArgGroup,
+    Parser,
+    Subcommand,
+    ValueEnum, // Added Subcommand
 };
 use clap_complete::Shell; // Added for shell completions
 use globset::{Glob, GlobSet, GlobSetBuilder};

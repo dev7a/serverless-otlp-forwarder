@@ -31,7 +31,8 @@ async fn main() -> Result<()> {
     // `CliArgs` struct (derived with `clap::Parser`) handles parsing.
     let args = CliArgs::parse();
 
-    if let Some(command) = &args.command { // Use a reference to args.command
+    if let Some(command) = &args.command {
+        // Use a reference to args.command
         match command {
             Commands::GenerateCompletions { shell } => {
                 let mut cmd = CliArgs::command();

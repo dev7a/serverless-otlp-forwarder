@@ -39,8 +39,8 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 // e.g., `aws_setup::setup_aws_resources`.
 // Ensure these items are public in their respective modules.
 use aws_setup::setup_aws_resources;
-pub use cli::{CliArgs, Commands}; // Re-export Commands as well
 use cli::{parse_attr_globs, ColoringMode}; // Assuming these are pub in cli.rs
+pub use cli::{CliArgs, Commands}; // Re-export Commands as well
 use config::{
     load_and_resolve_config, load_or_default_config_file, merge_into_profile_config,
     save_profile_config, EffectiveConfig, ProfileConfig,
