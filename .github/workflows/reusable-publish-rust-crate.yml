@@ -133,6 +133,9 @@ jobs:
     needs: [determine_publish, test_and_lint]
     if: needs.determine_publish.outputs.needs_publish == 'true' # Redundant due to test_and_lint's if, but good for clarity
     runs-on: ubuntu-latest
+    environment:
+      name: crates-publish
+      url: https://crates.io/crates/${{ inputs.crate_name }}
     defaults:
       run:
         working-directory: ${{ inputs.crate_path }}
