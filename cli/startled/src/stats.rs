@@ -151,11 +151,31 @@ mod tests {
     }
 
     fn assert_metrics_stats_eq(actual: &MetricsStats, expected: &MetricsStats, context: &str) {
-        assert_f64_eq(actual.mean, expected.mean, &format!("{}: mean mismatch", context));
-        assert_f64_eq(actual.p50, expected.p50, &format!("{}: p50 mismatch", context));
-        assert_f64_eq(actual.p95, expected.p95, &format!("{}: p95 mismatch", context));
-        assert_f64_eq(actual.p99, expected.p99, &format!("{}: p99 mismatch", context));
-        assert_f64_eq(actual.std_dev, expected.std_dev, &format!("{}: std_dev mismatch", context));
+        assert_f64_eq(
+            actual.mean,
+            expected.mean,
+            &format!("{}: mean mismatch", context),
+        );
+        assert_f64_eq(
+            actual.p50,
+            expected.p50,
+            &format!("{}: p50 mismatch", context),
+        );
+        assert_f64_eq(
+            actual.p95,
+            expected.p95,
+            &format!("{}: p95 mismatch", context),
+        );
+        assert_f64_eq(
+            actual.p99,
+            expected.p99,
+            &format!("{}: p99 mismatch", context),
+        );
+        assert_f64_eq(
+            actual.std_dev,
+            expected.std_dev,
+            &format!("{}: std_dev mismatch", context),
+        );
     }
 
     fn assert_option_tuple_eq(
@@ -231,8 +251,26 @@ mod tests {
     #[test]
     fn test_calculate_cold_start_init_stats_happy_path() {
         let cold_starts = [
-            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
-            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: Some(352.0), billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+            ColdStartMetrics {
+                timestamp: "ts1".to_string(),
+                init_duration: 100.0,
+                duration: 200.0,
+                extension_overhead: 10.0,
+                total_cold_start_duration: Some(310.0),
+                billed_duration: 300,
+                max_memory_used: 128,
+                memory_size: 256,
+            },
+            ColdStartMetrics {
+                timestamp: "ts2".to_string(),
+                init_duration: 120.0,
+                duration: 220.0,
+                extension_overhead: 12.0,
+                total_cold_start_duration: Some(352.0),
+                billed_duration: 320,
+                max_memory_used: 130,
+                memory_size: 256,
+            },
         ];
         let result = calculate_cold_start_init_stats(&cold_starts);
         let durations = [100.0, 120.0];
@@ -251,8 +289,26 @@ mod tests {
     #[test]
     fn test_calculate_cold_start_server_stats_happy_path() {
         let cold_starts = [
-            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
-            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: Some(352.0), billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+            ColdStartMetrics {
+                timestamp: "ts1".to_string(),
+                init_duration: 100.0,
+                duration: 200.0,
+                extension_overhead: 10.0,
+                total_cold_start_duration: Some(310.0),
+                billed_duration: 300,
+                max_memory_used: 128,
+                memory_size: 256,
+            },
+            ColdStartMetrics {
+                timestamp: "ts2".to_string(),
+                init_duration: 120.0,
+                duration: 220.0,
+                extension_overhead: 12.0,
+                total_cold_start_duration: Some(352.0),
+                billed_duration: 320,
+                max_memory_used: 130,
+                memory_size: 256,
+            },
         ];
         let result = calculate_cold_start_server_stats(&cold_starts);
         let durations = [200.0, 220.0];
@@ -260,7 +316,7 @@ mod tests {
         let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
         assert_option_tuple_eq(result, expected, "cs_server_happy");
     }
-    
+
     fn get_warm_duration(ws: &WarmStartMetrics) -> f64 {
         ws.duration
     }
@@ -275,8 +331,22 @@ mod tests {
     #[test]
     fn test_calculate_warm_start_stats_happy_path() {
         let warm_starts = [
-            WarmStartMetrics { timestamp: "ts1".to_string(), duration: 50.0, extension_overhead: 5.0, billed_duration: 50, max_memory_used: 128, memory_size: 256 },
-            WarmStartMetrics { timestamp: "ts2".to_string(), duration: 60.0, extension_overhead: 6.0, billed_duration: 60, max_memory_used: 130, memory_size: 256 },
+            WarmStartMetrics {
+                timestamp: "ts1".to_string(),
+                duration: 50.0,
+                extension_overhead: 5.0,
+                billed_duration: 50,
+                max_memory_used: 128,
+                memory_size: 256,
+            },
+            WarmStartMetrics {
+                timestamp: "ts2".to_string(),
+                duration: 60.0,
+                extension_overhead: 6.0,
+                billed_duration: 60,
+                max_memory_used: 130,
+                memory_size: 256,
+            },
         ];
         let result = calculate_warm_start_stats(&warm_starts, get_warm_duration);
         let durations = [50.0, 60.0];
@@ -295,8 +365,16 @@ mod tests {
     #[test]
     fn test_calculate_client_stats_happy_path() {
         let client_metrics = [
-            ClientMetrics { timestamp: "ts1".to_string(), client_duration: 30.0, memory_size: 256 },
-            ClientMetrics { timestamp: "ts2".to_string(), client_duration: 35.0, memory_size: 256 },
+            ClientMetrics {
+                timestamp: "ts1".to_string(),
+                client_duration: 30.0,
+                memory_size: 256,
+            },
+            ClientMetrics {
+                timestamp: "ts2".to_string(),
+                client_duration: 35.0,
+                memory_size: 256,
+            },
         ];
         let result = calculate_client_stats(&client_metrics);
         let durations = [30.0, 35.0];
@@ -315,8 +393,22 @@ mod tests {
     #[test]
     fn test_calculate_memory_stats_happy_path() {
         let warm_starts = [
-            WarmStartMetrics { timestamp: "ts1".to_string(), duration: 50.0, extension_overhead: 5.0, billed_duration: 50, max_memory_used: 128, memory_size: 256 },
-            WarmStartMetrics { timestamp: "ts2".to_string(), duration: 60.0, extension_overhead: 6.0, billed_duration: 60, max_memory_used: 256, memory_size: 512 },
+            WarmStartMetrics {
+                timestamp: "ts1".to_string(),
+                duration: 50.0,
+                extension_overhead: 5.0,
+                billed_duration: 50,
+                max_memory_used: 128,
+                memory_size: 256,
+            },
+            WarmStartMetrics {
+                timestamp: "ts2".to_string(),
+                duration: 60.0,
+                extension_overhead: 6.0,
+                billed_duration: 60,
+                max_memory_used: 256,
+                memory_size: 512,
+            },
         ];
         let result = calculate_memory_stats(&warm_starts);
         let memory_values = [128.0, 256.0];
@@ -335,8 +427,26 @@ mod tests {
     #[test]
     fn test_calculate_cold_start_extension_overhead_stats_happy_path() {
         let cold_starts = [
-            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
-            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: Some(352.0), billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+            ColdStartMetrics {
+                timestamp: "ts1".to_string(),
+                init_duration: 100.0,
+                duration: 200.0,
+                extension_overhead: 10.0,
+                total_cold_start_duration: Some(310.0),
+                billed_duration: 300,
+                max_memory_used: 128,
+                memory_size: 256,
+            },
+            ColdStartMetrics {
+                timestamp: "ts2".to_string(),
+                init_duration: 120.0,
+                duration: 220.0,
+                extension_overhead: 12.0,
+                total_cold_start_duration: Some(352.0),
+                billed_duration: 320,
+                max_memory_used: 130,
+                memory_size: 256,
+            },
         ];
         let result = calculate_cold_start_extension_overhead_stats(&cold_starts);
         let overheads = [10.0, 12.0];
@@ -355,8 +465,26 @@ mod tests {
     #[test]
     fn test_calculate_cold_start_total_duration_stats_all_none() {
         let cold_starts = [
-            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: None, billed_duration: 300, max_memory_used: 128, memory_size: 256 },
-            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: None, billed_duration: 320, max_memory_used: 130, memory_size: 256 },
+            ColdStartMetrics {
+                timestamp: "ts1".to_string(),
+                init_duration: 100.0,
+                duration: 200.0,
+                extension_overhead: 10.0,
+                total_cold_start_duration: None,
+                billed_duration: 300,
+                max_memory_used: 128,
+                memory_size: 256,
+            },
+            ColdStartMetrics {
+                timestamp: "ts2".to_string(),
+                init_duration: 120.0,
+                duration: 220.0,
+                extension_overhead: 12.0,
+                total_cold_start_duration: None,
+                billed_duration: 320,
+                max_memory_used: 130,
+                memory_size: 256,
+            },
         ];
         let result = calculate_cold_start_total_duration_stats(&cold_starts);
         assert_eq!(result, None, "cs_total_dur_all_none");
@@ -365,9 +493,36 @@ mod tests {
     #[test]
     fn test_calculate_cold_start_total_duration_stats_happy_path() {
         let cold_starts = [
-            ColdStartMetrics { timestamp: "ts1".to_string(), init_duration: 100.0, duration: 200.0, extension_overhead: 10.0, total_cold_start_duration: Some(310.0), billed_duration: 300, max_memory_used: 128, memory_size: 256 },
-            ColdStartMetrics { timestamp: "ts2".to_string(), init_duration: 120.0, duration: 220.0, extension_overhead: 12.0, total_cold_start_duration: None, billed_duration: 320, max_memory_used: 130, memory_size: 256 }, // One None
-            ColdStartMetrics { timestamp: "ts3".to_string(), init_duration: 130.0, duration: 230.0, extension_overhead: 13.0, total_cold_start_duration: Some(373.0), billed_duration: 330, max_memory_used: 140, memory_size: 256 },
+            ColdStartMetrics {
+                timestamp: "ts1".to_string(),
+                init_duration: 100.0,
+                duration: 200.0,
+                extension_overhead: 10.0,
+                total_cold_start_duration: Some(310.0),
+                billed_duration: 300,
+                max_memory_used: 128,
+                memory_size: 256,
+            },
+            ColdStartMetrics {
+                timestamp: "ts2".to_string(),
+                init_duration: 120.0,
+                duration: 220.0,
+                extension_overhead: 12.0,
+                total_cold_start_duration: None,
+                billed_duration: 320,
+                max_memory_used: 130,
+                memory_size: 256,
+            }, // One None
+            ColdStartMetrics {
+                timestamp: "ts3".to_string(),
+                init_duration: 130.0,
+                duration: 230.0,
+                extension_overhead: 13.0,
+                total_cold_start_duration: Some(373.0),
+                billed_duration: 330,
+                max_memory_used: 140,
+                memory_size: 256,
+            },
         ];
         let result = calculate_cold_start_total_duration_stats(&cold_starts);
         let durations = [310.0, 373.0]; // Only Some values

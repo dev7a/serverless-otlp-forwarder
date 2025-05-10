@@ -637,11 +637,13 @@ pub async fn run_stack_benchmark(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{BenchmarkConfig, BenchmarkReport, ColdStartMetrics, WarmStartMetrics, ClientMetrics, EnvVar};
-    use tempfile::tempdir;
+    use crate::types::{
+        BenchmarkConfig, BenchmarkReport, ClientMetrics, ColdStartMetrics, EnvVar, WarmStartMetrics,
+    };
+    use chrono::Local;
     use std::fs;
     use std::path::Path;
-    use chrono::Local;
+    use tempfile::tempdir;
 
     #[test]
     fn test_function_benchmark_config_new() {
@@ -690,7 +692,10 @@ mod tests {
                 timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                 runtime: Some("nodejs18.x".to_string()),
                 architecture: Some("arm64".to_string()),
-                environment: vec![EnvVar { key: "TEST_ENV".to_string(), value: "TEST_VAL".to_string() }],
+                environment: vec![EnvVar {
+                    key: "TEST_ENV".to_string(),
+                    value: "TEST_VAL".to_string(),
+                }],
             },
             cold_starts: vec![ColdStartMetrics {
                 timestamp: "ts_cold".to_string(),
@@ -718,26 +723,46 @@ mod tests {
         };
 
         let save_result = save_report(report.clone(), output_dir_str).await;
-        assert!(save_result.is_ok(), "Failed to save report: {:?}", save_result.err());
+        assert!(
+            save_result.is_ok(),
+            "Failed to save report: {:?}",
+            save_result.err()
+        );
 
         let expected_memory_dir = Path::new(output_dir_str).join("256mb");
-        assert!(expected_memory_dir.exists(), "Memory specific directory was not created");
-        assert!(expected_memory_dir.is_dir(), "Memory specific path is not a directory");
+        assert!(
+            expected_memory_dir.exists(),
+            "Memory specific directory was not created"
+        );
+        assert!(
+            expected_memory_dir.is_dir(),
+            "Memory specific path is not a directory"
+        );
 
         let expected_file_path = expected_memory_dir.join("my_test_lambda.json");
-        assert!(expected_file_path.exists(), "Report file was not created at {:?}", expected_file_path);
+        assert!(
+            expected_file_path.exists(),
+            "Report file was not created at {:?}",
+            expected_file_path
+        );
         assert!(expected_file_path.is_file(), "Report path is not a file");
 
         let file_content = fs::read_to_string(expected_file_path).unwrap();
         let saved_report: BenchmarkReport = serde_json::from_str(&file_content).unwrap();
-        
+
         // Basic check, ideally compare all fields or use a proper diffing library for structs
-        assert_eq!(saved_report.config.function_name, report.config.function_name);
+        assert_eq!(
+            saved_report.config.function_name,
+            report.config.function_name
+        );
         assert_eq!(saved_report.config.memory_size, report.config.memory_size);
         assert_eq!(saved_report.cold_starts.len(), 1);
         assert_eq!(saved_report.warm_starts.len(), 1);
         assert_eq!(saved_report.client_measurements.len(), 1);
-        assert_eq!(saved_report.cold_starts[0].init_duration, report.cold_starts[0].init_duration);
+        assert_eq!(
+            saved_report.cold_starts[0].init_duration,
+            report.cold_starts[0].init_duration
+        );
 
         // Clean up
         temp_dir.close().unwrap();
@@ -769,10 +794,16 @@ mod tests {
         assert!(save_result.is_ok());
 
         let expected_memory_dir = Path::new(output_dir_str).join("default");
-        assert!(expected_memory_dir.exists(), "Default memory directory was not created");
-        
+        assert!(
+            expected_memory_dir.exists(),
+            "Default memory directory was not created"
+        );
+
         let expected_file_path = expected_memory_dir.join("my_default_lambda.json");
-        assert!(expected_file_path.exists(), "Report file was not created for default memory");
+        assert!(
+            expected_file_path.exists(),
+            "Report file was not created for default memory"
+        );
 
         temp_dir.close().unwrap();
     }
