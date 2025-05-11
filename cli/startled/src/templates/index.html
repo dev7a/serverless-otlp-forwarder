@@ -33,12 +33,6 @@
                  {% if description %}
                  <p class="description">{{ description }}</p>
                  {% endif %}
-
-                 {% if has_readme %}
-                 <div class="readme-content">
-                    {{ readme_html | safe }}
-                 </div>
-                 {% endif %}
                 
                 <div class="items-grid">
                     {% for group_name, subgroups in report_structure %}
@@ -53,6 +47,11 @@
                         </div>
                      {% endfor %}
                  </div>
+                 {% if has_readme %}
+                 <div class="readme-content">
+                    {{ readme_html | safe }}
+                 </div>
+                 {% endif %}
              </div>
          </main>
      </div>

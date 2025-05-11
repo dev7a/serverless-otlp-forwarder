@@ -56,6 +56,11 @@ pub struct ColdStartMetrics {
     pub billed_duration: i64,
     pub max_memory_used: i64,
     pub memory_size: i64,
+    pub response_latency_ms: Option<f64>,
+    pub response_duration_ms: Option<f64>,
+    pub runtime_overhead_ms: Option<f64>,
+    pub produced_bytes: Option<i64>,
+    pub runtime_done_metrics_duration_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +71,11 @@ pub struct WarmStartMetrics {
     pub billed_duration: i64,
     pub max_memory_used: i64,
     pub memory_size: i64,
+    pub response_latency_ms: Option<f64>,
+    pub response_duration_ms: Option<f64>,
+    pub runtime_overhead_ms: Option<f64>,
+    pub produced_bytes: Option<i64>,
+    pub runtime_done_metrics_duration_ms: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +116,11 @@ impl InvocationMetrics {
             billed_duration: self.billed_duration,
             max_memory_used: self.max_memory_used,
             memory_size: self.memory_size,
+            response_latency_ms: self.response_latency_ms,
+            response_duration_ms: self.response_duration_ms,
+            runtime_overhead_ms: self.runtime_overhead_ms,
+            produced_bytes: self.produced_bytes,
+            runtime_done_metrics_duration_ms: self.runtime_done_metrics_duration_ms,
         })
     }
 
@@ -117,6 +132,11 @@ impl InvocationMetrics {
             billed_duration: self.billed_duration,
             max_memory_used: self.max_memory_used,
             memory_size: self.memory_size,
+            response_latency_ms: self.response_latency_ms,
+            response_duration_ms: self.response_duration_ms,
+            runtime_overhead_ms: self.runtime_overhead_ms,
+            produced_bytes: self.produced_bytes,
+            runtime_done_metrics_duration_ms: self.runtime_done_metrics_duration_ms,
         }
     }
 

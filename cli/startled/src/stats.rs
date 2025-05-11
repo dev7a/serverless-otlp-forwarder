@@ -48,44 +48,44 @@ pub fn calculate_stats(values: &[f64]) -> MetricsStats {
 /// Calculate statistics for cold start init duration
 pub fn calculate_cold_start_init_stats(
     cold_starts: &[crate::types::ColdStartMetrics],
-) -> Option<(f64, f64, f64, f64)> {
+) -> Option<(f64, f64, f64, f64, f64)> {
     if cold_starts.is_empty() {
         return None;
     }
     let durations: Vec<f64> = cold_starts.iter().map(|m| m.init_duration).collect();
     let stats = calculate_stats(&durations);
-    Some((stats.mean, stats.p99, stats.p95, stats.p50))
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
 }
 
 /// Calculate statistics for cold start server duration
 pub fn calculate_cold_start_server_stats(
     cold_starts: &[crate::types::ColdStartMetrics],
-) -> Option<(f64, f64, f64, f64)> {
+) -> Option<(f64, f64, f64, f64, f64)> {
     if cold_starts.is_empty() {
         return None;
     }
     let durations: Vec<f64> = cold_starts.iter().map(|m| m.duration).collect();
     let stats = calculate_stats(&durations);
-    Some((stats.mean, stats.p99, stats.p95, stats.p50))
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
 }
 
 /// Calculate statistics for warm start metrics
 pub fn calculate_warm_start_stats(
     warm_starts: &[crate::types::WarmStartMetrics],
     field: fn(&crate::types::WarmStartMetrics) -> f64,
-) -> Option<(f64, f64, f64, f64)> {
+) -> Option<(f64, f64, f64, f64, f64)> {
     if warm_starts.is_empty() {
         return None;
     }
     let durations: Vec<f64> = warm_starts.iter().map(field).collect();
     let stats = calculate_stats(&durations);
-    Some((stats.mean, stats.p99, stats.p95, stats.p50))
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
 }
 
 /// Calculate statistics for client metrics
 pub fn calculate_client_stats(
     client_measurements: &[crate::types::ClientMetrics],
-) -> Option<(f64, f64, f64, f64)> {
+) -> Option<(f64, f64, f64, f64, f64)> {
     if client_measurements.is_empty() {
         return None;
     }
@@ -94,13 +94,13 @@ pub fn calculate_client_stats(
         .map(|m| m.client_duration)
         .collect();
     let stats = calculate_stats(&durations);
-    Some((stats.mean, stats.p99, stats.p95, stats.p50))
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
 }
 
 /// Calculate memory usage statistics
 pub fn calculate_memory_stats(
     warm_starts: &[crate::types::WarmStartMetrics],
-) -> Option<(f64, f64, f64, f64)> {
+) -> Option<(f64, f64, f64, f64, f64)> {
     if warm_starts.is_empty() {
         return None;
     }
@@ -109,25 +109,25 @@ pub fn calculate_memory_stats(
         .map(|m| m.max_memory_used as f64)
         .collect();
     let stats = calculate_stats(&memory);
-    Some((stats.mean, stats.p99, stats.p95, stats.p50))
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
 }
 
 /// Calculate statistics for cold start extension overhead
 pub fn calculate_cold_start_extension_overhead_stats(
     cold_starts: &[crate::types::ColdStartMetrics],
-) -> Option<(f64, f64, f64, f64)> {
+) -> Option<(f64, f64, f64, f64, f64)> {
     if cold_starts.is_empty() {
         return None;
     }
     let overheads: Vec<f64> = cold_starts.iter().map(|m| m.extension_overhead).collect();
     let stats = calculate_stats(&overheads);
-    Some((stats.mean, stats.p99, stats.p95, stats.p50))
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
 }
 
 /// Calculate statistics for cold start total cold start duration
 pub fn calculate_cold_start_total_duration_stats(
     cold_starts: &[crate::types::ColdStartMetrics],
-) -> Option<(f64, f64, f64, f64)> {
+) -> Option<(f64, f64, f64, f64, f64)> {
     let durations: Vec<f64> = cold_starts
         .iter()
         .filter_map(|m| m.total_cold_start_duration)
@@ -136,7 +136,157 @@ pub fn calculate_cold_start_total_duration_stats(
         return None;
     }
     let stats = calculate_stats(&durations);
-    Some((stats.mean, stats.p99, stats.p95, stats.p50))
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for cold start response latency
+pub fn calculate_cold_start_response_latency_stats(
+    cold_starts: &[crate::types::ColdStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = cold_starts
+        .iter()
+        .filter_map(|m| m.response_latency_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for cold start response duration
+pub fn calculate_cold_start_response_duration_stats(
+    cold_starts: &[crate::types::ColdStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = cold_starts
+        .iter()
+        .filter_map(|m| m.response_duration_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for cold start runtime overhead
+pub fn calculate_cold_start_runtime_overhead_stats(
+    cold_starts: &[crate::types::ColdStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = cold_starts
+        .iter()
+        .filter_map(|m| m.runtime_overhead_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for cold start produced bytes
+pub fn calculate_cold_start_produced_bytes_stats(
+    cold_starts: &[crate::types::ColdStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = cold_starts
+        .iter()
+        .filter_map(|m| m.produced_bytes.map(|b| b as f64))
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for cold start runtime done metrics duration
+pub fn calculate_cold_start_runtime_done_metrics_duration_stats(
+    cold_starts: &[crate::types::ColdStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = cold_starts
+        .iter()
+        .filter_map(|m| m.runtime_done_metrics_duration_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for warm start response latency
+pub fn calculate_warm_start_response_latency_stats(
+    warm_starts: &[crate::types::WarmStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = warm_starts
+        .iter()
+        .filter_map(|m| m.response_latency_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for warm start response duration
+pub fn calculate_warm_start_response_duration_stats(
+    warm_starts: &[crate::types::WarmStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = warm_starts
+        .iter()
+        .filter_map(|m| m.response_duration_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for warm start runtime overhead
+pub fn calculate_warm_start_runtime_overhead_stats(
+    warm_starts: &[crate::types::WarmStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = warm_starts
+        .iter()
+        .filter_map(|m| m.runtime_overhead_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for warm start produced bytes
+pub fn calculate_warm_start_produced_bytes_stats(
+    warm_starts: &[crate::types::WarmStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = warm_starts
+        .iter()
+        .filter_map(|m| m.produced_bytes.map(|b| b as f64))
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
+}
+
+/// Calculate statistics for warm start runtime done metrics duration
+pub fn calculate_warm_start_runtime_done_metrics_duration_stats(
+    warm_starts: &[crate::types::WarmStartMetrics],
+) -> Option<(f64, f64, f64, f64, f64)> {
+    let values: Vec<f64> = warm_starts
+        .iter()
+        .filter_map(|m| m.runtime_done_metrics_duration_ms)
+        .collect();
+    if values.is_empty() {
+        return None;
+    }
+    let stats = calculate_stats(&values);
+    Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev))
 }
 
 #[cfg(test)]
@@ -179,8 +329,8 @@ mod tests {
     }
 
     fn assert_option_tuple_eq(
-        actual: Option<(f64, f64, f64, f64)>,
-        expected: Option<(f64, f64, f64, f64)>,
+        actual: Option<(f64, f64, f64, f64, f64)>,
+        expected: Option<(f64, f64, f64, f64, f64)>,
         context: &str,
     ) {
         match (actual, expected) {
@@ -189,6 +339,11 @@ mod tests {
                 assert_f64_eq(a.1, e.1, &format!("{}: p99 (tuple.1) mismatch", context));
                 assert_f64_eq(a.2, e.2, &format!("{}: p95 (tuple.2) mismatch", context));
                 assert_f64_eq(a.3, e.3, &format!("{}: p50 (tuple.3) mismatch", context));
+                assert_f64_eq(
+                    a.4,
+                    e.4,
+                    &format!("{}: std_dev (tuple.4) mismatch", context),
+                );
             }
             (None, None) => {} // Both are None, which is fine.
             _ => panic!(
@@ -260,6 +415,11 @@ mod tests {
                 billed_duration: 300,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
             ColdStartMetrics {
                 timestamp: "ts2".to_string(),
@@ -270,12 +430,17 @@ mod tests {
                 billed_duration: 320,
                 max_memory_used: 130,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
         ];
         let result = calculate_cold_start_init_stats(&cold_starts);
         let durations = [100.0, 120.0];
         let stats = calculate_stats(&durations);
-        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev));
         assert_option_tuple_eq(result, expected, "cs_init_happy");
     }
 
@@ -298,6 +463,11 @@ mod tests {
                 billed_duration: 300,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
             ColdStartMetrics {
                 timestamp: "ts2".to_string(),
@@ -308,12 +478,17 @@ mod tests {
                 billed_duration: 320,
                 max_memory_used: 130,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
         ];
         let result = calculate_cold_start_server_stats(&cold_starts);
         let durations = [200.0, 220.0];
         let stats = calculate_stats(&durations);
-        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev));
         assert_option_tuple_eq(result, expected, "cs_server_happy");
     }
 
@@ -338,6 +513,11 @@ mod tests {
                 billed_duration: 50,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
             WarmStartMetrics {
                 timestamp: "ts2".to_string(),
@@ -346,12 +526,17 @@ mod tests {
                 billed_duration: 60,
                 max_memory_used: 130,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
         ];
         let result = calculate_warm_start_stats(&warm_starts, get_warm_duration);
         let durations = [50.0, 60.0];
         let stats = calculate_stats(&durations);
-        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev));
         assert_option_tuple_eq(result, expected, "ws_happy");
     }
 
@@ -379,7 +564,7 @@ mod tests {
         let result = calculate_client_stats(&client_metrics);
         let durations = [30.0, 35.0];
         let stats = calculate_stats(&durations);
-        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev));
         assert_option_tuple_eq(result, expected, "client_happy");
     }
 
@@ -400,6 +585,11 @@ mod tests {
                 billed_duration: 50,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
             WarmStartMetrics {
                 timestamp: "ts2".to_string(),
@@ -408,12 +598,17 @@ mod tests {
                 billed_duration: 60,
                 max_memory_used: 256,
                 memory_size: 512,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
         ];
         let result = calculate_memory_stats(&warm_starts);
         let memory_values = [128.0, 256.0];
         let stats = calculate_stats(&memory_values);
-        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev));
         assert_option_tuple_eq(result, expected, "mem_happy");
     }
 
@@ -436,6 +631,11 @@ mod tests {
                 billed_duration: 300,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
             ColdStartMetrics {
                 timestamp: "ts2".to_string(),
@@ -446,12 +646,17 @@ mod tests {
                 billed_duration: 320,
                 max_memory_used: 130,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
         ];
         let result = calculate_cold_start_extension_overhead_stats(&cold_starts);
         let overheads = [10.0, 12.0];
         let stats = calculate_stats(&overheads);
-        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev));
         assert_option_tuple_eq(result, expected, "cs_ext_overhead_happy");
     }
 
@@ -474,6 +679,11 @@ mod tests {
                 billed_duration: 300,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
             ColdStartMetrics {
                 timestamp: "ts2".to_string(),
@@ -484,6 +694,11 @@ mod tests {
                 billed_duration: 320,
                 max_memory_used: 130,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
         ];
         let result = calculate_cold_start_total_duration_stats(&cold_starts);
@@ -502,6 +717,11 @@ mod tests {
                 billed_duration: 300,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
             ColdStartMetrics {
                 timestamp: "ts2".to_string(),
@@ -512,6 +732,11 @@ mod tests {
                 billed_duration: 320,
                 max_memory_used: 130,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             }, // One None
             ColdStartMetrics {
                 timestamp: "ts3".to_string(),
@@ -522,12 +747,17 @@ mod tests {
                 billed_duration: 330,
                 max_memory_used: 140,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             },
         ];
         let result = calculate_cold_start_total_duration_stats(&cold_starts);
         let durations = [310.0, 373.0]; // Only Some values
         let stats = calculate_stats(&durations);
-        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50));
+        let expected = Some((stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev));
         assert_option_tuple_eq(result, expected, "cs_total_dur_happy");
     }
 }

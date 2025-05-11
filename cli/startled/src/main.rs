@@ -9,7 +9,9 @@ use startled::{
 use anyhow::{anyhow, Context, Result};
 use aws_sdk_cloudformation::Client as CloudFormationClient;
 use aws_sdk_lambda::Client as LambdaClient;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{crate_authors, crate_description, CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::generate;
+use clap_complete::Shell as ClapShell; // Alias to avoid conflict with local Theme if any, or just for clarity
 use std::fs;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -18,8 +20,25 @@ pub enum Theme {
     Dark,
 }
 
+const USAGE_EXAMPLES: &str = "\
+EXAMPLES:
+    # Benchmark a single Lambda function with 10 concurrent invocations
+    startled function my-lambda-function -c 10
+
+    # Benchmark all functions in a CloudFormation stack matching \"service-a\"
+    startled stack my-app-stack -s \"service-a\" --output-dir ./benchmark_results
+
+    # Benchmark a function with a specific memory size and payload from a file
+    startled function my-lambda-function --memory 512 --payload-file ./payload.json
+
+    # Generate HTML reports from benchmark results in a directory
+    startled report -d ./benchmark_results -o ./reports --screenshot light
+
+    # Generate shell completions for bash
+    startled generate-completions bash";
+
 #[derive(Parser)]
-#[command(author, version, about = "Benchmark Lambda implementations")]
+#[command(author = crate_authors!(", "), version, about = crate_description!(), long_about = None, after_help = USAGE_EXAMPLES)]
 struct Args {
     #[command(subcommand)]
     command: Commands,
@@ -141,6 +160,13 @@ enum Commands {
         #[arg(long = "base-url", value_name = "URL_PATH")]
         base_url: Option<String>,
     },
+    /// Generate shell completion script
+    #[command(name = "generate-completions", hide = true)]
+    GenerateCompletions {
+        /// Shell for which to generate completions
+        #[arg(value_enum)]
+        shell: ClapShell,
+    },
 }
 
 #[tokio::main]
@@ -165,6 +191,14 @@ async fn main() {
 
 async fn run() -> Result<()> {
     let args = Args::parse();
+
+    // Handle generate-completions before initializing telemetry or other logic
+    if let Commands::GenerateCompletions { shell } = args.command {
+        let mut cmd = Args::command();
+        let bin_name = cmd.get_name().to_string();
+        generate(shell, &mut cmd, bin_name, &mut std::io::stdout());
+        return Ok(());
+    }
 
     let tracer_provider = init_telemetry().await?;
 
@@ -198,6 +232,13 @@ async fn run() -> Result<()> {
                 serde_json::from_str::<serde_json::Value>(p).context("Invalid JSON payload")?;
             }
 
+            // Adjust output_dir to include "function" subdirectory
+            let final_output_dir = output_dir.map(|base_path| {
+                let mut path = std::path::PathBuf::from(base_path);
+                path.push("function");
+                path.to_string_lossy().into_owned()
+            });
+
             run_function_benchmark(
                 &client,
                 &function_name,
@@ -205,7 +246,7 @@ async fn run() -> Result<()> {
                 concurrent,
                 rounds,
                 payload.as_deref(),
-                output_dir.as_deref(),
+                final_output_dir.as_deref(),
                 &environment
                     .iter()
                     .map(|e| (e.key.as_str(), e.value.as_str()))
@@ -283,6 +324,17 @@ async fn run() -> Result<()> {
                 readme_file,
             )
             .await
+        }
+        Commands::GenerateCompletions { .. } => {
+            // This arm should ideally be unreachable due to the `if let` check handling it earlier.
+            // If execution reaches here, it's an unexpected state.
+            // Depending on desired strictness, could panic or log an error.
+            // For now, let's assume the `if let` correctly handles and exits.
+            // If not, `run_livetrace` (or equivalent for startled) would need to handle `args.command` being None.
+            // However, `args.command` is not Option here, `Args` has `command: Commands`.
+            // The `if let` handles the GenerateCompletions variant and exits.
+            // So, this path in the match is logically unreachable.
+            Ok(()) // Or an unreachable!() macro. Ok(()) is safe.
         }
     }?;
     // Ensure all spans are exported before exit

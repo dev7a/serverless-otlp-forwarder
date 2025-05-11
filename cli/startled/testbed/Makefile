@@ -59,12 +59,14 @@ test-runtime:
 		-s "$(RUNTIME)" \
 		-d "/tmp/$(STACK_NAME)/$(RESULT_DIR)" \
 		--proxy proxy 
-		--base-url "$(BASE_URL)"
 
 # Generate benchmark report
 report:
 	@echo "$(GREEN)Generating report...$(RESET)"
-	startled report -d "/tmp/$(STACK_NAME)/$(RESULT_DIR)" -o "/tmp/$(STACK_NAME)/$(REPORTS_DIR)"
+	@startled report -d "/tmp/$(STACK_NAME)/$(RESULT_DIR)" -o "/tmp/$(STACK_NAME)/$(REPORTS_DIR)" \
+		--base-url "$(BASE_URL)" \
+		--readme testbed.md
+	@echo "$(GREEN)Report generated successfully.$(RESET)"
 
 # Install the startled CLI
 install:

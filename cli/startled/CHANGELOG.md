@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-05-11
+
+### Added
+- New platform metrics (Response Latency, Response Duration, Runtime Overhead, Produced Bytes, Runtime Done Duration) to data collection, JSON reports, and HTML reports.
+- Standard Deviation (StdDev) to all statistical calculations and as a new category in HTML bar chart reports.
+- `PUBLISHING.md` guide for release process.
+
+### Changed
+- HTML report navigation layout: metric groups are now stacked vertically, and links within groups wrap into a grid for improved readability.
+- Reverted link labels and page titles in HTML reports to their full, more descriptive versions.
+- Improved rounding for sub-millisecond values in HTML report charts to ensure accurate display (up to 3 decimal places).
+- Refined telemetry initialization in `telemetry.rs` for conditional console tracing based on `TRACING_STDOUT` environment variable.
+- Updated `testbed/Makefile` and `testbed/testbed.md`.
+
+### Fixed
+- Various test failures and linter warnings encountered during the addition of new metrics and report enhancements.
+- CSS issues related to chart display and navigation link layout.
+- Ensured test data in `benchmark.rs` and `stats.rs` correctly initializes new metric fields.
+
 ## [0.1.1] - 2025-05-10
 
 ### Added

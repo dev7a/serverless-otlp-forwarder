@@ -45,10 +45,16 @@ const root = document.documentElement;
 /**
  * Sets the theme for the entire report and initializes/reinitializes the chart
  * @param {string} theme - The theme name ('light' or 'dark')
+ * @param {boolean} savePreference - Whether to save the preference to localStorage
  */
-function setTheme(theme) {
+function setTheme(theme, savePreference = false) {
     root.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+    
+    // Only save to localStorage when explicitly requested
+    if (savePreference) {
+        localStorage.setItem('theme', theme);
+    }
+    
     // Update icons if present
     const darkIcon = document.querySelector('.dark-icon');
     const lightIcon = document.querySelector('.light-icon');
@@ -106,7 +112,7 @@ function setTheme(theme) {
  * @param {string} theme - The theme to use for the screenshot
  */
 function prepareScreenshot(theme) {
-    setTheme(theme);
+    setTheme(theme, false);
     // Hide sidebar and adjust layout for screenshots
     const sidebar = document.querySelector('.sidebar');
     const mainContent = document.querySelector('.main-content');
@@ -416,14 +422,22 @@ window.addEventListener('DOMContentLoaded', () => {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const initialTheme = savedTheme || (prefersDark ? 'dark' : 'light');
-    setTheme(initialTheme);
+    setTheme(initialTheme); // Don't save on initial load
+
+    // Add listener for OS theme changes
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        // Only update theme if user hasn't set a manual preference
+        if (!localStorage.getItem('theme')) {
+            setTheme(e.matches ? 'dark' : 'light');
+        }
+    });
 
     // Theme toggle handler
     const themeToggle = document.querySelector('.theme-toggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', () => {
             const currentTheme = root.getAttribute('data-theme');
-            setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+            setTheme(currentTheme === 'dark' ? 'light' : 'dark', true); // Save preference when toggled
         });
     }
 

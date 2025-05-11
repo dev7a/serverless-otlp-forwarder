@@ -8,7 +8,6 @@ use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use otlp_sigv4_client::SigV4ClientBuilder;
-use tracing::Level;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -67,12 +66,26 @@ pub async fn init_telemetry() -> Result<SdkTracerProvider> {
         .build();
 
     let tracer = tracer_provider.tracer(env!("CARGO_PKG_NAME"));
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::filter::LevelFilter::from_level(
-            Level::INFO,
-        ))
-        .with(OpenTelemetryLayer::new(tracer))
-        .init();
+
+    let show_console = std::env::var("TRACING_STDOUT")
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false); // default: OFF
+
+    let subscriber = tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with(OpenTelemetryLayer::new(tracer));
+
+    // Conditionally add console layer
+    if show_console {
+        subscriber
+            .with(tracing_subscriber::fmt::Layer::default())
+            .init();
+    } else {
+        subscriber.init();
+    }
 
     // Create a composite propagator with both W3C and X-Ray propagators
     let composite_propagator = TextMapCompositePropagator::new(vec![

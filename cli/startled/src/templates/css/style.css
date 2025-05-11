@@ -12,6 +12,23 @@
     --sidebar-width: 240px;
 }
 
+/* OS-based theme detection */
+@media (prefers-color-scheme: light) {
+    :root {
+        --primary-bg: #ffffff;
+        --secondary-bg: #f5f5f5;
+        --border-color: #d1d1d1;
+        --text-primary: #111827;
+        --text-secondary: #6b7280;
+        --accent-color: #394662;
+        --env-bg: #e5e7eb;
+        --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    }
+}
+
+/* Manual theme overrides (these take precedence over OS settings) */
 :root[data-theme="light"] {
     --primary-bg: #ffffff;
     --secondary-bg: #f5f5f5;
@@ -23,6 +40,19 @@
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+:root[data-theme="dark"] {
+    --primary-bg: #1a1b26;
+    --secondary-bg: #16161e;
+    --border-color: #292e42;
+    --text-primary: #c0caf5;
+    --text-secondary: #565f89;
+    --accent-color: #7aa2f7;
+    --env-bg: #1f2335;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.25);
+    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
 }
 
 body {
@@ -227,8 +257,6 @@ a:hover {
     gap: 1rem;
 }
 
-.sidebar-group {}
-
 .sidebar-group-title {
     font-size: 0.9rem;
     font-weight: 600;
@@ -248,8 +276,6 @@ a:hover {
     flex-direction: column;
     gap: 0.25rem;
 }
-
-.sidebar-item {}
 
 .sidebar-link {
     display: block;
@@ -466,9 +492,7 @@ a:hover {
 }
 
 .metadata-line {
-    color: var(--text-primary);
     padding: 8px 0;
-    border-top: 1px solid var(--border-color);
     border-bottom: 1px solid var(--border-color);
     margin: 8px 0;
 }
@@ -507,7 +531,6 @@ a:hover {
 
 .env-section {
     margin-top: 8px;
-    font-family: monospace;
     font-size: 0.875rem;
     line-height: 1.5;
     display: grid;
@@ -519,6 +542,7 @@ a:hover {
     color: var(--accent-color);
     font-weight: 500;
     grid-column: 1;
+    text-transform: uppercase;
 }
 
 .env-list {
@@ -536,7 +560,7 @@ a:hover {
 }
 
 .env-list li .env-key {
-    color: var(--accent-color);
+    color: var(--text-secondary);
 }
 
 .env-list li .env-value {
@@ -545,12 +569,12 @@ a:hover {
 
 .nav {
     display: flex;
-    align-items: center;
-    gap: 1.5rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
     font-size: 0.875rem;
     color: var(--text-secondary);
     padding: 0.5rem 0;
-    justify-content: flex-end;
     margin-top: 1rem;
 }
 
@@ -573,27 +597,34 @@ a:hover {
 .nav-group-links {
     display: flex;
     gap: 0.75rem;
-    justify-content: flex-end;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    margin-left: 1rem;
 }
 
 .nav-link {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     text-decoration: none;
     transition: color 0.2s;
     border-radius: 4px;
     font-weight: 400;
     padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border-color);
+    width: 6rem;
+    height: 4rem;
+    text-align: left;
+    background: var(--env-bg);
 }
 
 .nav-link:hover {
     color: var(--text-primary);
-    background: var(--env-bg);
+    background: var(--primary-bg);
 }
 
 .nav-link.active {
     color: var(--accent-color);
     font-weight: 500;
-    background: var(--env-bg);
+    background: var(--primary-bg);
 }
 
 .nav-separator {
@@ -612,12 +643,6 @@ a:hover {
     box-shadow: var(--shadow-md);
     padding: 1rem;
     border: 1px solid var(--border-color);
-}
-
-@media (max-width: 1200px) {
-    .nav {
-        display: block;
-    }
 }
 
 /* Single consolidated media query for mobile */
@@ -701,13 +726,7 @@ a:hover {
     }
 
     .nav {
-        font-size: 0.8rem;
-        gap: 0.5rem;
-        flex-direction: column;
         align-items: stretch;
-        margin-top: 1rem;
-        flex-wrap: wrap;
-        justify-content: center;
     }
 
     .nav-group {
@@ -728,7 +747,12 @@ a:hover {
     }
 
     .nav-link {
-        padding: 0.4rem 0.6rem;
+        padding: 0.4rem 0.2rem;
+        border: 0;
+        width: 100%;
+        height: auto;
+        background: none;
+        margin-left: 0rem;
     }
 
     /* Chart container */
@@ -739,4 +763,9 @@ a:hover {
         overflow-x: auto;
         /* Horizontal scroll for wide charts */
     }
+
+    .env-section {
+        display: block;
+    }
+    
 }

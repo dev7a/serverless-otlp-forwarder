@@ -706,6 +706,11 @@ mod tests {
                 billed_duration: 300,
                 max_memory_used: 128,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             }],
             warm_starts: vec![WarmStartMetrics {
                 timestamp: "ts_warm".to_string(),
@@ -714,6 +719,11 @@ mod tests {
                 billed_duration: 50,
                 max_memory_used: 100,
                 memory_size: 256,
+                response_latency_ms: None,
+                response_duration_ms: None,
+                runtime_overhead_ms: None,
+                produced_bytes: None,
+                runtime_done_metrics_duration_ms: None,
             }],
             client_measurements: vec![ClientMetrics {
                 timestamp: "ts_client".to_string(),

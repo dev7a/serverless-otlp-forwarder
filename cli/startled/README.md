@@ -13,6 +13,7 @@
     -   **Cold Starts**: Captures initialization duration (`initDuration`), execution duration, and total cold start time.
     -   **Warm Starts**: Measures execution duration for initialized environments.
     -   **Extension Overhead**: Extracts the `extensionOverhead` value reported in Lambda platform logs, providing insight into the performance characteristics of Lambda Extensions.
+    -   **New Platform Metrics**: Captures detailed runtime phase metrics from `platform.runtimeDone` logs, including `responseLatencyMs`, `responseDurationMs`, `runtimeOverheadMs`, `producedBytes`, and the runtime's own `durationMs` (`runtimeDoneMetricsDurationMs`).
     -   **Client-Side Duration**: Measures invocation duration from the client's perspective through two modes:
         -   **Direct Measurement**: The CLI records the duration of the AWS SDK invocation call.
         -   **Proxied Measurement**: Utilizes a user-deployed proxy Lambda function within AWS to achieve more precise in-network client-side timings, reducing the influence of local network latency.
@@ -25,7 +26,9 @@
     -   Set temporary **environment variables** for the Lambda function during the benchmark.
 -   **Comprehensive HTML Reports**:
     -   Generates detailed HTML reports featuring interactive charts (using Apache ECharts) for clear visualization of benchmark data.
-    -   Provides statistical summaries (Average, P50, P95, P99 and Standard Deviation) for key metrics across different functions and configurations.
+    -   Provides statistical summaries (Average, P50, P95, P99, and **Standard Deviation (StdDev)**) for key metrics across different functions and configurations.
+    -   Includes new chart pages for all recently added platform metrics.
+    -   Features an improved navigation layout with vertically stacked metric groups and wrapped links for better readability.
     -   Includes scatter plots to visualize client duration over time for warm starts, helping to identify trends or outliers.
     -   Saves raw benchmark data in **JSON format** for custom analysis or integration with other tools.
     -   Supports custom templates, allowing users to completely customize the report appearance and behavior.
@@ -45,18 +48,92 @@
 
 ## Installation
 
-`startled` is installed from source using Cargo:
+### From Crates.io (Recommended)
 
-1.  Navigate to the `benchmark/` directory containing the `startled` source code:
-    ```bash
-    cd path/to/your/repository/benchmark/
-    ```
-2.  Install using Cargo:
-    ```bash
-    cargo install --path .
-    ```
-    This command builds the `startled` executable and installs it into your Cargo binary directory (typically `~/.cargo/bin/`). Ensure this directory is in your system's PATH.
+Once `startled` is published to crates.io, you can install it directly using Cargo:
 
+```bash
+cargo install startled
+```
+*(Note: This command will work after `startled` is published to crates.io.)*
+
+### From Source
+
+If you want to build from the latest source code or contribute to development:
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/dev7a/serverless-otlp-forwarder.git
+    cd serverless-otlp-forwarder
+    ```
+
+2.  **Build and install the `startled` binary from its subdirectory:**
+    ```bash
+    cargo install --path cli/startled
+    ```
+    This will compile the `startled` crate and place the binary in your Cargo bin directory (e.g., `~/.cargo/bin/startled`). Ensure this directory is in your system's `PATH`.
+
+## Shell Completions
+
+`startled` can generate shell completion scripts for Bash, Elvish, Fish, PowerShell, and Zsh.
+This allows you to get command-line suggestions by pressing the Tab key.
+
+To generate a script, use the `generate-completions` subcommand:
+
+```bash
+startled generate-completions <SHELL>
+```
+
+Replace `<SHELL>` with your desired shell (e.g., `bash`, `zsh`, `fish`).
+
+### Installation Examples
+
+The exact installation method varies by shell. Here are some common examples:
+
+**Bash:**
+
+1.  Ensure you have `bash-completion` installed (often available via your system's package manager).
+2.  Create the completions directory if it doesn't exist:
+    ```bash
+    mkdir -p ~/.local/share/bash-completion/completions
+    ```
+3.  Generate the script and save it:
+    ```bash
+    startled generate-completions bash > ~/.local/share/bash-completion/completions/startled
+    ```
+    You may need to restart your shell or source your `.bashrc` for changes to take effect.
+
+**Zsh:**
+
+1.  Create a directory for completions if you don't have one (e.g., `~/.zsh/completions`).
+    ```bash
+    mkdir -p ~/.zsh/completions
+    ```
+2.  Add this directory to your `fpath` in your `.zshrc` file *before* `compinit` is called:
+    ```zsh
+    # In ~/.zshrc
+    fpath=(~/.zsh/completions $fpath)
+    # ... (ensure compinit is called after this, e.g., autoload -U compinit && compinit)
+    ```
+3.  Generate the script:
+    ```bash
+    startled generate-completions zsh > ~/.zsh/completions/_startled
+    ```
+    You may need to restart your shell or run `compinit` again.
+
+**Fish:**
+
+1.  Create the completions directory if it doesn't exist:
+    ```bash
+    mkdir -p ~/.config/fish/completions
+    ```
+2.  Generate the script:
+    ```bash
+    startled generate-completions fish > ~/.config/fish/completions/startled.fish
+    ```
+    Fish should pick up the completions automatically on next launch.
+
+Refer to your shell's documentation for the most up-to-date and specific instructions.
 ## Usage
 
 The CLI is invoked using the following general syntax:
@@ -146,7 +223,7 @@ Generates HTML reports from previously collected JSON benchmark results.
 
 **Key Options:**
 -   `--input-dir <PATH>` (`-d <PATH>`): (Required) Directory containing the JSON benchmark result files. `startled` expects a structure like `<input_dir>/{group_name}/{subgroup_name}/*.json` (e.g., `/tmp/startled_results/my-app/prod/1024mb/*.json`).
--   `--output-dir <PATH>` (`-o <PATH>`): (Required) Directory where the HTML report files will be generated. An `index.html` file and associated assets will be created in this directory.
+-   `--output-dir <PATH>` (`-o <PATH>`): (Required) Directory where the HTML report files will be generated. An `index.html` file and associated assets will be created in this directory. The generated reports will now include charts for new platform metrics and display Standard Deviation.
 -   `--screenshot <THEME>`: (Optional) Generates PNG screenshots of the charts. `<THEME>` can be `Light` or `Dark`. This requires the `screenshots` compile-time feature and a properly configured headless Chrome environment.
 -   `--readme <MARKDOWN_FILE>`: (Optional) Specifies a markdown file whose content will be rendered as HTML and included on the landing page of the report. This allows for adding custom documentation, explanations, or findings to the benchmark report.
 -   `--template-dir <PATH>`: (Optional) Specifies a custom directory containing templates for report generation. This allows for complete customization of the report appearance and behavior. The directory should contain HTML templates (`index.html`, `chart.html`, `_sidebar.html`), CSS (`css/style.css`), and a single JavaScript file (`js/lib.js`) that handles all chart rendering functionality.
@@ -193,9 +270,10 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
     -   Additional metrics from `platform.runtimeDone` lines (when system log level is DEBUG and format is JSON):
         -   `responseLatencyMs`: Time from function return to when the Lambda platform completes sending the response.
         -   `responseDurationMs`: Time taken to transmit the response bytes.
-        -   `runtimeOverheadMs`: Overhead by the Lambda runtime after the handler completes but before the platform considers the runtime phase done.
-        -   `runtimeDoneMetricsDurationMs`: The `durationMs` field from the `platform.runtimeDone` log entry's metrics.
-    -   **Statistical Summary**: For all collected duration and memory metrics, `startled` now calculates and displays Mean, P50 (Median), P95, P99, and Standard Deviation (StdDev) in the console output, providing insights into performance consistency.
+        -   `runtimeOverheadMs`: Overhead attributed to the Lambda runtime after the function handler completes but before the platform considers the runtime phase finished.
+        -   `producedBytes`: The size of the response payload produced by the function.
+        -   `runtimeDoneMetricsDurationMs`: The `durationMs` field from the `platform.runtimeDone` log entry's metrics, representing the runtime's view of its execution duration.
+    -   **Statistical Summary**: For all collected duration, memory, and produced bytes metrics, `startled` now calculates and displays Mean, P50 (Median), P95, P99, and **Standard Deviation (StdDev)** in the console output and HTML reports, providing insights into performance consistency.
 
 -   **Client-Side Metrics**:
     -   These metrics represent the total invocation time as observed by the client.
@@ -211,7 +289,7 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
 ### Report Generation Process
 
 1.  **Data Aggregation**: The `report` command reads all `.json` result files from the specified `--input-dir`. It expects a hierarchical directory structure (e.g., `group_name/subgroup_name/*.json`) to organize the reports effectively.
-2.  **Statistical Analysis**: For each relevant metric (such as init duration, server duration, client duration, extension overhead, and memory usage), `startled` calculates:
+2.  **Statistical Analysis**: For each relevant metric (such as init duration, server duration, client duration, extension overhead, memory usage, and all new platform metrics), `startled` calculates:
     -   Average (Mean)
     -   Median (P50)
     -   95th Percentile (P95)
@@ -226,11 +304,11 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
     -   Utilizes the Tera templating engine for generating HTML pages.
     -   Embeds interactive charts created with Apache ECharts for data visualization.
     -   Produces a variety of charts, including:
-        -   Bar charts comparing AVG/P50/P95/P99 statistics for cold start metrics (init duration, server duration, total cold start duration, and extension overhead).
-        -   Bar charts for warm start metrics (server duration, client duration, and extension overhead).
-        -   Bar charts for memory usage.
+        -   Bar charts comparing AVG/P50/P95/P99/StdDev statistics for cold start metrics (init duration, server duration, total cold start duration, extension overhead, response latency, response duration, runtime overhead, runtime done duration).
+        -   Bar charts for warm start metrics (server duration, client duration, extension overhead, response latency, response duration, runtime overhead, runtime done duration).
+        -   Bar charts for memory usage and produced bytes.
         -   Scatter plots illustrating client duration for each warm invocation over time, useful for identifying trends and outliers.
-    -   Generates an `index.html` file as a central navigation point for the report, with a sidebar for navigating between different charts and configurations.
+    -   Generates an `index.html` file as a central navigation point for the report, with a sidebar for navigating between different charts and configurations. The navigation layout has been improved for clarity with more metrics.
 6.  **SEO-Friendly URL Structure**:
     -   The report uses a clean URL structure with directories instead of file extensions for better SEO and readability.
     -   Chart URLs follow the format: `/group_name/subgroup_name/chart-type/` with an index.html inside each directory.

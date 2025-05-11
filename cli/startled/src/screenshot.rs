@@ -15,6 +15,7 @@ pub async fn take_chart_screenshot(
     let browser = Browser::new(
         LaunchOptions::default_builder()
             .window_size(Some((1280, 1400)))
+            .enable_logging(true) // Enable browser console logging
             .build()
             .unwrap(),
     )?;
@@ -26,11 +27,12 @@ pub async fn take_chart_screenshot(
 
     // Navigate to the page
     tab.navigate_to(&url)?;
-    tab.wait_until_navigated()?;
-
+    // Replace wait_until_navigated with a fixed delay for local files
+    // std::thread::sleep(std::time::Duration::from_secs(2));
+    // tab.wait_until_navigated()?;
     // Wait for prepareScreenshot to be defined (max 5s)
     let mut waited = 0;
-    let max_wait = 10000;
+    let max_wait = 5000;
     let step = 100;
     while waited < max_wait {
         let is_defined = tab.evaluate("typeof prepareScreenshot === 'function'", false)?;
