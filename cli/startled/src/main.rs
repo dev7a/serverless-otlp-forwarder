@@ -326,7 +326,9 @@ async fn run() -> Result<()> {
             .await
         }
         Commands::GenerateCompletions { .. } => {
-            unreachable!("clap should have handled GenerateCompletions and exited before this match arm");
+            unreachable!(
+                "clap should have handled GenerateCompletions and exited before this match arm"
+            );
         }
     }?;
     // Ensure all spans are exported before exit
