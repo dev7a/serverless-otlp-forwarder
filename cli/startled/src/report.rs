@@ -1417,13 +1417,13 @@ mod tests {
         assert_eq!(
             render_data.series[0].values,
             vec![10.5, 15.1, 14.2, 12.3, 1.0] // Corrected expected values
-        ); 
-           // Series 2 (func_b)
+        );
+        // Series 2 (func_b)
         assert_eq!(render_data.series[1].name, "func_b");
         assert_eq!(
             render_data.series[1].values,
             vec![20.0, 25.5, 24.0, 22.5, 1.5] // Corrected expected values
-        ); 
+        );
     }
 
     #[test]
