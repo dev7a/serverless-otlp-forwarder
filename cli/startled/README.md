@@ -160,7 +160,7 @@ Benchmarks a single, specified Lambda function.
 -   `--payload-file <PATH>`: Specifies the path to a JSON file containing the payload. Conflicts with `--payload`.
 -   `--env <KEY=VALUE>` (`-e <KEY=VALUE>`): Sets an environment variable for the function during the benchmark. This option can be used multiple times.
 -   `--proxy <PROXY_FUNCTION_NAME_OR_ARN>`: Specifies the name or ARN of a proxy Lambda function for client-side duration measurements.
--   `--output-dir <PATH>` (`-d <PATH>`): Directory where raw JSON benchmark results will be saved. Results are typically organized as `<PATH>/{memory_size_if_set}/{function_name}.json`.
+-   `--output-dir <PATH>` (`-d <PATH>`): Base directory where raw JSON benchmark results will be saved. A subdirectory named 'function' will be created within this path, and results will be organized as `<PATH>/function/{memory_setting}/{function_name}.json` (e.g., if `<PATH>` is `/tmp/results`, data is saved under `/tmp/results/function/...`). If memory is not set, `{memory_setting}` will be "default".
 
 **Example:**
 ```bash
@@ -318,10 +318,8 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
 ### Output File Structure
 
 -   **JSON Results**: Individual benchmark results are stored in a structured path if an output directory is specified.
-    -   For `function` command: If `--output-dir` is specified, results are saved to `your_output_dir/{memory_setting}/{function_name}.json` (or `your_output_dir/default/{function_name}.json` if memory is not set). If `--output-dir` is omitted, no results are saved.
+    -   For `function` command: If `--output-dir` is specified, results are saved under `<YOUR_OUTPUT_DIR>/function/{memory_setting}/{function_name}.json` (e.g., `/tmp/results/function/128mb/my-lambda.json`). If memory is not set, `{memory_setting}` will be "default". If `--output-dir` is omitted, no results are saved.
     -   For `stack` command: If `--output-dir` is specified, results are saved to `your_output_dir/{select_name_or_pattern}/{memory_setting}/{function_name}.json` (or `your_output_dir/{select_name_or_pattern}/default/{function_name}.json` if memory is not set). If `--output-dir` is omitted, no results are saved.
-        -   Example with `--output-dir` and `--select-name`: `/tmp/results/api-tests/512mb/my-api-function.json`
-        -   If `--output-dir` is not used with the `stack` command, no `user-services/256mb/user-auth-function.json` would be created.
 -   **HTML Reports**: The `report` command generates a structured set of HTML files within its specified `--output-dir`. The input directory for the report command should point to the level containing the `{select_name_or_pattern}` or `{memory_setting}` (for function command) directories.
     -   Example: `/srv/benchmarks/run1/index.html`, with sub-pages such as `/srv/benchmarks/run1/api-tests/512mb/cold_start_init.html`.
     -   Associated CSS and JavaScript files are also copied to this directory.
