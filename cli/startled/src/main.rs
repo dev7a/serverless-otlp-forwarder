@@ -326,15 +326,7 @@ async fn run() -> Result<()> {
             .await
         }
         Commands::GenerateCompletions { .. } => {
-            // This arm should ideally be unreachable due to the `if let` check handling it earlier.
-            // If execution reaches here, it's an unexpected state.
-            // Depending on desired strictness, could panic or log an error.
-            // For now, let's assume the `if let` correctly handles and exits.
-            // If not, `run_livetrace` (or equivalent for startled) would need to handle `args.command` being None.
-            // However, `args.command` is not Option here, `Args` has `command: Commands`.
-            // The `if let` handles the GenerateCompletions variant and exits.
-            // So, this path in the match is logically unreachable.
-            Ok(()) // Or an unreachable!() macro. Ok(()) is safe.
+            unreachable!("clap should have handled GenerateCompletions and exited before this match arm");
         }
     }?;
     // Ensure all spans are exported before exit
