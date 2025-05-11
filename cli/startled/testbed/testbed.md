@@ -14,7 +14,7 @@ Things to note:
 - The `stdout` function is used to test the stdout exporter using lambda otel lite in sync mode.
 - The `async` function is used to test the stdout exporter using lambda otel lite in async mode.
 
-> ***NOTE***: All functions are configured to use a mock otlp endpoint implemented with API Gateway with the mock integration. This is intended to simulate a real otlp collector http v1/traces endpoint, and to guarantee consistenly the lowest latency for all tests. In the real world, the latency will likely be higher due to the network round trip and the collector's processing time.
+> **Note:** All functions are configured to use a mock otlp endpoint implemented with API Gateway with the mock integration. This is intended to simulate a real otlp collector http v1/traces endpoint, and to guarantee consistently the lowest latency for all tests. In the real world, the latency will likely be higher due to the network round trip and the collector's processing time.
 
 
 ## Testbed Function
