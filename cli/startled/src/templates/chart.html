@@ -55,39 +55,39 @@
                          <div class="nav-group">
                              <div class="nav-group-label">Cold Start</div>
                              <div class="nav-group-links">
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-init/" class="nav-link {% if page_type == 'cold_init' %}active{% endif %}" >Init Duration</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-server/" class="nav-link {% if page_type == 'cold_server' %}active{% endif %}" >Server Duration</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-extension-overhead/" class="nav-link {% if page_type == 'cold_extension_overhead' %}active{% endif %}" >Extension Overhead</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-total-duration/" class="nav-link {% if page_type == 'cold_total_duration' %}active{% endif %}" >Total Cold Start Duration</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-response-latency/" class="nav-link {% if page_type == 'cold_start_response_latency' %}active{% endif %}" >Response Latency</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-response-duration/" class="nav-link {% if page_type == 'cold_start_response_duration' %}active{% endif %}" >Response Duration</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-runtime-overhead/" class="nav-link {% if page_type == 'cold_start_runtime_overhead' %}active{% endif %}" >Runtime Overhead</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-runtime-done-duration/" class="nav-link {% if page_type == 'cold_start_runtime_done_duration' %}active{% endif %}" >Runtime Done Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-init/{{link_suffix}}" class="nav-link {% if page_type == 'cold_init' %}active{% endif %}" >Init Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-server/{{link_suffix}}" class="nav-link {% if page_type == 'cold_server' %}active{% endif %}" >Server Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-extension-overhead/{{link_suffix}}" class="nav-link {% if page_type == 'cold_extension_overhead' %}active{% endif %}" >Extension Overhead</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-response-latency/{{link_suffix}}" class="nav-link {% if page_type == 'cold_start_response_latency' %}active{% endif %}" >Response Latency</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-response-duration/{{link_suffix}}" class="nav-link {% if page_type == 'cold_start_response_duration' %}active{% endif %}" >Response Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-runtime-overhead/{{link_suffix}}" class="nav-link {% if page_type == 'cold_start_runtime_overhead' %}active{% endif %}" >Runtime Overhead</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-runtime-done-duration/{{link_suffix}}" class="nav-link {% if page_type == 'cold_start_runtime_done_duration' %}active{% endif %}" >Runtime Done Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/cold-start-total-duration/{{link_suffix}}" class="nav-link {% if page_type == 'cold_total_duration' %}active{% endif %}" >Total Cold Start Duration</a>
                              </div>
                          </div>
                          <div class="nav-group">
                              <div class="nav-group-label">Warm Start</div>
                              <div class="nav-group-links">
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/client-duration/" class="nav-link {% if page_type == 'client' %}active{% endif %}" >Client Duration</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/server-duration/" class="nav-link {% if page_type == 'server' %}active{% endif %}" >Server Duration</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/extension-overhead/" class="nav-link {% if page_type == 'extension_overhead' %}active{% endif %}" >Extension Overhead</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/client-duration-time/" class="nav-link {% if page_type == 'client_time' %}active{% endif %}" >Client Duration Over Time</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-response-latency/" class="nav-link {% if page_type == 'warm_start_response_latency' %}active{% endif %}" >Response Latency</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-response-duration/" class="nav-link {% if page_type == 'warm_start_response_duration' %}active{% endif %}" >Response Duration</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-runtime-overhead/" class="nav-link {% if page_type == 'warm_start_runtime_overhead' %}active{% endif %}" >Runtime Overhead</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-runtime-done-duration/" class="nav-link {% if page_type == 'warm_start_runtime_done_duration' %}active{% endif %}" >Runtime Done Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/client-duration/{{link_suffix}}" class="nav-link {% if page_type == 'client' %}active{% endif %}" >Client Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/server-duration/{{link_suffix}}" class="nav-link {% if page_type == 'server' %}active{% endif %}" >Server Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/extension-overhead/{{link_suffix}}" class="nav-link {% if page_type == 'extension_overhead' %}active{% endif %}" >Extension Overhead</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-response-latency/{{link_suffix}}" class="nav-link {% if page_type == 'warm_start_response_latency' %}active{% endif %}" >Response Latency</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-response-duration/{{link_suffix}}" class="nav-link {% if page_type == 'warm_start_response_duration' %}active{% endif %}" >Response Duration</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-runtime-overhead/{{link_suffix}}" class="nav-link {% if page_type == 'warm_start_runtime_overhead' %}active{% endif %}" >Runtime Overhead</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/warm-start-runtime-done-duration/{{link_suffix}}" class="nav-link {% if page_type == 'warm_start_runtime_done_duration' %}active{% endif %}" >Runtime Done Duration</a>
                              </div>
                          </div>
                          <div class="nav-group">
                              <div class="nav-group-label">Resources</div>
                              <div class="nav-group-links">
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/memory-usage/" class="nav-link {% if page_type == 'memory' %}active{% endif %}" >Memory Usage</a>
-                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/produced-bytes/" class="nav-link {% if page_type == 'produced_bytes' %}active{% endif %}" >Produced Bytes</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/memory-usage/{{link_suffix}}" class="nav-link {% if page_type == 'memory' %}active{% endif %}" >Memory Usage</a>
+                                 <a href="{{ base_path | safe }}{{ current_group }}/{{ current_subgroup }}/produced-bytes/{{link_suffix}}" class="nav-link {% if page_type == 'produced_bytes' %}active{% endif %}" >Produced Bytes</a>
                              </div>
                          </div>
                      </nav>
                  </div>
-                 <div class="chart-container" id="{{ chart_id }}"></div>
+                 <div class="chart-container" id="chart_bar"></div>
+                 <div class="chart-container" id="chart_time"></div>
             </div>
             </main>
     </div>
@@ -96,6 +96,7 @@
     <script>
       window.basePath = "{{ base_path | safe }}";
       window.currentChartType = "{{ kebab_name }}";
+      window.linkSuffix = "{{ link_suffix }}";
     </script>
     <!-- Load chart data for this page -->
     <script src="chart_data.js"></script>

@@ -163,6 +163,10 @@ enum Commands {
         /// Base URL path for generated links (e.g., "/reports/")
         #[arg(long = "base-url", value_name = "URL_PATH")]
         base_url: Option<String>,
+
+        /// Append 'index.html' to internal links for local file system browsing
+        #[arg(long, default_value_t = false)]
+        local_browsing: bool,
     },
     /// Generate shell completion script
     #[command(name = "generate-completions", hide = true)]
@@ -317,6 +321,7 @@ async fn run() -> Result<()> {
             template_dir,
             readme_file,
             base_url,
+            local_browsing,
         } => {
             let screenshot_theme = screenshot.map(|theme| match theme {
                 Theme::Light => "light",
@@ -330,6 +335,7 @@ async fn run() -> Result<()> {
                 screenshot_theme,
                 template_dir,
                 readme_file,
+                local_browsing,
             )
             .await
         }

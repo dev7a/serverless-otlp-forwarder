@@ -15,7 +15,7 @@
                     {# Iterate using item name directly as ReportStructure is Vec<String> #}
                     {% for subgroup_name in subgroups %}
                         {# Default link path to cold-start-init #}
-                        {% set default_link = base_path ~ group_name ~ "/" ~ subgroup_name ~ "/cold-start-init/" %}
+                        {% set default_link = base_path ~ group_name ~ "/" ~ subgroup_name ~ "/cold-start-init/" ~ link_suffix %}
                         {# Determine if this is the currently viewed item #}
                         {% set is_active = (group_name == current_group and subgroup_name == current_subgroup) %}
                         <li class="sidebar-item">

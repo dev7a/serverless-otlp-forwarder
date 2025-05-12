@@ -13,37 +13,30 @@
 
 // Default color palette for charts (can be customized)
 window.DEFAULT_COLOR_PALETTE = [
-    "#2ec7c9",
-    "#b6a2de",
-    "#5ab1ef",
-    "#ffb980",
-    "#d87a80",
-    "#8d98b3",
-    "#e5cf0d",
-    "#97b552",
-    "#95706d",
-    "#dc69aa",
-    "#07a2a4",
-    "#9a7fd1",
-    "#588dd5",
-    "#f5994e",
-    "#c05050",
-    "#59678c",
-    "#c9ab00",
-    "#7eb00a",
-    "#6f5553",
-    "#c14089"
+    "#3fb1e3",
+    "#6be6c1",
+    "#a0a7e6",
+    "#c4ebad",
+    "#96dee8",
+    "#e396d0",
+    "#e3b396",
+    "#966be3",
+    "#626c91",
+    "#96e3a7"
 ];
+
+
 // ===============================
 // Core UI and Setup Functionality
 // ===============================
 
 // Theme and chart globals
-let chart;
+let barChart;
+let lineChart;
 const root = document.documentElement;
 
 /**
- * Sets the theme for the entire report and initializes/reinitializes the chart
+ * Sets the theme for the entire report and initializes/reinitializes the charts
  * @param {string} theme - The theme name ('light' or 'dark')
  * @param {boolean} savePreference - Whether to save the preference to localStorage
  */
@@ -67,43 +60,78 @@ function setTheme(theme, savePreference = false) {
             lightIcon.style.display = 'block';
         }
     }
-    // // Reinitialize chart with new theme
-    if (chart) {
-        chart.dispose();
+    // Dispose existing charts
+    if (barChart) {
+        barChart.dispose();
     }
     
-    const chartDom = document.getElementById('chart'); // Assuming 'chart' is the consistent ID
-    if (!chartDom) {
-        console.error("Chart DOM element with id 'chart' not found.");
+    if (lineChart) {
+        lineChart.dispose();
+    }
+    
+    // Initialize charts based on data type
+    initializeCharts(theme);
+}
+
+/**
+ * Initializes the charts based on the available data
+ * @param {string} theme - The theme to use ('light' or 'dark')
+ */
+function initializeCharts(theme) {
+    if (!window.currentChartSpecificData) {
+        console.error("No chart data available. Cannot initialize charts.");
         return;
     }
 
-    chart = echarts.init(chartDom, theme); // 'theme' for ECharts built-in themes
+    // Get DOM elements for charts
+    const barChartDom = document.getElementById('chart_bar');
+    const lineChartDom = document.getElementById('chart_time');
+    
+    if (!barChartDom) {
+        console.error("Bar chart DOM element with id 'chart_bar' not found.");
+        return;
+    }
 
-    let options;
-    if (window.currentChartSpecificData) {
-        // Check the structure to determine the chart type
-        if (window.currentChartSpecificData.Bar) {
-            options = BarCharts.generateOptions(window.currentChartSpecificData);
-        } else if (window.currentChartSpecificData.Line) {
-            options = LineCharts.generateOptions(window.currentChartSpecificData);
-        } else {
-            console.error('Unknown chart data format:', window.currentChartSpecificData);
+    // Handle different chart data types
+    if (window.currentChartSpecificData.Combined) {
+        // Combined charts - initialize both bar and line charts
+        const combinedData = window.currentChartSpecificData.Combined;
+        
+        // Initialize bar chart
+        barChart = echarts.init(barChartDom, theme);
+        let barOptions = BarCharts.generateOptions({ Bar: combinedData.bar });
+        if (barOptions && typeof barOptions.color === 'undefined' && window.DEFAULT_COLOR_PALETTE) {
+            barOptions.color = window.DEFAULT_COLOR_PALETTE;
         }
-
-        // Apply the default color palette if the generator didn't set one
+        barChart.setOption(barOptions);
+        
+        // Initialize line chart if DOM element exists
+        if (lineChartDom) {
+            lineChart = echarts.init(lineChartDom, theme);
+            let lineOptions = LineCharts.generateOptions({ Line: combinedData.line });
+            if (lineOptions && typeof lineOptions.color === 'undefined' && window.DEFAULT_COLOR_PALETTE) {
+                lineOptions.color = window.DEFAULT_COLOR_PALETTE;
+            }
+            lineChart.setOption(lineOptions);
+        }
+    } else if (window.currentChartSpecificData.Bar) {
+        // Bar chart only
+        barChart = echarts.init(barChartDom, theme);
+        let options = BarCharts.generateOptions(window.currentChartSpecificData);
         if (options && typeof options.color === 'undefined' && window.DEFAULT_COLOR_PALETTE) {
             options.color = window.DEFAULT_COLOR_PALETTE;
         }
-
-        if (options) {
-            chart.setOption(options);
-        } else {
-             console.error("Failed to generate chart options.");
+        barChart.setOption(options);
+    } else if (window.currentChartSpecificData.Line) {
+        // Line chart only
+        barChart = echarts.init(barChartDom, theme);
+        let options = LineCharts.generateOptions(window.currentChartSpecificData);
+        if (options && typeof options.color === 'undefined' && window.DEFAULT_COLOR_PALETTE) {
+            options.color = window.DEFAULT_COLOR_PALETTE;
         }
+        barChart.setOption(options);
     } else {
-        // This is the error we expect if the data file didn't load/execute correctly
-        console.error("window.currentChartSpecificData is not defined. Cannot set chart options.");
+        console.error('Unknown chart data format:', window.currentChartSpecificData);
     }
 }
 
@@ -117,6 +145,7 @@ function prepareScreenshot(theme) {
     const sidebar = document.querySelector('.sidebar');
     const mainContent = document.querySelector('.main-content');
     const sidebarToggle = document.querySelector('.sidebar-toggle');
+    const navBar = document.querySelector('div.header nav');
     if (sidebar) sidebar.style.display = 'none';
     if (mainContent) {
         mainContent.style.marginLeft = '0';
@@ -124,10 +153,14 @@ function prepareScreenshot(theme) {
         mainContent.style.maxWidth = '100%';
     }
     if (sidebarToggle) sidebarToggle.style.display = 'none';
-    // Resize chart after DOM updates
+    if (navBar) navBar.style.display = 'none';
+    // Resize charts after DOM updates
     setTimeout(() => {
-        if (chart) {
-            chart.resize();
+        if (barChart) {
+            barChart.resize();
+        }
+        if (lineChart) {
+            lineChart.resize();
         }
     }, 200);
 }
@@ -369,7 +402,13 @@ const LineCharts = {
                 splitLine: { show: true },
                 max: yMax, // Use calculated P90-based max
                 axisLabel: {
-                    formatter: `{value} ${data.unit}`
+                    formatter: function (value) {
+                        // Round to 2 decimal places for cleaner display
+                        if (typeof value === 'number') {
+                            return value.toFixed(2) + ' ' + data.unit;
+                        }
+                        return value + ' ' + data.unit; // Fallback for non-numeric values
+                    }
                 }
             },
             series: echartsSeries,
@@ -452,8 +491,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // Window resize handler
     window.addEventListener('resize', function() {
-        if (chart) {
-            chart.resize();
+        if (barChart) {
+            barChart.resize();
+        }
+        if (lineChart) {
+            lineChart.resize();
         }
     });
 
@@ -467,8 +509,10 @@ window.addEventListener('DOMContentLoaded', () => {
         const currentChartType = window.currentChartType || 'cold-start-init';
         // Use basePath if available, otherwise fallback to root
         const basePath = window.basePath || '/';
-        // Construct URL with proper base path and trailing slash
-        const newUrl = basePath + targetGroup + '/' + targetSubgroup + '/' + currentChartType + '/';
+        // Get link_suffix from window global (set in template)
+        const linkSuffix = window.linkSuffix || '';
+        // Construct URL with proper base path, trailing slash, and optional link suffix
+        const newUrl = basePath + targetGroup + '/' + targetSubgroup + '/' + currentChartType + '/' + linkSuffix;
         window.location.href = newUrl;
     };
 });

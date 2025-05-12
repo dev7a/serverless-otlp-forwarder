@@ -54,7 +54,7 @@ The benchmarks compare several metrics:
 - **Cold Start Performance**: Initialization time, server duration, and total cold start times
 - **Warm Start Performance**: Client latency, server processing time, and extension overhead
 - **Resource Usage**: Memory consumption across different configurations
-
+- **Bytes Sent**: Bytes sent as response to the client (it's expected to be the same for all tests)
 
 ## Test Configuration
 

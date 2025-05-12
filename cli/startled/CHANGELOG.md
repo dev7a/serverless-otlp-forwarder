@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-05-13
+
+### Added
+- Combined chart view that shows both bar charts (statistical aggregates) and line charts (time series data) on the same page
+
+### Changed
+- Improved chart layout and styling for better visualization
+- Enhanced screenshot functionality with larger window size for capturing both chart types
+- Added support for local browsing with proper link suffix handling with `--local-browsing`
+- Improved numerical precision and formatting for chart values
+- Updated color palette for better readability
+- Various code improvements and refactoring of chart rendering logic
+
+### Fixed
+- Improved screenshot reliability with additional waits between rendering stages
+
+## [0.3.0] - 2025-05-12
+
+### Added
+- `--parallel` option to `stack` command for concurrent benchmarking of selected Lambda functions. Includes an overall progress bar and a final summary for parallel runs, suppressing detailed individual console logs.
+
+### Changed
+- `--memory` option is now **required** for both `function` and `stack` commands. This simplifies result directory structures by removing the "default" memory path.
+
+### Fixed
+- Improved console output management for parallel `stack` benchmarks to ensure a cleaner progress bar display by serializing configuration printing and conditionally suppressing other verbose logs from individual function benchmark tasks.
+
 ## [0.2.0] - 2025-05-11
 
 ### Added
@@ -40,13 +67,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Updated `startled` CLI version from 0.1.0 to 0.1.1 in `Cargo.toml`.
 
-## [0.3.0] - 2025-05-12
-
-### Added
-- `--parallel` option to `stack` command for concurrent benchmarking of selected Lambda functions. Includes an overall progress bar and a final summary for parallel runs, suppressing detailed individual console logs.
-
-### Changed
-- `--memory` option is now **required** for both `function` and `stack` commands. This simplifies result directory structures by removing the "default" memory path.
-
-### Fixed
-- Improved console output management for parallel `stack` benchmarks to ensure a cleaner progress bar display by serializing configuration printing and conditionally suppressing other verbose logs from individual function benchmark tasks.

@@ -40,7 +40,7 @@
                              <h2 class="item-title">{{ group_name }}</h2>
                              <ul class="landing-subgroup-list"> {# Simple list for subgroups #}
                                  {% for subgroup_name in subgroups %}
-                                     {% set link_path = base_path ~ group_name ~ "/" ~ subgroup_name ~ "/cold-start-init/" %}
+                                     {% set link_path = base_path ~ group_name ~ "/" ~ subgroup_name ~ "/cold-start-init/" ~ link_suffix %}
                                      <li><a href="{{ link_path | safe }}" class="subgroup-link">{{ subgroup_name | replace(from="mb", to=" MB") }}</a></li>
                                  {% endfor %}
                              </ul>
@@ -105,6 +105,7 @@
       <!-- Set navigation globals for JS -->
       <script>
         window.basePath = "{{ base_path | safe }}";
+        window.linkSuffix = "{{ link_suffix }}";
       </script>
       
       <!-- Load consolidated JavaScript library (contains all JS functionality) -->

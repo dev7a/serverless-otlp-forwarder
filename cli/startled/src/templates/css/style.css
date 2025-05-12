@@ -648,6 +648,16 @@ a:hover {
     border: 1px solid var(--border-color);
 }
 
+/* Specific styling for chart containers */
+#chart_bar {
+    margin-bottom: 0rem;
+}
+
+/* Additional styling for the time-series chart container */
+#chart_time {
+    margin-top: 0rem;
+}
+
 /* Single consolidated media query for mobile */
 @media (max-width: 768px) {
 

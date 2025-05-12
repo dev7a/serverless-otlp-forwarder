@@ -229,16 +229,18 @@ Generates HTML reports from previously collected JSON benchmark results.
 -   `--readme <MARKDOWN_FILE>`: (Optional) Specifies a markdown file whose content will be rendered as HTML and included on the landing page of the report. This allows for adding custom documentation, explanations, or findings to the benchmark report.
 -   `--template-dir <PATH>`: (Optional) Specifies a custom directory containing templates for report generation. This allows for complete customization of the report appearance and behavior. The directory should contain HTML templates (`index.html`, `chart.html`, `_sidebar.html`), CSS (`css/style.css`), and a single JavaScript file (`js/lib.js`) that handles all chart rendering functionality.
 -   `--base-url <URL_PATH>`: (Optional) Specifies a base URL path for all generated links in the report. This is useful when hosting the report in a subdirectory of a website (e.g., `--base-url "/reports/"` for a site hosted at `http://example.com/reports/`). When specified, all internal links will be prefixed with this path, ensuring proper navigation even when the report is not hosted at the root of a domain.
+-   `--local-browsing`: (Optional) Appends 'index.html' to all internal links in the report. This makes it easier to navigate the report when opening it directly from the file system, without a web server. By default, links are SEO-friendly and do not include 'index.html'.
 
 **Example:**
 ```bash
 startled report \
     --input-dir /tmp/startled_results/my-application-services \
     --output-dir /var/www/benchmarks/my-application-services \
-    --screenshot Dark \
+    --screenshot dark \
     --readme benchmark-notes.md \
     --template-dir /path/to/custom-templates \
-    --base-url "/benchmarks/my-application-services"
+    --base-url "/benchmarks/my-application-services" \
+    --local-browsing
 ```
 The main HTML report will be accessible at `/var/www/benchmarks/my-application-services/index.html` and can be hosted at `http://example.com/benchmarks/my-application-services/`.
 
@@ -259,30 +261,29 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
 
 `startled` gathers metrics from both server-side and client-side perspectives:
 
--   **Server-Side Metrics**: These are obtained by requesting the last 4KB of execution logs from AWS Lambda (`LogType::Tail`). `startled` parses these logs to extract key performance indicators.
-    -   Metrics from `platform.report` lines:
-        -   `initDurationMs`: Initialization time for the function environment (relevant for cold starts).
-        -   `durationMs`: Execution time of the function handler.
-        -   `billedDurationMs`: The duration for billing purposes.
-        -   `memorySizeMB`: The configured memory for the function.
-        -   `maxMemoryUsedMB`: The maximum memory utilized during the invocation.
-        -   `extensionOverhead`: Derived from spans named `extensionOverhead` within the `spans` array of the `platform.report`. This metric quantifies the performance impact of Lambda Extensions.
-        -   `totalColdStartDuration`: Calculated as the sum of `initDurationMs` and `durationMs`.
-    -   Additional metrics from `platform.runtimeDone` lines (when system log level is DEBUG and format is JSON):
-        -   `responseLatencyMs`: Time from function return to when the Lambda platform completes sending the response.
-        -   `responseDurationMs`: Time taken to transmit the response bytes.
-        -   `runtimeOverheadMs`: Overhead attributed to the Lambda runtime after the function handler completes but before the platform considers the runtime phase finished.
-        -   `producedBytes`: The size of the response payload produced by the function.
-        -   `runtimeDoneMetricsDurationMs`: The `durationMs` field from the `platform.runtimeDone` log entry's metrics, representing the runtime's view of its execution duration.
-    -   **Statistical Summary**: For all collected duration, memory, and produced bytes metrics, `startled` now calculates and displays Mean, P50 (Median), P95, P99, and **Standard Deviation (StdDev)** in the console output and HTML reports, providing insights into performance consistency.
+-   **Server-Side Metrics (from AWS Lambda Logs)**: These are obtained by parsing AWS Lambda execution logs (`LogType::Tail`).
+    -   Metrics primarily from `platform.report` log entries:
+        -   **Init Duration (Cold Start)** (AWS Log: `initDurationMs`): Initialization time for the function environment. Primarily relevant for cold starts. Displayed in HTML reports as "Cold Start - Init Duration".
+        -   **Server Duration** (AWS Log: `durationMs`): Execution time of the function handler. Displayed in HTML reports as "Cold Start - Server Duration" or "Warm Start - Server Duration".
+        -   **Billed Duration** (AWS Log: `billedDurationMs`): The duration used by AWS for billing purposes.
+        -   **Configured Memory** (AWS Log: `memorySizeMB`): The memory allocated to the function.
+        -   **Memory Usage** (AWS Log: `maxMemoryUsedMB`): The maximum memory utilized during an invocation. Displayed in HTML reports as "Memory Usage".
+        -   **Extension Overhead** (Derived from `extension` spans in `platform.report`): Performance impact of Lambda Extensions. Displayed in HTML reports as "Cold Start - Extension Overhead" or "Warm Start - Extension Overhead".
+        -   **Total Cold Start Duration** (Calculated: `Init Duration + Server Duration` for cold starts): Represents the comprehensive duration for a cold start, combining initialization and execution phases. Displayed in HTML reports as "Cold Start - Total Cold Start Duration".
+    -   Additional metrics from `platform.runtimeDone` log entries (requires Lambda log level set to `DEBUG` and log format to `JSON`):
+        -   **Response Latency** (AWS Log: `responseLatencyMs`): Time from when the function handler returns to when the Lambda platform completes sending the response. Displayed in HTML reports as "Cold Start - Response Latency" or "Warm Start - Response Latency".
+        -   **Response Duration** (AWS Log: `responseDurationMs`): Time taken to transmit the response bytes. Displayed in HTML reports as "Cold Start - Response Duration" or "Warm Start - Response Duration".
+        -   **Runtime Overhead** (AWS Log: `runtimeOverheadMs`): Lambda runtime overhead after the function handler completes. Displayed in HTML reports as "Cold Start - Runtime Overhead" or "Warm Start - Runtime Overhead".
+        -   **Produced Bytes** (AWS Log: `producedBytes`): The size of the response payload from the function. Displayed in HTML reports as "Resources - Produced Bytes".
+        -   **Runtime Done Duration** (AWS Log: `durationMs` from `platform.runtimeDone` metrics): The runtime's reported execution duration. Displayed in HTML reports as "Cold Start - Runtime Done Duration" or "Warm Start - Runtime Done Duration".
 
--   **Client-Side Metrics**:
-    -   These metrics represent the total invocation time as observed by the client.
-    -   **Direct Measurement**: If no proxy function is specified, the CLI measures the wall-clock time for the AWS SDK's `invoke` API call to complete. This measurement includes network latency between the CLI execution environment and the Lambda API endpoint.
-    -   **Proxied Measurement**:
-        -   When a `--proxy <PROXY_FUNCTION>` is specified, `startled` invokes this designated proxy Lambda function.
-        -   The payload sent to the proxy includes the `target` function's ARN/name and the `payload` intended for the target.
-        -   The proxy function is responsible for invoking the `target` function, measuring the duration of that internal invocation, and returning this duration (as `invocation_time_ms`) to `startled`. This approach yields a client-side duration measurement from within the AWS network, minimizing the impact of external network conditions. (See "Proxy Function Contract").
+-   **Client-Side Metrics**: Measured by `startled` itself.
+    -   **Client Duration**: Total time measured by the client for a warm invocation. Includes network latency to and from the Lambda function when invoked directly. When using the `--proxy` option, this duration is measured from within the same AWS region as the target function, significantly reducing the impact of external network latency. Displayed in HTML reports as "Warm Start - Client Duration".
+
+-   **Statistical Summary**: For the metrics above (durations, memory, produced bytes), `startled` calculates and displays:
+    -   In HTML reports: Mean (AVG), P50 (Median), P95, and P99.
+    -   In Console output: Mean (AVG), P50 (Median), P95, P99, and Standard Deviation (StdDev).
+    This provides insights into performance distribution and consistency.
 
 -   **Trace Context Propagation**:
     -   To facilitate end-to-end distributed tracing, `startled` automatically injects standard trace context headers (`traceparent`, `tracestate` for W3C/OpenTelemetry, and `X-Amzn-Trace-Id` for AWS X-Ray) into the JSON payload sent to the Lambda function (or its proxy). These headers are added under a `headers` key within the payload.
