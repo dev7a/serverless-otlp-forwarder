@@ -79,7 +79,7 @@ enum ChartRenderData {
     Combined {
         bar: BarChartRenderData,
         line: LineChartRenderData,
-    }
+    },
 }
 
 /// Generate a chart with the given options
@@ -157,7 +157,7 @@ async fn generate_chart(
     let ChartRenderData::Combined { bar, line: _ } = chart_render_data;
     let title = bar.title.as_str();
     let page_type = bar.page_type.as_str();
-    
+
     ctx.insert("title", title);
     ctx.insert("config", config);
     ctx.insert("chart_id", "chart");
@@ -174,7 +174,10 @@ async fn generate_chart(
     ctx.insert("kebab_name", &kebab_name);
 
     // Add link_suffix for local browsing
-    ctx.insert("link_suffix", if local_browsing { "index.html" } else { "" });
+    ctx.insert(
+        "link_suffix",
+        if local_browsing { "index.html" } else { "" },
+    );
 
     // Render the index.html file inside the chart directory
     let html_path = chart_dir.join("index.html");
@@ -343,7 +346,10 @@ async fn generate_landing_page(
     // Landing page specific context
     ctx.insert("is_landing_page", &true);
     // Add link_suffix for local browsing
-    ctx.insert("link_suffix", if local_browsing { "index.html" } else { "" });
+    ctx.insert(
+        "link_suffix",
+        if local_browsing { "index.html" } else { "" },
+    );
     // Sidebar context
     ctx.insert("report_structure", report_structure);
     ctx.insert("current_group", "");
@@ -451,7 +457,7 @@ pub async fn generate_reports(
     if report_structure.is_empty() {
         anyhow::bail!("No valid benchmark data found in the input directory structure.");
     }
-    
+
     // Print the structure as an indented list instead of using Debug formatting
     println!("✓ Report structure scanned:");
     for (group_name, subgroups) in &report_structure {
@@ -460,7 +466,7 @@ pub async fn generate_reports(
             println!("    - {}", subgroup);
         }
     }
-    
+
     // Setup progress indicators
     let m = MultiProgress::new();
     let pb_style = ProgressStyle::default_spinner()
@@ -788,7 +794,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Cold Start - Init Duration"),
             "ms",
             "cold_init",
-            |report| report.cold_starts.iter().map(|cs| cs.init_duration).collect(),
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .map(|cs| cs.init_duration)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -842,7 +854,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Cold Start - Extension Overhead"),
             "ms",
             "cold_extension_overhead",
-            |report| report.cold_starts.iter().map(|cs| cs.extension_overhead).collect(),
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .map(|cs| cs.extension_overhead)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -870,7 +888,8 @@ pub async fn generate_reports_for_directory(
             "ms",
             "cold_total_duration",
             |report| {
-                report.cold_starts
+                report
+                    .cold_starts
                     .iter()
                     .filter_map(|cs| cs.total_cold_start_duration)
                     .collect()
@@ -902,7 +921,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Cold Start - Response Latency"),
             "ms",
             "cold_start_response_latency",
-            |report| report.cold_starts.iter().filter_map(|cs| cs.response_latency_ms).collect(),
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.response_latency_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -929,7 +954,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Cold Start - Response Duration"),
             "ms",
             "cold_start_response_duration",
-            |report| report.cold_starts.iter().filter_map(|cs| cs.response_duration_ms).collect(),
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.response_duration_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -956,7 +987,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Cold Start - Runtime Overhead"),
             "ms",
             "cold_start_runtime_overhead",
-            |report| report.cold_starts.iter().filter_map(|cs| cs.runtime_overhead_ms).collect(),
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.runtime_overhead_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -983,7 +1020,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Cold Start - Runtime Done Duration"),
             "ms",
             "cold_start_runtime_done_duration",
-            |report| report.cold_starts.iter().filter_map(|cs| cs.runtime_done_metrics_duration_ms).collect(),
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.runtime_done_metrics_duration_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1014,7 +1057,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Warm Start - Client Duration"),
             "ms",
             "client",
-            |report| report.client_measurements.iter().map(|m| m.client_duration).collect(),
+            |report| {
+                report
+                    .client_measurements
+                    .iter()
+                    .map(|m| m.client_duration)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1078,7 +1127,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Warm Start - Extension Overhead"),
             "ms",
             "extension_overhead",
-            |report| report.warm_starts.iter().map(|ws| ws.extension_overhead).collect(),
+            |report| {
+                report
+                    .warm_starts
+                    .iter()
+                    .map(|ws| ws.extension_overhead)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1097,7 +1152,7 @@ pub async fn generate_reports_for_directory(
         )
         .await?;
 
-        // Memory Usage - Combined Chart 
+        // Memory Usage - Combined Chart
         let memory_combined = prepare_combined_chart_render_data(
             &function_names,
             &memory_stats,
@@ -1105,7 +1160,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Memory Usage"),
             "MB",
             "memory",
-            |report| report.warm_starts.iter().map(|ws| ws.max_memory_used as f64).collect(),
+            |report| {
+                report
+                    .warm_starts
+                    .iter()
+                    .map(|ws| ws.max_memory_used as f64)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1133,7 +1194,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Warm Start - Response Latency"),
             "ms",
             "warm_start_response_latency",
-            |report| report.warm_starts.iter().filter_map(|ws| ws.response_latency_ms).collect(),
+            |report| {
+                report
+                    .warm_starts
+                    .iter()
+                    .filter_map(|ws| ws.response_latency_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1160,7 +1227,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Warm Start - Response Duration"),
             "ms",
             "warm_start_response_duration",
-            |report| report.warm_starts.iter().filter_map(|ws| ws.response_duration_ms).collect(),
+            |report| {
+                report
+                    .warm_starts
+                    .iter()
+                    .filter_map(|ws| ws.response_duration_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1187,7 +1260,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Warm Start - Runtime Overhead"),
             "ms",
             "warm_start_runtime_overhead",
-            |report| report.warm_starts.iter().filter_map(|ws| ws.runtime_overhead_ms).collect(),
+            |report| {
+                report
+                    .warm_starts
+                    .iter()
+                    .filter_map(|ws| ws.runtime_overhead_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1214,7 +1293,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Warm Start - Runtime Done Duration"),
             "ms",
             "warm_start_runtime_done_duration",
-            |report| report.warm_starts.iter().filter_map(|ws| ws.runtime_done_metrics_duration_ms).collect(),
+            |report| {
+                report
+                    .warm_starts
+                    .iter()
+                    .filter_map(|ws| ws.runtime_done_metrics_duration_ms)
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1241,7 +1326,13 @@ pub async fn generate_reports_for_directory(
             custom_title.unwrap_or("Resources - Produced Bytes"),
             "bytes",
             "produced_bytes",
-            |report| report.warm_starts.iter().filter_map(|ws| ws.produced_bytes.map(|b| b as f64)).collect(),
+            |report| {
+                report
+                    .warm_starts
+                    .iter()
+                    .filter_map(|ws| ws.produced_bytes.map(|b| b as f64))
+                    .collect()
+            },
         );
         generate_chart(
             &PathBuf::from(output_directory),
@@ -1277,10 +1368,26 @@ fn prepare_bar_chart_render_data(
         .zip(stats.iter())
         .map(|(name, &(avg, p99, p95, p50, _std_dev))| {
             // Use Decimal for precise rounding to 3 decimal places
-            let rounded_avg = Decimal::from_f64(avg).unwrap_or_default().round_dp(3).to_f64().unwrap_or(0.0);
-            let rounded_p50 = Decimal::from_f64(p50).unwrap_or_default().round_dp(3).to_f64().unwrap_or(0.0);
-            let rounded_p95 = Decimal::from_f64(p95).unwrap_or_default().round_dp(3).to_f64().unwrap_or(0.0);
-            let rounded_p99 = Decimal::from_f64(p99).unwrap_or_default().round_dp(3).to_f64().unwrap_or(0.0);
+            let rounded_avg = Decimal::from_f64(avg)
+                .unwrap_or_default()
+                .round_dp(3)
+                .to_f64()
+                .unwrap_or(0.0);
+            let rounded_p50 = Decimal::from_f64(p50)
+                .unwrap_or_default()
+                .round_dp(3)
+                .to_f64()
+                .unwrap_or(0.0);
+            let rounded_p95 = Decimal::from_f64(p95)
+                .unwrap_or_default()
+                .round_dp(3)
+                .to_f64()
+                .unwrap_or(0.0);
+            let rounded_p99 = Decimal::from_f64(p99)
+                .unwrap_or_default()
+                .round_dp(3)
+                .to_f64()
+                .unwrap_or(0.0);
 
             SeriesRenderData {
                 name: name.clone(),
@@ -1319,14 +1426,8 @@ fn prepare_combined_chart_render_data(
     value_extractor: impl Fn(&BenchmarkReport) -> Vec<f64>,
 ) -> ChartRenderData {
     // Prepare bar chart data
-    let bar_data = prepare_bar_chart_render_data(
-        function_names,
-        stats,
-        title,
-        unit,
-        page_type,
-    );
-    
+    let bar_data = prepare_bar_chart_render_data(function_names, stats, title, unit, page_type);
+
     // Prepare line chart data for the same metric over time
     let line_title = format!("{} - Over Time", title);
     let line_data = prepare_metric_line_chart_render_data(
@@ -1337,7 +1438,7 @@ fn prepare_combined_chart_render_data(
         page_type,
         value_extractor,
     );
-    
+
     ChartRenderData::Combined {
         bar: bar_data,
         line: line_data,
@@ -1362,11 +1463,11 @@ fn prepare_metric_line_chart_render_data(
         .zip(results.iter())
         .map(|(name, report)| {
             let x_offset = current_offset;
-            
+
             // Extract values for this specific metric
             let values = value_extractor(report);
             let num_points = values.len();
-            
+
             current_offset += num_points + gap; // Update offset for next series
             if current_offset > gap {
                 // Update max_x only if points were added
@@ -1600,8 +1701,20 @@ mod tests {
         let unit = "ms";
         let page_type = "test_line";
 
-        let render_data =
-            prepare_metric_line_chart_render_data(&results, &function_names, title, unit, page_type, |report| report.client_measurements.iter().map(|m| m.client_duration).collect());
+        let render_data = prepare_metric_line_chart_render_data(
+            &results,
+            &function_names,
+            title,
+            unit,
+            page_type,
+            |report| {
+                report
+                    .client_measurements
+                    .iter()
+                    .map(|m| m.client_duration)
+                    .collect()
+            },
+        );
 
         assert_eq!(render_data.title, title);
         assert_eq!(render_data.unit, unit);
@@ -1654,8 +1767,20 @@ mod tests {
             client_measurements: vec![], // Empty
         }];
         let function_names = vec!["func_a".to_string()];
-        let render_data =
-            prepare_metric_line_chart_render_data(&results, &function_names, "Empty", "ms", "empty_line", |report| report.client_measurements.iter().map(|m| m.client_duration).collect());
+        let render_data = prepare_metric_line_chart_render_data(
+            &results,
+            &function_names,
+            "Empty",
+            "ms",
+            "empty_line",
+            |report| {
+                report
+                    .client_measurements
+                    .iter()
+                    .map(|m| m.client_duration)
+                    .collect()
+            },
+        );
 
         assert_eq!(render_data.series.len(), 1);
         assert_eq!(render_data.series[0].name, "func_a");
