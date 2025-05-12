@@ -53,7 +53,7 @@ enum Commands {
 
         /// Memory size in MB
         #[arg(short, long)]
-        memory: Option<i32>,
+        memory: i32,
 
         /// Number of concurrent invocations
         #[arg(short = 'c', long, default_value_t = 1)]
@@ -103,7 +103,7 @@ enum Commands {
 
         /// Memory size in MB
         #[arg(short = 'm', long)]
-        memory: Option<i32>,
+        memory: i32,
 
         /// Number of concurrent invocations
         #[arg(short = 'c', long, default_value_t = 1)]
@@ -132,6 +132,10 @@ enum Commands {
         /// Proxy Lambda function to use for client-side measurements
         #[arg(long = "proxy")]
         proxy: Option<String>,
+
+        /// Run benchmarks for selected functions in parallel
+        #[arg(long, default_value_t = false)]
+        parallel: bool,
     },
 
     /// Generate visualization reports from benchmark results
@@ -253,6 +257,8 @@ async fn run() -> Result<()> {
                     .collect::<Vec<_>>(),
                 true,
                 proxy.as_deref(),
+                false,
+                None,
             )
             .await
         }
@@ -270,6 +276,7 @@ async fn run() -> Result<()> {
             payload_file,
             environment,
             proxy,
+            parallel,
         } => {
             let directory_group_name = if let Some(name_override) = &select_name {
                 validate_fs_safe_name(name_override)
@@ -298,6 +305,7 @@ async fn run() -> Result<()> {
                 payload_file,
                 environment,
                 proxy,
+                parallel,
             )
             .await
         }
@@ -344,7 +352,7 @@ async fn execute_stack_command(
     stack_name: String,
     select_pattern_arg: String,       // from --select
     select_regex_arg: Option<String>, // from --select-regex
-    memory: Option<i32>,
+    memory: i32,
     concurrent: u32,
     rounds: u32,
     output_dir: Option<String>, // This is now base_dir/group_name or group_name
@@ -352,6 +360,7 @@ async fn execute_stack_command(
     payload_file: Option<String>,
     environment: Vec<EnvVar>,
     proxy: Option<String>,
+    parallel: bool,
 ) -> Result<()> {
     let config = aws_config::load_from_env().await;
     let lambda_client = LambdaClient::new(&config);
@@ -383,6 +392,7 @@ async fn execute_stack_command(
         environment,
         client_metrics_mode: true,
         proxy_function: proxy,
+        parallel,
     };
 
     run_stack_benchmark(&lambda_client, &cf_client, config).await

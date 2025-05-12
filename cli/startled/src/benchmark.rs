@@ -10,7 +10,9 @@ use std::{
     io::Write,
     path::PathBuf,
     sync::atomic::{AtomicBool, Ordering},
+    sync::Arc,
 };
+use tokio::sync::Mutex;
 
 use crate::console;
 use crate::lambda;
@@ -29,7 +31,7 @@ pub fn is_interrupted() -> bool {
 #[derive(Clone)]
 struct FunctionBenchmarkConfig {
     function_name: String,
-    memory_size: Option<i32>,
+    memory_size: i32,
     concurrent: u32,
     rounds: u32,
     payload: Option<String>,
@@ -43,7 +45,7 @@ impl FunctionBenchmarkConfig {
     #[allow(clippy::too_many_arguments)]
     fn new(
         function_name: impl Into<String>,
-        memory_size: Option<i32>,
+        memory_size: i32,
         concurrent: u32,
         rounds: u32,
         payload: Option<String>,
@@ -64,11 +66,12 @@ impl FunctionBenchmarkConfig {
     }
 }
 
-pub async fn save_report(report: BenchmarkReport, output_dir: &str) -> Result<()> {
-    let memory_dir = report
-        .config
-        .memory_size
-        .map_or("default".to_string(), |m| format!("{}mb", m));
+pub async fn save_report(
+    report: BenchmarkReport,
+    output_dir: &str,
+    quiet_mode: bool,
+) -> Result<()> {
+    let memory_dir = format!("{}mb", report.config.memory_size);
     let output_path = PathBuf::from(output_dir).join(&memory_dir);
     fs::create_dir_all(&output_path)?;
 
@@ -79,7 +82,9 @@ pub async fn save_report(report: BenchmarkReport, output_dir: &str) -> Result<()
     let json = serde_json::to_string_pretty(&report)?;
     let mut file = File::create(&output_path)?;
     file.write_all(json.as_bytes())?;
-    println!("\nReport saved to: {}", output_path.display());
+    if !quiet_mode {
+        println!("\nReport saved to: {}", output_path.display());
+    }
     Ok(())
 }
 
@@ -94,6 +99,7 @@ async fn run_benchmark_pass(
     client: &LambdaClient,
     config: &FunctionBenchmarkConfig,
     client_metrics_mode: bool,
+    quiet_mode: bool,
 ) -> Result<(BenchmarkResults, usize, usize, Vec<String>)> {
     use tokio::signal;
 
@@ -160,7 +166,7 @@ async fn run_benchmark_pass(
     }
 
     // Setup progress bar for warm starts
-    let progress = if config.rounds > 1 {
+    let progress = if !quiet_mode && config.rounds > 1 {
         let pb = ProgressBar::new(config.rounds as u64);
         pb.set_style(
             ProgressStyle::default_bar()
@@ -231,14 +237,18 @@ async fn run_benchmark_pass(
             return Ok((results, successes, failures, errors));
         }
 
-        if let Some(pb) = &progress {
-            pb.inc(1);
+        if !quiet_mode {
+            if let Some(pb) = &progress {
+                pb.inc(1);
+            }
         }
     }
 
     // Finish progress bar
-    if let Some(pb) = progress {
-        pb.finish_and_clear();
+    if !quiet_mode {
+        if let Some(pb) = progress {
+            pb.finish_and_clear();
+        }
     }
 
     Ok((results, successes, failures, errors))
@@ -248,7 +258,7 @@ async fn run_benchmark_pass(
 pub async fn run_function_benchmark(
     client: &LambdaClient,
     function_name: &str,
-    memory_size: Option<i32>,
+    memory_size: i32,
     concurrent: u32,
     rounds: u32,
     payload: Option<&str>,
@@ -256,18 +266,11 @@ pub async fn run_function_benchmark(
     environment: &[(&str, &str)],
     client_metrics_mode: bool,
     proxy_function: Option<&str>,
+    quiet_mode: bool,
+    console_mutex: Option<Arc<Mutex<()>>>,
 ) -> Result<()> {
-    println!("\nStarting benchmark for: {}", function_name);
-
-    // Check proxy function existence if provided
-    if let Some(proxy_name) = proxy_function {
-        println!("Checking proxy function '{}'...", proxy_name);
-        lambda::check_function_exists(client, proxy_name).await?;
-        println!("✓ Proxy function found.");
-    }
-
-    // Get function configuration to extract runtime and architecture
-    let function = client
+    // Get function configuration to extract runtime and architecture FIRST
+    let function_config_details = client
         .get_function()
         .function_name(function_name)
         .send()
@@ -283,134 +286,149 @@ pub async fn run_function_benchmark(
             }
         })?;
 
-    let config = function.configuration().ok_or_else(|| {
+    let actual_config = function_config_details.configuration().ok_or_else(|| {
         anyhow!(
             "Failed to get function configuration for '{}'",
             function_name
         )
     })?;
 
-    let runtime = config.runtime().map(|r| r.as_str().to_string());
-    let architecture = if config.architectures().is_empty() {
+    let runtime = actual_config.runtime().map(|r| r.as_str().to_string());
+    let architecture = if actual_config.architectures().is_empty() {
         Some("x86_64".to_string())
     } else {
-        config
+        actual_config
             .architectures()
             .first()
             .map(|arch| arch.as_str().to_string())
     };
 
-    println!("\nConfiguration:");
-    println!(
-        "  {:20}: {} MB",
-        "Memory Size".dimmed(),
-        memory_size.unwrap_or(128)
-    );
-    println!(
-        "  {:20}: {}",
-        "Runtime".dimmed(),
-        runtime.as_deref().unwrap_or("unknown")
-    );
-    println!(
-        "  {:20}: {}",
-        "Architecture".dimmed(),
-        architecture.as_deref().unwrap_or("unknown")
-    );
-    println!("  {:20}: {}", "Concurrency".dimmed(), concurrent);
-    println!("  {:20}: {}", "Rounds".dimmed(), rounds);
-    if let Some(proxy) = proxy_function {
-        println!("  {:20}: {}", "Using Proxy Function".dimmed(), proxy);
-    }
-    if !environment.is_empty() {
-        println!("  {:20}:", "Environment".dimmed());
-        for (key, value) in environment {
-            println!("    {}={}", key, value);
-        }
-    }
+    // Scoped section for printing configuration, using the mutex if provided (parallel mode)
+    {
+        let _guard = if let Some(lock) = &console_mutex {
+            Some(lock.lock().await)
+        } else {
+            None
+        };
 
-    // Print telemetry configuration
-    println!("\nTelemetry:");
-    if let (Ok(endpoint), Ok(service)) = (
-        std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT"),
-        std::env::var("OTEL_SERVICE_NAME"),
-    ) {
-        println!("  {:20}: {}", "Service".dimmed(), service);
-        println!("  {:20}: {}", "Endpoint".dimmed(), endpoint);
+        println!("\nConfiguration:");
+        println!("  {:20}: {}", "Function Name".dimmed(), function_name);
+        println!("  {:20}: {} MB", "Memory Size".dimmed(), memory_size);
         println!(
             "  {:20}: {}",
-            "Protocol".dimmed(),
-            std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
-                .unwrap_or_else(|_| "http/protobuf (default)".to_string())
+            "Runtime".dimmed(),
+            runtime.as_deref().unwrap_or("unknown")
         );
-
-        // Region is required for AWS endpoints
-        if endpoint.contains(".amazonaws.com") {
-            let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
-            println!(
-                "  {:20}: {}{}",
-                "Region".dimmed(),
-                region,
-                if region == "us-east-1" { " *" } else { "" }
-            );
+        println!(
+            "  {:20}: {}",
+            "Architecture".dimmed(),
+            architecture.as_deref().unwrap_or("unknown")
+        );
+        println!("  {:20}: {}", "Concurrency".dimmed(), concurrent);
+        println!("  {:20}: {}", "Rounds".dimmed(), rounds);
+        if let Some(proxy) = proxy_function {
+            println!("  {:20}: {}", "Using Proxy Function".dimmed(), proxy);
         }
-    } else {
-        println!("  OpenTelemetry is not configured (OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_SERVICE_NAME are required)");
+        if !environment.is_empty() {
+            println!("  {:20}:", "Environment".dimmed());
+            for (key, value) in environment {
+                println!("    {}={}", key, value);
+            }
+        }
+        // _guard is dropped here.
     }
 
-    // Convert environment variables
-    let env: Vec<(String, String)> = environment
+    // The rest of the function proceeds, with its own prints conditional on !quiet_mode
+    if !quiet_mode {
+        println!("\nStarting benchmark for: {}", function_name);
+    }
+
+    // Check proxy function existence if provided
+    if let Some(proxy_name) = proxy_function {
+        if !quiet_mode {
+            println!("Checking proxy function '{}'...", proxy_name);
+        }
+        lambda::check_function_exists(client, proxy_name).await?;
+        if !quiet_mode {
+            println!("✓ Proxy function found.");
+        }
+    }
+
+    // Convert [(&str, &str)] to Vec<(String, String)> for use in update_function_config and FunctionBenchmarkConfig
+    // `environment` is the function parameter: &[(&str, &str)]
+    let env_owned: Vec<(String, String)> = environment
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
 
     // Save original configuration if we're going to modify it
-    let original_config = if memory_size.is_some() || !environment.is_empty() {
-        Some(lambda::get_function_config(client, function_name).await?)
-    } else {
-        None
-    };
+    let original_config_to_restore =
+        Some(lambda::get_function_config(client, function_name).await?);
 
     // Update function configuration if needed
-    if memory_size.is_some() || !environment.is_empty() {
+    if !quiet_mode {
         println!("\nUpdating function configuration...");
-        lambda::update_function_config(client, function_name, memory_size, &env).await?;
+    }
+    lambda::update_function_config(client, function_name, Some(memory_size), &env_owned).await?;
+    if !quiet_mode {
         println!("✓ Function configuration updated");
     }
 
-    // Create a future for the benchmark execution
-    let config = FunctionBenchmarkConfig::new(
+    // Create a FunctionBenchmarkConfig instance for run_benchmark_pass
+    let function_benchmark_config_instance = FunctionBenchmarkConfig::new(
         function_name.to_string(),
         memory_size,
         concurrent,
         rounds,
         payload.map(|s| s.to_string()),
         output_dir.unwrap_or("default").to_string(),
-        env,
+        env_owned, // Use the owned Vec<(String, String)>
         proxy_function.map(|s| s.to_string()),
     );
 
     let result = async {
         // First pass - get server metrics and cold start
-        println!("\nCollecting server metrics...");
-        let (mut results, mut successes, mut failures, mut errors) =
-            run_benchmark_pass(client, &config, false).await?;
-        println!("✓ Server metrics collected");
+        if !quiet_mode {
+            println!("\nCollecting server metrics...");
+        }
+        let (mut results, mut successes, mut failures, mut errors) = run_benchmark_pass(
+            client,
+            &function_benchmark_config_instance,
+            false,
+            quiet_mode,
+        )
+        .await?;
+        if !quiet_mode {
+            println!("✓ Server metrics collected");
+        }
 
         // If client metrics requested, do a second pass for warm starts only
         if client_metrics_mode {
-            println!("\nCollecting client metrics...");
+            if !quiet_mode {
+                println!("\nCollecting client metrics...");
+            }
             // Run without logs to get accurate client metrics
             let (client_results, client_successes, client_failures, client_errors) =
-                run_benchmark_pass(client, &config, true).await?;
+                run_benchmark_pass(
+                    client,
+                    &function_benchmark_config_instance,
+                    true,
+                    quiet_mode,
+                )
+                .await?;
             results.client_measurements = client_results.warm_starts;
             successes += client_successes;
             failures += client_failures;
             errors.extend(client_errors);
-            println!("✓ Client metrics collected\n");
+            if !quiet_mode {
+                println!("✓ Client metrics collected\n");
+            }
         }
 
         // Print results
-        console::print_benchmark_results(function_name, &results);
+        if !quiet_mode {
+            console::print_benchmark_results(function_name, &results);
+        }
 
         // Calculate and print success rate
         let total = successes + failures;
@@ -419,25 +437,29 @@ pub async fn run_function_benchmark(
         } else {
             0.0
         };
-        println!("\n"); // Add separator before success/failure report
-        if failures > 0 {
-            println!("--- Invocation Errors (showing up to 10) ---");
-            for (i, err) in errors.iter().take(10).enumerate() {
-                println!("{}. {}", i + 1, err);
+        if !quiet_mode {
+            println!("\n"); // Add separator before success/failure report
+            if failures > 0 {
+                println!("--- Invocation Errors (showing up to 10) ---");
+                for (i, err) in errors.iter().take(10).enumerate() {
+                    println!("{}. {}", i + 1, err);
+                }
+                if errors.len() > 10 {
+                    println!("...and {} more errors.", errors.len() - 10);
+                }
+                println!("--- End Errors ---\n");
             }
-            if errors.len() > 10 {
-                println!("...and {} more errors.", errors.len() - 10);
-            }
-            println!("--- End Errors ---\n");
         }
         if (success_rate - 100.0).abs() < f64::EPSILON {
-            println!("{}: {}", function_name, "Success rate: 100%".green());
+            if !quiet_mode {
+                println!("{}: {}", function_name, "Success rate: 100%".green());
+            } else if failures > 0 {
+                // In quiet mode, if there were failures for this function, the summary in run_stack_benchmark will show it.
+            }
         } else {
-            println!(
-                "{}: {}",
-                function_name,
-                format!("Success rate: {:.1}%", success_rate).red()
-            );
+            // If not 100% success, the summary in run_stack_benchmark will show it as a failure for this function.
+            // We could log specifics to stderr here if desired even in quiet_mode.
+            // For now, rely on the overall summary.
         }
 
         // Save results
@@ -477,6 +499,7 @@ pub async fn run_function_benchmark(
                         .collect(),
                 },
                 dir,
+                quiet_mode,
             )
             .await?;
         }
@@ -486,10 +509,18 @@ pub async fn run_function_benchmark(
     .await;
 
     // Restore original configuration if we modified it
-    if let Some(original) = original_config {
+    if let Some(original) = original_config_to_restore {
         // Always try to restore, even if the benchmark failed or was interrupted
-        if let Err(e) = lambda::restore_function_config(client, function_name, &original).await {
-            eprintln!("Warning: Failed to restore function configuration: {}", e);
+        if let Err(e) =
+            lambda::restore_function_config(client, function_name, &original, quiet_mode).await
+        {
+            if !quiet_mode {
+                eprintln!(
+                    "Warning: Failed to restore function configuration for {}: {}",
+                    function_name, e
+                );
+            }
+            // Note: The error itself will propagate if restore_function_config returns Err, handled by run_stack_benchmark summary.
         }
     }
 
@@ -577,58 +608,183 @@ pub async fn run_stack_benchmark(
     for func_id in &function_identifiers_to_benchmark {
         println!("  - {}", func_id);
     }
-    println!(); // Add a blank line for better readability
+    // Print telemetry configuration
+    println!("\nTelemetry:");
+    if let (Ok(endpoint), Ok(service)) = (
+        std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT"),
+        std::env::var("OTEL_SERVICE_NAME"),
+    ) {
+        println!("  {:20}: {}", "Service".dimmed(), service);
+        println!("  {:20}: {}", "Endpoint".dimmed(), endpoint);
+        println!(
+            "  {:20}: {}",
+            "Protocol".dimmed(),
+            std::env::var("OTEL_EXPORTER_OTLP_PROTOCOL")
+                .unwrap_or_else(|_| "http/protobuf (default)".to_string())
+        );
 
+        // Region is required for AWS endpoints
+        if endpoint.contains(".amazonaws.com") {
+            let region = std::env::var("AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+            println!(
+                "  {:20}: {}{}",
+                "Region".dimmed(),
+                region,
+                if region == "us-east-1" { " *" } else { "" }
+            );
+        }
+    } else {
+        println!("  OpenTelemetry is not configured (OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_SERVICE_NAME are required)");
+    }
+
+    println!(); // Add a blank line for better readability
     let total_functions = function_identifiers_to_benchmark.len();
     println!("Total functions to benchmark: {}", total_functions);
 
-    for (index, function_arn_or_name) in function_identifiers_to_benchmark.iter().enumerate() {
-        if is_interrupted() {
-            println!("\nInterrupted, skipping remaining functions");
-            return Err(anyhow!("Benchmark interrupted by user"));
-        }
-        println!(
-            "\n[{}/{}] Benchmarking: {} {}",
-            index + 1,
-            total_functions,
-            function_arn_or_name.bold(),
-            config
-                .memory_size
-                .map_or_else(String::new, |m| format!("({}MB)", m))
+    if config.parallel {
+        println!("Running benchmarks in parallel...");
+        let pb = ProgressBar::new(total_functions as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} functions",
+                )
+                .unwrap()
+                .progress_chars("#>-"),
         );
 
-        let function_specific_output_dir = config.output_dir.as_ref().map(|base_output_dir| {
-            let path = PathBuf::from(base_output_dir);
-            path.to_string_lossy().into_owned()
-        });
+        let console_mutex = Arc::new(Mutex::new(()));
+        let mut benchmark_futures = Vec::new();
 
-        if let Err(e) = run_function_benchmark(
-            lambda_client,
-            function_arn_or_name,
-            config.memory_size,
-            config.concurrent_invocations as u32,
-            config.rounds as u32,
-            config.payload.as_deref(),
-            function_specific_output_dir.as_deref(), // Corrected: Option<String> to Option<&str>
-            &config
-                .environment
-                .iter()
-                .map(|e| (e.key.as_str(), e.value.as_str()))
-                .collect::<Vec<_>>(),
-            true,                             // client_metrics_mode is true for stack benchmarks
-            config.proxy_function.as_deref(), // Corrected: Option<String> to Option<&str>
-        )
-        .await
-        {
-            eprintln!(
-                "Error running benchmark for {}: {}",
-                function_arn_or_name, e
-            );
-            // Decide if we should continue with other functions or stop
+        for function_arn_or_name in function_identifiers_to_benchmark {
+            // Clone necessary parts of config for the async task
+            let lambda_client_clone = lambda_client.clone();
+            let function_arn_or_name_clone = function_arn_or_name.clone();
+            let memory_size_clone = config.memory_size;
+            let concurrent_invocations_clone = config.concurrent_invocations as u32;
+            let rounds_clone = config.rounds as u32;
+            let payload_clone = config.payload.clone();
+            let output_dir_clone = config.output_dir.clone();
+            let environment_clone = config.environment.clone();
+            let proxy_function_clone = config.proxy_function.clone();
+            let pb_clone = pb.clone();
+            let mutex_clone = Arc::clone(&console_mutex);
+
+            benchmark_futures.push(tokio::spawn(async move {
+                let result = run_function_benchmark(
+                    &lambda_client_clone,
+                    &function_arn_or_name_clone,
+                    memory_size_clone,
+                    concurrent_invocations_clone,
+                    rounds_clone,
+                    payload_clone.as_deref(),
+                    output_dir_clone.as_deref(),
+                    &environment_clone
+                        .iter()
+                        .map(|e| (e.key.as_str(), e.value.as_str()))
+                        .collect::<Vec<_>>(),
+                    true,
+                    proxy_function_clone.as_deref(),
+                    true,
+                    Some(mutex_clone),
+                )
+                .await;
+                pb_clone.inc(1);
+                (function_arn_or_name_clone, result)
+            }));
         }
 
-        let progress_percentage = ((index + 1) as f64 / total_functions as f64) * 100.0;
-        println!("{:.2}% complete", progress_percentage);
+        let results = futures::future::join_all(benchmark_futures).await;
+        pb.finish_with_message("All benchmarks completed.");
+
+        let mut successes = 0;
+        let mut failures = 0;
+
+        println!("\n\n--- Parallel Benchmark Summary ---");
+        for future_result in results {
+            match future_result {
+                Ok((func_name, Ok(()))) => {
+                    println!("  ✅ {}: Success", func_name);
+                    successes += 1;
+                }
+                Ok((func_name, Err(e))) => {
+                    eprintln!("  ❌ {}: Failed - {}", func_name, e);
+                    failures += 1;
+                }
+                Err(e) => {
+                    // Tokio spawn error
+                    eprintln!("  ❌ Task execution error: {}", e);
+                    failures += 1;
+                }
+            }
+        }
+        println!("---------------------------------");
+        println!(
+            "Total: {}, Successes: {}, Failures: {}",
+            total_functions, successes, failures
+        );
+        if failures > 0 {
+            return Err(anyhow!(
+                "{} benchmark(s) failed in parallel execution.",
+                failures
+            ));
+        }
+    } else {
+        // Sequential execution (existing logic)
+        for (index, function_arn_or_name) in function_identifiers_to_benchmark.iter().enumerate() {
+            if is_interrupted() {
+                println!("\nInterrupted, skipping remaining functions");
+                return Err(anyhow!("Benchmark interrupted by user"));
+            }
+            println!(
+                "\n[{}/{}] Benchmarking: {} ({})MB",
+                index + 1,
+                total_functions,
+                function_arn_or_name.bold(),
+                config.memory_size
+            );
+
+            let function_specific_output_dir = config.output_dir.as_ref().map(|base_output_dir| {
+                // output_dir in StackBenchmarkConfig is already base_dir/group_name or just group_name
+                // For saving individual function reports, it's just this directory.
+                // The save_report function will handle memory-specific subdirectories if memory is set.
+                PathBuf::from(base_output_dir)
+                    .to_string_lossy()
+                    .into_owned()
+            });
+
+            // Note: run_function_benchmark will need a quiet_mode parameter (false for sequential)
+            if let Err(e) = run_function_benchmark(
+                lambda_client,
+                function_arn_or_name,
+                config.memory_size,
+                config.concurrent_invocations as u32,
+                config.rounds as u32,
+                config.payload.as_deref(),
+                function_specific_output_dir.as_deref(),
+                &config
+                    .environment
+                    .iter()
+                    .map(|e| (e.key.as_str(), e.value.as_str()))
+                    .collect::<Vec<_>>(),
+                true, // client_metrics_mode is true for stack benchmarks
+                config.proxy_function.as_deref(),
+                false, // quiet_mode is false for sequential execution
+                None,  // No mutex needed for sequential printing
+            )
+            .await
+            {
+                eprintln!(
+                    "Error running benchmark for {}: {}",
+                    function_arn_or_name, e
+                );
+                // Decide if we should continue with other functions or stop
+                // For now, we continue, but log the error.
+            }
+
+            let progress_percentage = ((index + 1) as f64 / total_functions as f64) * 100.0;
+            println!("{:.2}% complete", progress_percentage);
+        }
     }
 
     Ok(())
@@ -648,7 +804,7 @@ mod tests {
     #[test]
     fn test_function_benchmark_config_new() {
         let function_name = "test_func";
-        let memory_size = Some(512);
+        let memory_size = 512;
         let concurrent = 10;
         let rounds = 5;
         let payload = Some("{}".to_string());
@@ -686,7 +842,7 @@ mod tests {
         let report = BenchmarkReport {
             config: BenchmarkConfig {
                 function_name: "my_test_lambda".to_string(),
-                memory_size: Some(256),
+                memory_size: 256,
                 concurrent_invocations: 1,
                 rounds: 1,
                 timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
@@ -732,7 +888,7 @@ mod tests {
             }],
         };
 
-        let save_result = save_report(report.clone(), output_dir_str).await;
+        let save_result = save_report(report.clone(), output_dir_str, false).await;
         assert!(
             save_result.is_ok(),
             "Failed to save report: {:?}",
@@ -781,13 +937,16 @@ mod tests {
     #[tokio::test]
     async fn test_save_report_default_memory() {
         let temp_dir = tempdir().unwrap();
-        let output_dir_path = temp_dir.path().join("benchmark_reports_default");
+        let output_dir_path = temp_dir
+            .path()
+            .join("benchmark_reports_default_ devenue_specific"); // Path name changed for clarity
         let output_dir_str = output_dir_path.to_str().unwrap();
+        let specific_memory_for_test = 128; // Provide a specific memory
 
         let report = BenchmarkReport {
             config: BenchmarkConfig {
-                function_name: "my_default_lambda".to_string(),
-                memory_size: None, // Test default memory case
+                function_name: "my_specific_mem_lambda".to_string(),
+                memory_size: specific_memory_for_test, // Use specific memory
                 concurrent_invocations: 1,
                 rounds: 1,
                 timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
@@ -800,19 +959,22 @@ mod tests {
             client_measurements: vec![],
         };
 
-        let save_result = save_report(report.clone(), output_dir_str).await;
+        let save_result = save_report(report.clone(), output_dir_str, false).await;
         assert!(save_result.is_ok());
 
-        let expected_memory_dir = Path::new(output_dir_str).join("default");
+        let expected_memory_dir =
+            Path::new(output_dir_str).join(format!("{}mb", specific_memory_for_test)); // Check specific memory path
         assert!(
             expected_memory_dir.exists(),
-            "Default memory directory was not created"
+            "Specific memory directory was not created: {:?}",
+            expected_memory_dir
         );
 
-        let expected_file_path = expected_memory_dir.join("my_default_lambda.json");
+        let expected_file_path = expected_memory_dir.join("my_specific_mem_lambda.json");
         assert!(
             expected_file_path.exists(),
-            "Report file was not created for default memory"
+            "Report file was not created for specific memory case at {:?}",
+            expected_file_path
         );
 
         temp_dir.close().unwrap();

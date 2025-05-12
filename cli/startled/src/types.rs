@@ -36,7 +36,7 @@ impl std::str::FromStr for EnvVar {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkConfig {
     pub function_name: String,
-    pub memory_size: Option<i32>,
+    pub memory_size: i32,
     pub concurrent_invocations: u32,
     pub rounds: u32,
     pub timestamp: String,
@@ -199,7 +199,7 @@ pub struct StackBenchmarkConfig {
     pub stack_name: String,
     pub select_pattern: String,       // Value from --select (required)
     pub select_regex: Option<String>, // Value from --select-regex (optional)
-    pub memory_size: Option<i32>,
+    pub memory_size: i32,
     pub concurrent_invocations: usize,
     pub rounds: usize,
     pub output_dir: Option<String>, // Path like "base_dir/group_name" or "group_name"
@@ -207,6 +207,7 @@ pub struct StackBenchmarkConfig {
     pub environment: Vec<EnvVar>,
     pub client_metrics_mode: bool,
     pub proxy_function: Option<String>,
+    pub parallel: bool, // Added for parallel execution
 }
 
 /// Original function configuration to restore after testing

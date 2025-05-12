@@ -39,3 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated `startled` CLI version from 0.1.0 to 0.1.1 in `Cargo.toml`.
+
+## [0.3.0] - 2025-05-12
+
+### Added
+- `--parallel` option to `stack` command for concurrent benchmarking of selected Lambda functions. Includes an overall progress bar and a final summary for parallel runs, suppressing detailed individual console logs.
+
+### Changed
+- `--memory` option is now **required** for both `function` and `stack` commands. This simplifies result directory structures by removing the "default" memory path.
+
+### Fixed
+- Improved console output management for parallel `stack` benchmarks to ensure a cleaner progress bar display by serializing configuration printing and conditionally suppressing other verbose logs from individual function benchmark tasks.

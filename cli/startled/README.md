@@ -153,7 +153,7 @@ Benchmarks a single, specified Lambda function.
 
 **Key Options:**
 -   `<FUNCTION_NAME>`: (Required) The name or ARN of the Lambda function to be benchmarked.
--   `--memory <MB>` (`-m <MB>`): Temporarily sets the function's memory allocation to `<MB>` for the benchmark duration.
+-   `--memory <MB>` (`-m <MB>`): (Required) Sets the function's memory allocation to `<MB>` for the benchmark duration.
 -   `--concurrent <N>` (`-c <N>`): Specifies the number of concurrent invocations (default: 1).
 -   `--rounds <N>` (`-n <N>`): Sets the number of repetitions for warm start measurements. Each round consists of `--concurrent` invocations (default: 1).
 -   `--payload <JSON_STRING>`: Provides a JSON payload string for each invocation. Conflicts with `--payload-file`.
@@ -186,12 +186,13 @@ Benchmarks Lambda functions defined within a specified AWS CloudFormation stack.
 -   `--select <PATTERN>` (`-s <PATTERN>`): (Required) A simple string pattern for substring matching against function names or ARNs within the stack. This pattern is also used to name a subdirectory for the results unless `--select-name` is provided. The pattern must be filesystem-safe if used for directory naming (alphanumeric, underscores, hyphens).
 -   `--select-regex <REGEX>`: (Optional) A regular expression to filter functions within the stack. If provided, this regex is used for filtering instead of the `--select <PATTERN>`. This option does not affect directory naming.
 -   `--select-name <NAME>`: (Optional) Specifies a custom name for the subdirectory where results for this selection group will be stored. If provided, this name overrides the `--select <PATTERN>` for directory naming purposes. The name must be filesystem-safe (alphanumeric, underscores, hyphens).
--   `--memory <MB>` (`-m <MB>`): Temporarily sets memory for all selected functions.
+-   `--memory <MB>` (`-m <MB>`): (Required) Sets memory for all selected functions to `<MB>` for the benchmark duration.
 -   `--concurrent <N>` (`-c <N>`): Number of concurrent invocations (default: 1).
 -   `--rounds <N>` (`-n <N>`): Number of warm start repetitions (default: 1).
 -   `--payload <JSON_STRING>` / `--payload-file <PATH>`: Payload for invocations, applied to all selected functions.
 -   `--env <KEY=VALUE>` (`-e <KEY=VALUE>`): Environment variables for selected functions.
 -   `--proxy <PROXY_FUNCTION_NAME_OR_ARN>`: Proxy Lambda for client-side measurements.
+-   `--parallel`: (Optional) If specified, benchmarks for all selected functions in the stack are run in parallel. This will suppress detailed console output for individual function benchmarks and show an overall progress bar instead. A summary will be printed upon completion.
 -   `--output-dir <PATH>` (`-d <PATH>`): (Optional) Base directory for JSON results. If provided, a subdirectory named after `--select-name` (or `--select <PATTERN>`) will be created within this base directory to store the results. If this option is not specified, no benchmark results will be saved.
 
 **Example:**
@@ -318,7 +319,7 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
 ### Output File Structure
 
 -   **JSON Results**: Individual benchmark results are stored in a structured path if an output directory is specified.
-    -   For `function` command: If `--output-dir` is specified, results are saved under `<YOUR_OUTPUT_DIR>/function/{memory_setting}/{function_name}.json` (e.g., `/tmp/results/function/128mb/my-lambda.json`). If memory is not set, `{memory_setting}` will be "default". If `--output-dir` is omitted, no results are saved.
+    -   For `function` command: If `--output-dir` is specified, results are saved under `<YOUR_OUTPUT_DIR>/function/{memory_setting}/{function_name}.json` (e.g., `/tmp/results/function/128mb/my-lambda.json`). If `--output-dir` is omitted, no results are saved.
     -   For `stack` command: If `--output-dir` is specified, results are saved to `your_output_dir/{select_name_or_pattern}/{memory_setting}/{function_name}.json` (or `your_output_dir/{select_name_or_pattern}/default/{function_name}.json` if memory is not set). If `--output-dir` is omitted, no results are saved.
 -   **HTML Reports**: The `report` command generates a structured set of HTML files within its specified `--output-dir`. The input directory for the report command should point to the level containing the `{select_name_or_pattern}` or `{memory_setting}` (for function command) directories.
     -   Example: `/srv/benchmarks/run1/index.html`, with sub-pages such as `/srv/benchmarks/run1/api-tests/512mb/cold_start_init.html`.

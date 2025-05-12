@@ -1450,7 +1450,7 @@ mod tests {
             BenchmarkReport {
                 config: BenchmarkConfig {
                     function_name: "func_a".to_string(),
-                    memory_size: Some(128),
+                    memory_size: 128,
                     concurrent_invocations: 1,
                     rounds: 1,
                     timestamp: "".to_string(),
@@ -1465,7 +1465,7 @@ mod tests {
             BenchmarkReport {
                 config: BenchmarkConfig {
                     function_name: "func_b".to_string(),
-                    memory_size: Some(128),
+                    memory_size: 128,
                     concurrent_invocations: 1,
                     rounds: 1,
                     timestamp: "".to_string(),
@@ -1524,7 +1524,7 @@ mod tests {
         let results = vec![BenchmarkReport {
             config: BenchmarkConfig {
                 function_name: "func_a".to_string(),
-                memory_size: Some(128),
+                memory_size: 128,
                 concurrent_invocations: 1,
                 rounds: 1,
                 timestamp: "".to_string(),

@@ -20,7 +20,7 @@ This document outlines the steps to publish a new version of the `startled` CLI 
         (e.g., `release/cli/startled-v0.2.0_candidate` - use a placeholder initially if exact version is TBD based on diff).
 
 3.  **Review Changes & Determine Version**:
-    *   Run `git diff main...HEAD cli/startled | cat` (or compare against the last release tag) to review all changes specific to the `cli/startled` directory for this release.
+    *   Run `git diff cli/startled | cat` (or git diff . if you are already in the cli/startled directory) to review all changes specific to the `cli/startled` directory for this release.
     *   Based on the `git diff`, decide if the release is a `patch` or `minor` update according to Semantic Versioning (SemVer) for 0.x releases:
         *   **Patch (0.x.Y -> 0.x.Z, where Z > Y)**: For backwards-compatible bug fixes.
         *   **Minor (0.X.y -> 0.Y.z, where Y > X)**: For new backwards-compatible functionality.
@@ -59,7 +59,7 @@ This document outlines the steps to publish a new version of the `startled` CLI 
     *   Navigate to the crate directory: `cd cli/startled` (if not already there).
     *   Perform a `cargo publish --dry-run --allow-dirty`. This checks for common packaging issues without actually publishing.
         ```bash
-        cargo publish --dry-run
+        cargo publish --dry-run --allow-dirty
         ```
     *   Address any errors or warnings from the dry run.
 
@@ -82,20 +82,5 @@ This document outlines the steps to publish a new version of the `startled` CLI 
         ```bash
         git push origin release/cli/startled-v<VERSION>
         ```
-
-10. **Open a Pull Request (PR)**:
-    *   Open a new PR from `release/cli/startled-v<VERSION>` to the main development branch.
-    *   Ensure the PR description includes or links to the release notes.
-    *   Wait for CI checks to pass and for code review.
-
-11. **Merge the PR**:
-    *   Once approved and all checks pass, merge the PR into the main development branch (e.g., using a squash merge if preferred, to keep the main branch history clean with a single commit for the release prep).
-
-12. **Automated Post-Merge Steps (CI/CD)**:
-    *   Upon merging the release PR (or a push to the main branch with the correct version commit), the CI/CD pipeline configured in `.github/workflows/publish-startled.yml` should automatically:
-        *   Create a Git tag (e.g., `cli/startled/v<VERSION>`).
-        *   Publish the `startled` crate (version from `Cargo.toml`) to Crates.io.
-        *   Create a corresponding GitHub Release, potentially using `RELEASE_NOTES.md`.
-
 ---
 This checklist should be followed for each new release to ensure consistency and quality. 

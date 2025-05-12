@@ -1,7 +1,7 @@
 use crate::types::{
     InvocationMetrics, PlatformReport, PlatformRuntimeDoneReport, ProxyRequest, ProxyResponse,
 };
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use aws_sdk_lambda::primitives::Blob;
 use aws_sdk_lambda::{error::ProvideErrorMetadata, error::SdkError, Client as LambdaClient};
 use base64::Engine;
@@ -31,7 +31,7 @@ pub struct OriginalConfig {
 pub async fn invoke_function(
     client: &LambdaClient,
     function_name: &str,
-    memory_size: Option<i32>,
+    memory_size: i32,
     payload: Option<&str>,
     _environment: &[(String, String)],
     client_metrics_mode: bool,
@@ -41,7 +41,7 @@ pub async fn invoke_function(
 
     // Set initial span attributes
     span.set_attribute("function.name", function_name.to_string());
-    span.set_attribute("function.memory_size", memory_size.unwrap_or(128) as i64);
+    span.set_attribute("function.memory_size", memory_size as i64);
     if let Some(proxy) = proxy_function {
         span.set_attribute("function.proxy", proxy.to_string());
     }
@@ -181,7 +181,7 @@ pub async fn invoke_function(
                     extension_overhead: 0.0,
                     total_cold_start_duration: None,
                     billed_duration: 0,
-                    memory_size: memory_size.unwrap_or(128) as i64,
+                    memory_size: memory_size as i64,
                     max_memory_used: 0,
                     response_latency_ms: None,
                     response_duration_ms: None,
@@ -449,21 +449,25 @@ pub async fn update_function_config(
 pub async fn restore_function_config(
     client: &LambdaClient,
     function_name: &str,
-    original: &OriginalConfig,
+    original_config: &OriginalConfig,
+    quiet_mode: bool,
 ) -> Result<()> {
-    println!("\nRestoring function configuration...");
+    if !quiet_mode {
+        println!("\nRestoring function configuration...");
+    }
+
     update_function_config(
         client,
         function_name,
-        Some(original.memory_size),
-        &original
-            .environment
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect::<Vec<_>>(),
+        Some(original_config.memory_size),
+        &original_config.environment, // Pass directly as &Vec<(String, String)> coerces to &[(String, String)]
     )
-    .await?;
-    println!("✓ Function configuration restored");
+    .await
+    .context("Failed to restore function configuration")?;
+
+    if !quiet_mode {
+        println!("Function {} configuration restored.", function_name);
+    }
     Ok(())
 }
 

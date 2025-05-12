@@ -583,6 +583,7 @@ a:hover {
     flex-direction: column;
     gap: 0.25rem;
     align-items: flex-start;
+    width: 100%;
 }
 
 .nav-group-label {
@@ -600,6 +601,7 @@ a:hover {
     justify-content: flex-start;
     flex-wrap: wrap;
     margin-left: 1rem;
+    width: 100%;
 }
 
 .nav-link {
@@ -610,7 +612,8 @@ a:hover {
     font-weight: 400;
     padding: 0.25rem 0.5rem;
     border: 1px solid var(--border-color);
-    width: 6rem;
+    width: calc(100% / 11);
+    min-width: 6rem;
     height: 4rem;
     text-align: left;
     background: var(--env-bg);

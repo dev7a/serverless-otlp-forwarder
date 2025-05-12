@@ -1,7 +1,6 @@
 use lambda_otel_lite::{create_traced_handler, init_telemetry, TelemetryConfig};
 use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
 use serde_json::{json, Value};
-use tracing::{info, instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 const DEFAULT_DEPTH: u64 = 2;
