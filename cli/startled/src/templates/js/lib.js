@@ -124,12 +124,12 @@ function initializeCharts(theme) {
         barChart.setOption(options);
     } else if (window.currentChartSpecificData.Line) {
         // Line chart only
-        barChart = echarts.init(barChartDom, theme);
+        lineChart = echarts.init(lineChartDom, theme);
         let options = LineCharts.generateOptions(window.currentChartSpecificData);
         if (options && typeof options.color === 'undefined' && window.DEFAULT_COLOR_PALETTE) {
             options.color = window.DEFAULT_COLOR_PALETTE;
         }
-        barChart.setOption(options);
+        lineChart.setOption(options);
     } else {
         console.error('Unknown chart data format:', window.currentChartSpecificData);
     }
