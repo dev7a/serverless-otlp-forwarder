@@ -110,8 +110,8 @@ enum Commands {
         concurrent: u32,
 
         /// Number of requests/repetitions for warm starts
-        #[arg(short = 'n', long = "number", default_value_t = 1)]
-        rounds: u32,
+        #[arg(short = 'n', long, default_value_t = 1)]
+        number: u32,
 
         /// Directory to save the benchmark results (optional)
         #[arg(short = 'd', long = "dir")]
@@ -274,7 +274,7 @@ async fn run() -> Result<()> {
             select_name,
             memory,
             concurrent,
-            rounds,
+            number: rounds,
             output_dir,
             payload,
             payload_file,
