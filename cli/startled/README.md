@@ -155,7 +155,7 @@ Benchmarks a single, specified Lambda function.
 -   `<FUNCTION_NAME>`: (Required) The name or ARN of the Lambda function to be benchmarked.
 -   `--memory <MB>` (`-m <MB>`): (Required) Sets the function's memory allocation to `<MB>` for the benchmark duration.
 -   `--concurrent <N>` (`-c <N>`): Specifies the number of concurrent invocations (default: 1).
--   `--rounds <N>` (`-n <N>`): Sets the number of repetitions for warm start measurements. Each round consists of `--concurrent` invocations (default: 1).
+-   `--number <N>` (`-n <N>`): Sets the number of repetitions for warm start measurements. Each round consists of `--concurrent` invocations (default: 1).
 -   `--payload <JSON_STRING>`: Provides a JSON payload string for each invocation. Conflicts with `--payload-file`.
 -   `--payload-file <PATH>`: Specifies the path to a JSON file containing the payload. Conflicts with `--payload`.
 -   `--env <KEY=VALUE>` (`-e <KEY=VALUE>`): Sets an environment variable for the function during the benchmark. This option can be used multiple times.
@@ -167,7 +167,7 @@ Benchmarks a single, specified Lambda function.
 startled function my-lambda-function \
     --memory 512 \
     --concurrent 10 \
-    --rounds 100 \
+    --number 100 \
     --payload '{\"request_id\":\"123\"}' \
     --env LOG_LEVEL=info \
     --proxy arn:aws:lambda:us-east-1:123456789012:function:my-benchmark-proxy \
@@ -188,7 +188,7 @@ Benchmarks Lambda functions defined within a specified AWS CloudFormation stack.
 -   `--select-name <NAME>`: (Optional) Specifies a custom name for the subdirectory where results for this selection group will be stored. If provided, this name overrides the `--select <PATTERN>` for directory naming purposes. The name must be filesystem-safe (alphanumeric, underscores, hyphens).
 -   `--memory <MB>` (`-m <MB>`): (Required) Sets memory for all selected functions to `<MB>` for the benchmark duration.
 -   `--concurrent <N>` (`-c <N>`): Number of concurrent invocations (default: 1).
--   `--rounds <N>` (`-n <N>`): Number of warm start repetitions (default: 1).
+-   `--number <N>` (`-n <N>`): Number of warm start repetitions (default: 1).
 -   `--payload <JSON_STRING>` / `--payload-file <PATH>`: Payload for invocations, applied to all selected functions.
 -   `--env <KEY=VALUE>` (`-e <KEY=VALUE>`): Environment variables for selected functions.
 -   `--proxy <PROXY_FUNCTION_NAME_OR_ARN>`: Proxy Lambda for client-side measurements.
@@ -204,7 +204,7 @@ startled stack my-app-stack \
     --select-name "api-group" \
     --memory 1024 \
     --concurrent 10 \
-    --rounds 50 \
+    --number 50 \
     --output-dir /tmp/bench_results
 
 # Benchmark functions matching a regex, using the --select pattern for directory naming
@@ -254,7 +254,7 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
     -   Use JSON logging and enable platform DEBUG logs, This will cause the Lambda platform to include the `platform.report` and `platform.runtimeDone` records in the logs.
     -   If `--memory` or `--env` options are provided, `startled` first retrieves the target Lambda function's existing configuration. It then applies the specified temporary changes, saving the original configuration for later restoration.
 2.  **Cold Start Invocations**: The CLI initiates a series of concurrent invocations (matching the `--concurrent` value). These initial invocations are considered cold starts.
-3.  **Warm Start Invocations**: Following the cold starts, `startled` executes `--rounds` number of warm start batches. Each batch comprises `--concurrent` invocations to the (now likely initialized) Lambda execution environments.
+3.  **Warm Start Invocations**: Following the cold starts, `startled` executes `--number` number of warm start batches. Each batch comprises `--concurrent` invocations to the (now likely initialized) Lambda execution environments.
 4.  **Configuration Restoration**: Upon completion of all invocations, or if the process is interrupted, `startled` attempts to restore the Lambda function to its original logging configuration and memory and environment variable settings.
 
 ### Metric Collection Details

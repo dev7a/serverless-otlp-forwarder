@@ -38,7 +38,7 @@
                                      {% if config.architecture %}<li><span class="key">architecture:</span><span class="value">{{ config.architecture }}</span></li>{% endif %}
                                      <li><span class="key">memory:</span><span class="value">{{ config.memory_size | default(value=128) }} MB</span></li>
                                      <li><span class="key">concurrency:</span><span class="value">{{ config.concurrent_invocations }}</span></li>
-                                     <li><span class="key">runs:</span><span class="value">{{ config.rounds }}</span></li>
+                                     <li><span class="key">runs:</span><span class="value">{{ config.number }}</span></li>
                                      <li><span class="key">timestamp:</span><span class="value">{{ config.timestamp | truncate(length=19, end="") }}</span></li>
                                  </ul>
                              </div>

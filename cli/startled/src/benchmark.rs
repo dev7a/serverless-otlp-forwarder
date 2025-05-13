@@ -33,7 +33,7 @@ struct FunctionBenchmarkConfig {
     function_name: String,
     memory_size: i32,
     concurrent: u32,
-    rounds: u32,
+    number: u32,
     payload: Option<String>,
     #[allow(dead_code)]
     output_dir: String,
@@ -47,7 +47,7 @@ impl FunctionBenchmarkConfig {
         function_name: impl Into<String>,
         memory_size: i32,
         concurrent: u32,
-        rounds: u32,
+        number: u32,
         payload: Option<String>,
         output_dir: impl Into<String>,
         environment: Vec<(String, String)>,
@@ -57,7 +57,7 @@ impl FunctionBenchmarkConfig {
             function_name: function_name.into(),
             memory_size,
             concurrent,
-            rounds,
+            number,
             payload,
             output_dir: output_dir.into(),
             environment,
@@ -166,8 +166,8 @@ async fn run_benchmark_pass(
     }
 
     // Setup progress bar for warm starts
-    let progress = if !quiet_mode && config.rounds > 1 {
-        let pb = ProgressBar::new(config.rounds as u64);
+    let progress = if !quiet_mode && config.number > 1 {
+        let pb = ProgressBar::new(config.number as u64);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template(
@@ -182,7 +182,7 @@ async fn run_benchmark_pass(
     };
 
     // Warm starts with Ctrl-C handling
-    for _round in 1..=config.rounds {
+    for _round in 1..=config.number {
         let mut handles = Vec::new();
         for _ in 0..config.concurrent {
             let client = client.clone();
@@ -260,7 +260,7 @@ pub async fn run_function_benchmark(
     function_name: &str,
     memory_size: i32,
     concurrent: u32,
-    rounds: u32,
+    number: u32,
     payload: Option<&str>,
     output_dir: Option<&str>,
     environment: &[(&str, &str)],
@@ -325,7 +325,7 @@ pub async fn run_function_benchmark(
             architecture.as_deref().unwrap_or("unknown")
         );
         println!("  {:20}: {}", "Concurrency".dimmed(), concurrent);
-        println!("  {:20}: {}", "Rounds".dimmed(), rounds);
+        println!("  {:20}: {}", "Rounds".dimmed(), number);
         if let Some(proxy) = proxy_function {
             println!("  {:20}: {}", "Using Proxy Function".dimmed(), proxy);
         }
@@ -379,7 +379,7 @@ pub async fn run_function_benchmark(
         function_name.to_string(),
         memory_size,
         concurrent,
-        rounds,
+        number,
         payload.map(|s| s.to_string()),
         output_dir.unwrap_or("default").to_string(),
         env_owned, // Use the owned Vec<(String, String)>
@@ -470,7 +470,7 @@ pub async fn run_function_benchmark(
                         function_name: function_name.to_string(),
                         memory_size,
                         concurrent_invocations: concurrent,
-                        rounds,
+                        number,
                         timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                         runtime,
                         architecture,
@@ -662,7 +662,7 @@ pub async fn run_stack_benchmark(
             let function_arn_or_name_clone = function_arn_or_name.clone();
             let memory_size_clone = config.memory_size;
             let concurrent_invocations_clone = config.concurrent_invocations as u32;
-            let rounds_clone = config.rounds as u32;
+            let number_clone = config.number as u32;
             let payload_clone = config.payload.clone();
             let output_dir_clone = config.output_dir.clone();
             let environment_clone = config.environment.clone();
@@ -676,7 +676,7 @@ pub async fn run_stack_benchmark(
                     &function_arn_or_name_clone,
                     memory_size_clone,
                     concurrent_invocations_clone,
-                    rounds_clone,
+                    number_clone,
                     payload_clone.as_deref(),
                     output_dir_clone.as_deref(),
                     &environment_clone
@@ -759,7 +759,7 @@ pub async fn run_stack_benchmark(
                 function_arn_or_name,
                 config.memory_size,
                 config.concurrent_invocations as u32,
-                config.rounds as u32,
+                config.number as u32,
                 config.payload.as_deref(),
                 function_specific_output_dir.as_deref(),
                 &config
@@ -806,7 +806,7 @@ mod tests {
         let function_name = "test_func";
         let memory_size = 512;
         let concurrent = 10;
-        let rounds = 5;
+        let number = 5;
         let payload = Some("{}".to_string());
         let output_dir = "test_output";
         let environment = vec![("KEY".to_string(), "VALUE".to_string())];
@@ -816,7 +816,7 @@ mod tests {
             function_name,
             memory_size,
             concurrent,
-            rounds,
+            number,
             payload.clone(),
             output_dir,
             environment.clone(),
@@ -826,7 +826,7 @@ mod tests {
         assert_eq!(config.function_name, function_name);
         assert_eq!(config.memory_size, memory_size);
         assert_eq!(config.concurrent, concurrent);
-        assert_eq!(config.rounds, rounds);
+        assert_eq!(config.number, number);
         assert_eq!(config.payload, payload);
         assert_eq!(config.output_dir, output_dir);
         assert_eq!(config.environment, environment);
@@ -844,7 +844,7 @@ mod tests {
                 function_name: "my_test_lambda".to_string(),
                 memory_size: 256,
                 concurrent_invocations: 1,
-                rounds: 1,
+                number: 1,
                 timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                 runtime: Some("nodejs18.x".to_string()),
                 architecture: Some("arm64".to_string()),
@@ -948,7 +948,7 @@ mod tests {
                 function_name: "my_specific_mem_lambda".to_string(),
                 memory_size: specific_memory_for_test, // Use specific memory
                 concurrent_invocations: 1,
-                rounds: 1,
+                number: 1,
                 timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                 runtime: Some("python3.9".to_string()),
                 architecture: Some("x86_64".to_string()),

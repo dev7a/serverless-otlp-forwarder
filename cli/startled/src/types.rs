@@ -38,7 +38,7 @@ pub struct BenchmarkConfig {
     pub function_name: String,
     pub memory_size: i32,
     pub concurrent_invocations: u32,
-    pub rounds: u32,
+    pub number: u32,
     pub timestamp: String,
     pub runtime: Option<String>,
     pub architecture: Option<String>,
@@ -201,7 +201,7 @@ pub struct StackBenchmarkConfig {
     pub select_regex: Option<String>, // Value from --select-regex (optional)
     pub memory_size: i32,
     pub concurrent_invocations: usize,
-    pub rounds: usize,
+    pub number: usize,
     pub output_dir: Option<String>, // Path like "base_dir/group_name" or "group_name"
     pub payload: Option<String>,
     pub environment: Vec<EnvVar>,

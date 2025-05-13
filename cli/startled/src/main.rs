@@ -60,8 +60,8 @@ enum Commands {
         concurrent: u32,
 
         /// Number of requests/repetitions for warm starts
-        #[arg(short = 'n', long = "number", default_value_t = 1)]
-        rounds: u32,
+        #[arg(short = 'n', long, default_value_t = 1)]
+        number: u32,
 
         /// Directory to save the benchmark results (optional)
         #[arg(short = 'd', long = "dir")]
@@ -215,7 +215,7 @@ async fn run() -> Result<()> {
             function_name,
             memory,
             concurrent,
-            rounds,
+            number,
             output_dir,
             payload,
             payload_file,
@@ -252,7 +252,7 @@ async fn run() -> Result<()> {
                 &function_name,
                 memory,
                 concurrent,
-                rounds,
+                number,
                 payload.as_deref(),
                 final_output_dir.as_deref(),
                 &environment
@@ -274,7 +274,7 @@ async fn run() -> Result<()> {
             select_name,
             memory,
             concurrent,
-            number: rounds,
+            number,
             output_dir,
             payload,
             payload_file,
@@ -303,7 +303,7 @@ async fn run() -> Result<()> {
                 select_regex, // This is select_regex_arg
                 memory,
                 concurrent,
-                rounds,
+                number,
                 final_output_dir_for_benchmark_group,
                 payload,
                 payload_file,
@@ -360,7 +360,7 @@ async fn execute_stack_command(
     select_regex_arg: Option<String>, // from --select-regex
     memory: i32,
     concurrent: u32,
-    rounds: u32,
+    number: u32,
     output_dir: Option<String>, // This is now base_dir/group_name or group_name
     payload: Option<String>,
     payload_file: Option<String>,
@@ -392,7 +392,7 @@ async fn execute_stack_command(
         select_regex: select_regex_arg,
         memory_size: memory,
         concurrent_invocations: concurrent as usize,
-        rounds: rounds as usize,
+        number: number as usize,
         output_dir, // Already correctly formed
         payload,
         environment,
