@@ -110,6 +110,11 @@ You can specify *at most one* of the following:
     # Poll every 15 seconds
     livetrace --stack-name my-dev-stack --poll-interval 15
     ```
+*   `--backtrace <DURATION>`: (Polling mode only) Fetch logs starting from `<DURATION>` ago (e.g., `30s`, `5m`, `120` for 120 seconds) for the initial poll. Subsequent polls fetch new logs.
+    ```bash
+    # Poll, fetching initial logs from the last 2 minutes
+    livetrace --stack-name my-dev-stack --poll-interval 15 --backtrace 2m
+    ```
 *   `--session-timeout <MINUTES>`: (Default: 30) Automatically exit after the specified number of minutes. **Only applicable in Live Tail mode (when `--poll-interval` is *not* used).**
     ```bash
     # Use Live Tail, but exit after 60 minutes
@@ -153,6 +158,11 @@ Control the appearance of the console output:
 *   `--theme <THEME>`: Select a color theme (e.g., `default`, `tableau`, `monochrome`). Default is `default`.
 *   `--list-themes`: List all available color themes with descriptions and exit.
 *   `--attrs <GLOB_LIST>`: Comma-separated list of glob patterns (e.g., `"http.*,db.statement,my.custom.*"`) to filter which attributes are displayed. Applied to both span attributes and event attributes. If omitted, all attributes are shown.
+*   `--grep <REGEX>`: Filter spans and events displayed in the console. Only telemetry where at least one attribute *value* matches the provided Rust-compatible regular expression will be shown. Matching text within attribute values will be highlighted (yellow background) in the timeline log.
+    ```bash
+    # Show only telemetry where an attribute value contains "error" or "failure"
+    livetrace --pattern "my-app" --grep "error|failure"
+    ```
 *   `--event-severity-attribute <ATTRIBUTE_NAME>`: (Default: `event.severity`) Specify the event attribute key used to determine the severity level for coloring event output.
 *   `--events-only`: Only display events in the timeline log, hiding span start information.
 *   `--trace-timeout <SECONDS>`: (Default: 5) Maximum time in seconds to wait for spans belonging to a trace before displaying/forwarding it, even if the root span hasn't been received.
@@ -269,8 +279,8 @@ The exact installation method varies by shell. Here are some common examples:
 
 **Bash:**
 
-1.  Ensure you have `bash-completion` installed (often available via your system's package manager).
-2.  Create the completions directory if it doesn't exist:
+1.  Ensure you have `bash-completion` installed (often available via your system\'s package manager).
+2.  Create the completions directory if it doesn\'t exist:
     ```bash
     mkdir -p ~/.local/share/bash-completion/completions
     ```
@@ -282,7 +292,7 @@ The exact installation method varies by shell. Here are some common examples:
 
 **Zsh:**
 
-1.  Create a directory for completions if you don't have one (e.g., `~/.zsh/completions`).
+1.  Create a directory for completions if you don\'t have one (e.g., `~/.zsh/completions`).
     ```bash
     mkdir -p ~/.zsh/completions
     ```
@@ -300,7 +310,7 @@ The exact installation method varies by shell. Here are some common examples:
 
 **Fish:**
 
-1.  Create the completions directory if it doesn't exist:
+1.  Create the completions directory if it doesn\'t exist:
     ```bash
     mkdir -p ~/.config/fish/completions
     ```
@@ -310,7 +320,7 @@ The exact installation method varies by shell. Here are some common examples:
     ```
     Fish should pick up the completions automatically on next launch.
 
-Refer to your shell's documentation for the most up-to-date and specific instructions.
+Refer to your shell\'s documentation for the most up-to-date and specific instructions.
 
 ## Development
 

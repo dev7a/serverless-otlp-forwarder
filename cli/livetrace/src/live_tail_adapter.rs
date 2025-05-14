@@ -11,6 +11,8 @@
 
 use anyhow::Result;
 use aws_sdk_cloudwatchlogs::{types::StartLiveTailResponseStream, Client as CwlClient};
+use regex::Regex;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::pin;
 use tokio::sync::mpsc;
@@ -24,6 +26,7 @@ pub fn start_live_tail_task(
     arns: Vec<String>,
     sender: mpsc::Sender<Result<TelemetryData>>,
     timeout_minutes: u64,
+    grep_regex: Option<Arc<Regex>>,
 ) {
     tokio::spawn(async move {
         tracing::debug!("Live Tail Adapter: Attempting to start Live Tail stream...");
@@ -77,7 +80,7 @@ pub fn start_live_tail_task(
                                     tracing::trace!("Live Tail Adapter: Received update with {} log events.", log_events.len());
                                     for log_event in log_events {
                                         if let Some(msg) = log_event.message() {
-                                            match process_log_event_message(msg) {
+                                            match process_log_event_message(msg, grep_regex.as_deref()) {
                                                 Ok(Some(telemetry)) => {
                                                     if sender.send(Ok(telemetry)).await.is_err() {
                                                         tracing::warn!("Live Tail Adapter: MPSC channel closed by receiver while sending data.");

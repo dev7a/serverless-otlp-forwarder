@@ -24,9 +24,10 @@ use opentelemetry_proto::tonic::{
     trace::v1::{status, Span},
 };
 use prost::Message;
+use regex::Regex;
 use std::collections::HashMap;
-use std::str::FromStr; // Added for FromStr trait
-use terminal_size::{self, Height, Width}; // Need TelemetryData for display_console
+use std::str::FromStr;
+use terminal_size::{self, Height, Width};
 
 // Constants
 const SERVICE_NAME_WIDTH: usize = 25;
@@ -316,7 +317,7 @@ fn generate_timeline_scale(trace_duration_ns: u64, timeline_width: usize) -> Str
     buffer.into_iter().collect()
 }
 
-// Public Display Function
+#[allow(clippy::too_many_arguments)]
 pub fn display_console(
     batch: &[TelemetryData],
     attr_globs: &Option<GlobSet>,
@@ -325,10 +326,11 @@ pub fn display_console(
     color_by: ColoringMode,
     events_only: bool,
     root_span_received: bool, // New parameter to indicate if the root span was found
+    grep_regex: Option<&Regex>,
 ) -> Result<()> {
     // Debug logging with theme and coloring mode
-    tracing::debug!("Display console called with theme={:?}, color_by={:?}, events_only={}, root_span_received={}", 
-                  theme, color_by, events_only, root_span_received);
+    tracing::debug!("Display console called with theme={:?}, color_by={:?}, events_only={}, root_span_received={}, has_grep_regex={}", 
+                  theme, color_by, events_only, root_span_received, grep_regex.is_some());
 
     let mut spans_with_service: Vec<(Span, String)> = Vec::new();
 
@@ -704,12 +706,15 @@ pub fn display_console(
 
                 // Add the item's own attributes
                 for attr in &item.attributes {
-                    attrs_to_display.push(format_keyvalue(attr));
+                    attrs_to_display.push(format_keyvalue(attr, grep_regex));
                 }
 
                 // If it's an Event, also add parent span attributes
                 if let Some(parent_attrs) = &item.parent_span_attributes {
                     for attr in parent_attrs {
+                        // For parent attributes, we might not want to highlight them based on the event's grep match,
+                        // or we might. For simplicity now, format them without highlighting or pass grep_regex if needed.
+                        // Let's assume for now we only highlight direct attributes of the item that matched.
                         let value_str = format_anyvalue(&attr.value);
                         attrs_to_display.push(format!(
                             "{}: {}",
@@ -956,8 +961,22 @@ fn format_span_kind(kind: i32) -> String {
     }
 }
 
-fn format_keyvalue(kv: &KeyValue) -> String {
+fn format_keyvalue(kv: &KeyValue, grep_regex: Option<&Regex>) -> String {
     let value_str = format_anyvalue(&kv.value);
+    if let Some(re) = grep_regex {
+        if re.is_match(&value_str) {
+            let mut highlighted_value = String::new();
+            let mut last_end = 0;
+            for mat in re.find_iter(&value_str) {
+                highlighted_value.push_str(&value_str[last_end..mat.start()]);
+                highlighted_value
+                    .push_str(&mat.as_str().on_truecolor(255, 255, 153).black().to_string()); // Bright yellow background, black text
+                last_end = mat.end();
+            }
+            highlighted_value.push_str(&value_str[last_end..]);
+            return format!("{}: {}", kv.key.bright_black(), highlighted_value);
+        }
+    }
     format!("{}: {}", kv.key.bright_black(), value_str)
 }
 

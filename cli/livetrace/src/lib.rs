@@ -19,6 +19,7 @@ pub mod processing;
 // Standard Library
 use std::collections::HashMap;
 use std::env;
+use std::sync::Arc;
 use std::time::Duration;
 
 // External Crates
@@ -28,6 +29,7 @@ use futures::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use prost::Message;
+use regex::Regex;
 use reqwest::Client as ReqwestClient;
 use tokio::sync::mpsc;
 use tokio::time::{interval, Instant};
@@ -39,17 +41,17 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 // e.g., `aws_setup::setup_aws_resources`.
 // Ensure these items are public in their respective modules.
 use aws_setup::setup_aws_resources;
-use cli::{parse_attr_globs, ColoringMode}; // Assuming these are pub in cli.rs
-pub use cli::{CliArgs, Commands}; // Re-export Commands as well
+use cli::{parse_attr_globs, ColoringMode};
+pub use cli::{CliArgs, Commands};
 use config::{
     load_and_resolve_config, load_or_default_config_file, merge_into_profile_config,
     save_profile_config, EffectiveConfig, ProfileConfig,
-}; // Assuming these are pub in config.rs
-use console_display::{display_console, get_terminal_width, Theme}; // Assuming these are pub in console_display.rs
-use forwarder::{parse_otlp_headers_from_vec, send_batch}; // Assuming these are pub in forwarder.rs
-use live_tail_adapter::start_live_tail_task; // Assuming this is pub in live_tail_adapter.rs
-use poller::start_polling_task; // Assuming this is pub in poller.rs
-use processing::{SpanCompactionConfig, TelemetryData}; // Assuming these are pub in processing.rs // Assuming this is pub in aws_setup.rs
+};
+use console_display::{display_console, get_terminal_width, Theme};
+use forwarder::{parse_otlp_headers_from_vec, send_batch};
+use live_tail_adapter::start_live_tail_task;
+use poller::start_polling_task;
+use processing::{SpanCompactionConfig, TelemetryData};
 
 // Constants for trace buffering timeouts
 const IDLE_TIMEOUT: Duration = Duration::from_millis(500); // Time to wait after root is seen
@@ -70,8 +72,6 @@ struct TraceBufferState {
 /// log data acquisition (either live tail or polling), processing telemetry,
 /// displaying it, and forwarding it if configured.
 pub async fn run_livetrace(args: CliArgs) -> Result<()> {
-    // (Logic from original main.rs, starting after CliArgs::parse())
-
     // Check if list-themes was specified
     if args.list_themes {
         println!("\nAvailable themes:");
@@ -125,7 +125,28 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
             color_by: args.color_by,
             events_only: args.events_only,
             trace_timeout: args.trace_timeout,
+            grep: args.grep.clone(),
+            backtrace: args.backtrace,
         }
+    };
+
+    // Compile grep regex
+    let grep_regex_arc: Option<Arc<Regex>> = if let Some(pattern_str) = &config.grep {
+        match Regex::new(pattern_str) {
+            Ok(re) => Some(Arc::new(re)),
+            Err(e) => {
+                tracing::error!("Invalid grep regex pattern '{}': {}", pattern_str, e);
+                eprintln!(
+                    "{} Invalid grep regex pattern '{}': {}",
+                    "Error:".red().bold(),
+                    pattern_str,
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        None
     };
 
     // Validate discovery parameters
@@ -339,9 +360,17 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
     if let Some(interval_secs) = config.poll_interval {
         tracing::debug!(
             interval = interval_secs,
+            backtrace_s = ?config.backtrace,
             "Using FilterLogEvents polling mode."
         );
-        start_polling_task(cwl_client, resolved_log_group_arns, interval_secs, tx);
+        start_polling_task(
+            cwl_client,
+            resolved_log_group_arns,
+            interval_secs,
+            tx.clone(), // Clone tx for poller
+            config.backtrace,
+            grep_regex_arc.clone(),
+        );
     } else {
         tracing::debug!(
             timeout_minutes = config.session_timeout,
@@ -350,8 +379,9 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         start_live_tail_task(
             cwl_client,
             resolved_log_group_arns,
-            tx,
+            tx.clone(), // Clone tx for live tail
             config.session_timeout,
+            grep_regex_arc.clone(),
         );
     }
 
@@ -473,7 +503,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
                                 config.color_by,
                                 config.events_only,
                                 root_seen,
-                                // &compaction_config, // compaction_config is not a parameter for display_console
+                                grep_regex_arc.as_deref(), // Pass Option<&Regex>
                             )?;
                         }
 

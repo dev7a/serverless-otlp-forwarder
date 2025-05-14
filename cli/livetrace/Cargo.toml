@@ -1,6 +1,6 @@
 [package]
 name = "livetrace"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -63,6 +63,7 @@ toml.workspace = true
 indexmap = { workspace = true, features = ["serde"] }
 
 globset.workspace = true
+regex = { workspace = true } # Added for --grep
 # New dependency
 hex = { workspace = true }
 # Spinner and progress indicators

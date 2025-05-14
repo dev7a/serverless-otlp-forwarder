@@ -7,16 +7,10 @@
 
 use crate::console_display::Theme;
 use clap::{
-    builder::TypedValueParser,
-    crate_authors,
-    crate_description,
-    error::ErrorKind,
-    ArgGroup,
-    Parser,
-    Subcommand,
-    ValueEnum, // Added Subcommand
+    builder::TypedValueParser, crate_authors, crate_description, error::ErrorKind, ArgGroup,
+    Parser, Subcommand, ValueEnum,
 };
-use clap_complete::Shell; // Added for shell completions
+use clap_complete::Shell;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +42,7 @@ EXAMPLES:
     livetrace --config-profile dev -e http://localhost:4319";
 
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
-#[derive(Parser, Debug, Clone)] // Added Clone
+#[derive(Parser, Debug, Clone)]
 #[command(author = crate_authors!(", "), version, about = crate_description!(), long_about = None, after_help = USAGE_EXAMPLES)]
 #[clap(group( // Add group to make poll/timeout mutually exclusive
     ArgGroup::new("mode")
@@ -94,11 +88,11 @@ pub struct CliArgs {
     pub attrs: Option<String>,
 
     /// Optional polling interval in seconds. If set, uses FilterLogEvents API instead of StartLiveTail.
-    #[arg(long, group = "mode")] // Add to group
+    #[arg(long, group = "mode")]
     pub poll_interval: Option<u64>,
 
     /// Session duration in minutes after which livetrace will automatically exit (LiveTail mode only).
-    #[arg(long, default_value_t = 30, group = "mode")] // Re-add, add to group
+    #[arg(long, default_value_t = 30, group = "mode")]
     pub session_timeout: u64,
 
     /// Event attribute name to use for determining event severity level.
@@ -158,6 +152,30 @@ pub struct CliArgs {
 
     #[command(subcommand)]
     pub command: Option<Commands>,
+
+    /// Filter spans/events by regex matching attribute values
+    #[arg(long, help_heading = "Filtering Options")]
+    pub grep: Option<String>,
+
+    /// Go back in time for initial log poll (e.g., 30, 120s, 3m)
+    #[arg(long, value_parser = parse_backtrace_duration, help_heading = "Filtering Options")]
+    pub backtrace: Option<u64>, // Stores seconds
+}
+
+// Custom parser for --backtrace duration
+fn parse_backtrace_duration(s: &str) -> Result<u64, String> {
+    if let Some(stripped) = s.strip_suffix('m') {
+        stripped
+            .parse::<u64>()
+            .map(|n| n * 60)
+            .map_err(|e| format!("Invalid minutes value: {}", e))
+    } else if let Some(stripped) = s.strip_suffix('s') {
+        stripped
+            .parse::<u64>()
+            .map_err(|e| format!("Invalid seconds value: {}", e))
+    } else {
+        s.parse::<u64>().map_err(|e| format!("Invalid duration '{}'. Must be a number (seconds), or end with 's' or 'm'. Error: {}", s, e))
+    }
 }
 
 #[derive(Subcommand, Debug, Clone)]
