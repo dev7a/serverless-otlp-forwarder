@@ -642,7 +642,8 @@ backtrace = "5m"       # Example profile duration as string
         args_with_defaults.trace_stragglers_wait = Some(DEFAULT_TRACE_STRAGGLERS_WAIT_MS); // Use const
         args_with_defaults.theme = Some(Theme::Default); // Default theme
         args_with_defaults.color_by = Some(DEFAULT_COLOR_BY); // Use const for default color_by
-        args_with_defaults.event_severity_attribute = Some(DEFAULT_EVENT_SEVERITY_ATTRIBUTE.to_string()); // Use const
+        args_with_defaults.event_severity_attribute =
+            Some(DEFAULT_EVENT_SEVERITY_ATTRIBUTE.to_string()); // Use const
         args_with_defaults.events_only = Some(DEFAULT_EVENTS_ONLY); // Use const
 
         let profile_with_defaults = ProfileConfig::from_cli_args(&args_with_defaults);
