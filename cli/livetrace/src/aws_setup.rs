@@ -15,7 +15,7 @@ use aws_sdk_cloudformation::Client as CfnClient;
 use aws_sdk_cloudwatchlogs::Client as CwlClient;
 use aws_sdk_sts::Client as StsClient;
 
-// --- AWS Setup Public Function ---
+// AWS Setup Public Function
 
 pub struct AwsSetupResult {
     pub cwl_client: CwlClient,
@@ -32,7 +32,7 @@ pub async fn setup_aws_resources(
     aws_region: &Option<String>,
     aws_profile: &Option<String>,
 ) -> Result<AwsSetupResult> {
-    // --- 1. Load AWS Config ---
+    // 1. Load AWS Config
     let region_provider =
         RegionProviderChain::first_try(aws_region.clone().map(aws_config::Region::new))
             .or_default_provider()
@@ -51,7 +51,7 @@ pub async fn setup_aws_resources(
         aws_config.region()
     );
 
-    // --- 2. Create AWS Clients ---
+    // 2. Create AWS Clients
     let cwl_client = CwlClient::new(&aws_config);
     tracing::debug!("CloudWatch Logs client created.");
     let cfn_client = CfnClient::new(&aws_config);
@@ -59,7 +59,7 @@ pub async fn setup_aws_resources(
     let sts_client = StsClient::new(&aws_config);
     tracing::debug!("STS client created.");
 
-    // --- Get Account ID and Region for ARN construction ---
+    // Get Account ID and Region for ARN construction
     let region_str = aws_config
         .region()
         .ok_or_else(|| anyhow::anyhow!("Could not determine AWS region from config"))?
@@ -78,11 +78,11 @@ pub async fn setup_aws_resources(
     let partition = "aws"; // Assuming standard AWS partition
     tracing::debug!(region = %region_str, account_id = %account_id, partition = %partition, "Determined region, account ID, and partition");
 
-    // --- 5. Discover Log Groups based on pattern or stack name ---
+    // 5. Discover Log Groups based on pattern or stack name
     let resolved_log_group_names =
         discover_log_group_names(&cfn_client, &cwl_client, log_group_pattern, stack_name).await?;
 
-    // --- Add validation step ---
+    // Add validation step
     tracing::debug!("Validating discovered log group names...");
     let validated_log_group_names =
         validate_log_groups(&cwl_client, resolved_log_group_names, &region_str).await?;
@@ -91,7 +91,7 @@ pub async fn setup_aws_resources(
         validated_log_group_names
     );
 
-    // --- Validate count of *validated* names ---
+    // Validate count of *validated* names
     let group_count = validated_log_group_names.len(); // Use validated count
     if group_count == 0 {
         let error_msg = if stack_name.is_some() {
@@ -130,7 +130,7 @@ pub async fn setup_aws_resources(
         );
     }
 
-    // --- Construct ARNs from *validated* names ---
+    // Construct ARNs from *validated* names
     let resolved_log_group_arns: Vec<String> = validated_log_group_names
         .iter()
         .map(|name| {
@@ -151,7 +151,7 @@ pub async fn setup_aws_resources(
     })
 }
 
-// --- Private Helper Functions ---
+// Private Helper Functions
 
 /// Discovers log group names based on stack or pattern arguments.
 async fn discover_log_group_names(

@@ -27,7 +27,7 @@ pub fn start_polling_task(
     arns: Vec<String>,
     interval_millis: u64,
     sender: mpsc::Sender<Result<TelemetryData>>,
-    backtrace_seconds: Option<u64>,
+    backtrace_ms: Option<u64>,
     session_timeout_millis: u64,
 ) {
     tokio::spawn(async move {
@@ -44,7 +44,7 @@ pub fn start_polling_task(
         );
 
         let mut initial_start_time_ms = Utc::now().timestamp_millis();
-        if let Some(backtrace_ms_val) = backtrace_seconds {
+        if let Some(backtrace_ms_val) = backtrace_ms {
             initial_start_time_ms -= backtrace_ms_val as i64;
             tracing::info!(
                 backtrace_duration_ms = backtrace_ms_val,

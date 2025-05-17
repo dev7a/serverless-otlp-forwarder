@@ -119,18 +119,18 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
                 .event_severity_attribute
                 .clone()
                 .unwrap_or_else(|| DEFAULT_EVENT_SEVERITY_ATTRIBUTE.to_string()),
-            poll_interval: args.poll_interval,
-            session_timeout: args.session_timeout.unwrap_or(DEFAULT_SESSION_TIMEOUT_MS),
+            poll_interval_ms: args.poll_interval,
+            session_timeout_ms: args.session_timeout.unwrap_or(DEFAULT_SESSION_TIMEOUT_MS),
             verbose: args.verbose,
             theme: args.theme.unwrap_or(Theme::Default),
             color_by: args.color_by.unwrap_or(DEFAULT_COLOR_BY),
             events_only: args.events_only.unwrap_or(DEFAULT_EVENTS_ONLY),
-            trace_timeout: args.trace_timeout.unwrap_or(DEFAULT_TRACE_TIMEOUT_MS),
-            trace_stragglers_wait: args
+            trace_timeout_ms: args.trace_timeout.unwrap_or(DEFAULT_TRACE_TIMEOUT_MS),
+            trace_stragglers_wait_ms: args
                 .trace_stragglers_wait
                 .unwrap_or(DEFAULT_TRACE_STRAGGLERS_WAIT_MS),
             grep: args.grep.clone(),
-            backtrace: args.backtrace,
+            backtrace_ms: args.backtrace,
         }
     };
 
@@ -268,7 +268,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         println!("  {:<18}: {}", "CloudFormation".dimmed(), stack);
     }
     println!();
-    if let Some(poll_secs) = config.poll_interval {
+    if let Some(poll_secs) = config.poll_interval_ms {
         println!("  {:<18}: Polling", "Mode".dimmed());
         println!("  {:<18}: {} seconds", "Poll Interval".dimmed(), poll_secs);
     } else {
@@ -276,7 +276,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         println!(
             "  {:<18}: {} minutes",
             "Session Timeout".dimmed(),
-            config.session_timeout / 1000 // Display as seconds for readability
+            config.session_timeout_ms / 1000 // Display as seconds for readability
         );
     }
     println!(
@@ -323,12 +323,12 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
     println!(
         "  {:<18}: {} seconds",
         "Trace Timeout".dimmed(),
-        config.trace_timeout / 1000 // Display as seconds for readability
+        config.trace_timeout_ms / 1000 // Display as seconds for readability
     );
     println!(
         "  {:<18}: {}",
         "Stragglers Wait".dimmed(), // New preamble line
-        format_millis_to_duration_string(config.trace_stragglers_wait)  // Use formatter
+        format_millis_to_duration_string(config.trace_stragglers_wait_ms)  // Use formatter
     );
     if let Some(profile) = &args.config_profile {
         // Use args here as config doesn't store it
@@ -368,32 +368,32 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
     let (tx, mut rx) = mpsc::channel::<Result<TelemetryData>>(100);
     let task_tx = tx.clone(); // Clone the sender for the task that will produce events
 
-    if let Some(interval_secs) = config.poll_interval {
+    if let Some(interval_secs) = config.poll_interval_ms {
         tracing::debug!(
             interval = interval_secs,
-            backtrace_s = ?config.backtrace,
+            backtrace_s = ?config.backtrace_ms,
             "Using FilterLogEvents polling mode."
         );
         start_polling_task(
             cwl_client,
             resolved_log_group_arns,
             config
-                .poll_interval
+                .poll_interval_ms
                 .expect("Poll interval must be Some if poll_interval is configured, this is a bug"),
             task_tx,
-            config.backtrace,
-            config.session_timeout,
+            config.backtrace_ms,
+            config.session_timeout_ms,
         );
     } else {
         tracing::debug!(
-            timeout_millis = config.session_timeout,
+            timeout_millis = config.session_timeout_ms,
             "Using StartLiveTail streaming mode with timeout."
         );
         start_live_tail_task(
             cwl_client,
             resolved_log_group_arns,
             task_tx,
-            config.session_timeout,
+            config.session_timeout_ms,
         );
     }
     drop(tx); // Drop the original sender from run_livetrace, leaving only the task's sender active
@@ -480,8 +480,8 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
                     let time_since_last = now.duration_since(state.last_message_received_at);
                     let time_since_first = now.duration_since(state.first_message_received_at);
                     let should_flush =
-                        (state.has_received_root && time_since_last > Duration::from_millis(config.trace_stragglers_wait)) // Use new config value
-                        || (time_since_first > Duration::from_millis(config.trace_timeout));
+                        (state.has_received_root && time_since_last > Duration::from_millis(config.trace_stragglers_wait_ms)) // Use new config value
+                        || (time_since_first > Duration::from_millis(config.trace_timeout_ms));
                     if should_flush {
                         trace_ids_to_flush.push(trace_id.clone());
                     }

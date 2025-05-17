@@ -35,9 +35,9 @@ use serde::{Deserialize, Serialize};
 // Constants
 const SERVICE_NAME_WIDTH: usize = 25;
 const SPAN_NAME_WIDTH: usize = 40;
-const SPAN_ID_WIDTH: usize = 12;
+const SPAN_ID_WIDTH: usize = 10;
 const SPAN_KIND_WIDTH: usize = 10; // Width for the Span Kind column
-const STATUS_WIDTH: usize = 7; // Width for the Status column
+const STATUS_WIDTH: usize = 9; // Width for the Status column
 const DURATION_WIDTH: usize = 13; // Width for the Duration column
 
 // Define all color palettes
@@ -332,7 +332,7 @@ fn get_string_value_for_grep(value_opt: &Option<AnyValue>) -> String {
     String::new()
 }
 
-// --- Helper function to prepare trace data from a batch ---
+// Helper function to prepare trace data from a batch
 fn prepare_trace_data_from_batch(
     batch: &[TelemetryData],
 ) -> Result<HashMap<String, Vec<(Span, String)>>> {
@@ -394,7 +394,7 @@ fn prepare_trace_data_from_batch(
     Ok(traces)
 }
 
-// --- Helper function to calculate console layout widths ---
+// Helper function to calculate console layout widths
 fn calculate_layout_widths(default_terminal_width: usize) -> (usize, usize, usize) {
     // Define fixed widths for various columns in the waterfall display.
     const SPACING: usize = 6; // Approximate number of spaces for padding between 7 columns.
@@ -413,13 +413,13 @@ fn calculate_layout_widths(default_terminal_width: usize) -> (usize, usize, usiz
     // Calculate the width available for the timeline visualization.
     // It's the terminal width minus the fixed column widths, with a minimum of 10 characters.
     let calculated_timeline_width = terminal_width
-        .saturating_sub(fixed_width_excluding_timeline)
+        .saturating_sub(fixed_width_excluding_timeline + 1) // +1 to leave one space to the right of the timeline
         .max(10);
 
     (terminal_width, calculated_timeline_width, terminal_width)
 }
 
-// --- Helper function to print the trace header ---
+// Helper function to print the trace header
 fn print_trace_header(trace_id: &str, root_span_received: bool, total_table_width: usize) {
     // Construct the base heading for the trace.
     let base_heading = format!("Trace ID: {}", trace_id);
@@ -451,7 +451,7 @@ fn print_trace_header(trace_id: &str, root_span_received: bool, total_table_widt
     );
 }
 
-// --- Helper function to collect and filter timeline items for a trace ---
+// Helper function to collect and filter timeline items for a trace
 fn collect_and_filter_timeline_items_for_trace(
     spans_in_trace_with_service: &[(Span, String)],
     attr_globs: &Option<GlobSet>,
@@ -586,7 +586,7 @@ fn collect_and_filter_timeline_items_for_trace(
     timeline_items
 }
 
-// --- Helper function to build waterfall hierarchy and gather metadata ---
+// Helper function to build waterfall hierarchy and gather metadata
 fn build_waterfall_hierarchy_and_meta(
     spans_in_trace_with_service: &[(Span, String)],
 ) -> (Vec<ConsoleSpan>, u64, u64, HashMap<String, Span>) {
@@ -658,7 +658,7 @@ fn build_waterfall_hierarchy_and_meta(
     (roots, min_start_time_ns, trace_duration_ns, span_map)
 }
 
-// --- Helper function to render the waterfall table ---
+// Helper function to render the waterfall table
 #[allow(clippy::too_many_arguments)]
 fn render_waterfall_table(
     roots: &[ConsoleSpan],
@@ -681,13 +681,7 @@ fn render_waterfall_table(
         .set_style(TableComponent::HeaderLines, '─');
 
     table.set_header(vec![
-        Cell::new("Service")
-            .add_attribute(Attribute::Bold)
-            .fg(comfy_table::Color::Rgb {
-                r: 128,
-                g: 255,
-                b: 128,
-            }),
+        Cell::new("Service").add_attribute(Attribute::Bold),
         Cell::new("Span Name").add_attribute(Attribute::Bold),
         Cell::new("Kind").add_attribute(Attribute::Bold),
         Cell::new("Duration (ms)").add_attribute(Attribute::Bold),
@@ -725,7 +719,7 @@ fn render_waterfall_table(
             ]);
         }
     }
-
+    
     for root_span in roots {
         // Changed variable name to avoid conflict with `roots` parameter in outer scope if this was inlined
         add_span_to_table(
@@ -745,7 +739,7 @@ fn render_waterfall_table(
     Ok(())
 }
 
-// --- Helper function to print the timeline log ---
+// Helper function to print the timeline log
 fn print_timeline_log(
     timeline_items: &[TimelineItem],
     color_by: ColoringMode,
@@ -787,7 +781,7 @@ fn print_timeline_log(
             ItemType::Event => "EVENT".to_string(),
         };
 
-        // --- Logic to get raw status/level text for consistent processing ---
+        // Logic to get raw status/level text for consistent processing
         let raw_text_for_status_or_level = if item.item_type == ItemType::SpanStart {
             if item.level_or_status.contains("UNSET") {
                 "UNSET".to_string()
@@ -1015,13 +1009,13 @@ fn add_span_to_table(
 ) -> Result<()> {
     let indent = "  ".repeat(depth);
 
-    // --- Get Color (still needed for timeline bar) ---
+    // Get Color (still needed for timeline bar)
     let (r, g, b) = match color_by {
         ColoringMode::Service => theme.get_color_for_service(&node.service_name),
         ColoringMode::Span => theme.get_color_for_span(&node.id),
     };
 
-    // --- Create Cell Content ---
+    // Create Cell Content
     let service_name_content = node
         .service_name
         .chars()
@@ -1052,7 +1046,7 @@ fn add_span_to_table(
         .take(SPAN_KIND_WIDTH)
         .collect::<String>();
 
-    let span_id_prefix = node.id.chars().take(SPAN_ID_WIDTH).collect::<String>();
+    let span_id_prefix = node.id.chars().take(8).collect::<String>();
 
     let status_content_str = format_span_status(node.status_code);
     let formatted_duration = format!("{:.2}", node.duration_ns as f64 / 1_000_000.0);

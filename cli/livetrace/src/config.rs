@@ -61,25 +61,25 @@ pub struct ConfigFile {
 #[derive(Debug, Deserialize, Serialize, Default, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct ProfileConfig {
-    // --- Discovery --- (Mirroring CliArgs groups)
+    // Discovery (Mirroring CliArgs groups)
     #[serde(rename = "log-group-pattern")]
     pub log_group_pattern: Option<Vec<String>>,
     #[serde(rename = "stack-name")]
     pub stack_name: Option<String>,
 
-    // --- Forwarding --- (Mirroring CliArgs)
+    // Forwarding (Mirroring CliArgs)
     #[serde(rename = "otlp-endpoint")]
     pub otlp_endpoint: Option<String>,
     #[serde(rename = "otlp-header")]
     pub otlp_headers: Option<Vec<String>>,
 
-    // --- AWS --- (Mirroring CliArgs)
+    // AWS (Mirroring CliArgs)
     #[serde(rename = "aws-region")]
     pub aws_region: Option<String>,
     #[serde(rename = "aws-profile")]
     pub aws_profile: Option<String>,
 
-    // --- Console Display --- (Mirroring CliArgs)
+    // Console Display (Mirroring CliArgs)
     #[serde(rename = "forward-only")]
     pub forward_only: Option<bool>,
     #[serde(rename = "attrs")]
@@ -91,7 +91,7 @@ pub struct ProfileConfig {
     #[serde(rename = "color-by", skip_serializing_if = "Option::is_none")]
     pub color_by: Option<ColoringMode>,
 
-    // --- Mode --- (Mirroring CliArgs groups)
+    // Mode (Mirroring CliArgs groups)
     #[serde(rename = "poll-interval")]
     pub poll_interval: Option<String>, // Changed to Option<String>
     #[serde(rename = "session-timeout")]
@@ -108,7 +108,7 @@ pub struct ProfileConfig {
     )]
     pub trace_stragglers_wait: Option<String>, // New field
 
-    // --- Filtering Options ---
+    // Filtering Options
     #[serde(rename = "grep", skip_serializing_if = "Option::is_none")]
     pub grep: Option<String>,
     #[serde(rename = "backtrace", skip_serializing_if = "Option::is_none")]
@@ -118,38 +118,38 @@ pub struct ProfileConfig {
 /// Represents the final, merged configuration after applying precedence rules.
 #[derive(Debug, Clone)]
 pub struct EffectiveConfig {
-    // --- Discovery ---
+    // Discovery
     pub log_group_pattern: Option<Vec<String>>,
     pub stack_name: Option<String>,
 
-    // --- Forwarding ---
+    // Forwarding
     pub otlp_endpoint: Option<String>,
     pub otlp_headers: Vec<String>, // Merged headers
 
-    // --- AWS ---
+    // AWS
     pub aws_region: Option<String>,
     pub aws_profile: Option<String>,
 
-    // --- Console Display ---
+    // Console Display
     pub forward_only: bool,
     pub attrs: Option<String>,
     pub event_severity_attribute: String,
     pub color_by: ColoringMode,
     pub events_only: bool,
-    pub trace_timeout: u64,         // Stores milliseconds
-    pub trace_stragglers_wait: u64, // Stores milliseconds, New field
+    pub trace_timeout_ms: u64,
+    pub trace_stragglers_wait_ms: u64,
 
-    // --- Mode ---
-    pub poll_interval: Option<u64>, // Stores milliseconds
-    pub session_timeout: u64,       // Stores milliseconds
+    // Mode
+    pub poll_interval_ms: Option<u64>,
+    pub session_timeout_ms: u64,
 
-    // --- Execution Control ---
+    // Execution Control
     pub verbose: u8, // Keep verbosity
     pub theme: Theme,
 
-    // --- Filtering Options ---
+    // Filtering Options
     pub grep: Option<String>,
-    pub backtrace: Option<u64>, // Stores milliseconds
+    pub backtrace_ms: Option<u64>,
 }
 
 impl ProfileConfig {
@@ -218,16 +218,16 @@ pub fn load_and_resolve_config(
         forward_only: false,
         attrs: None,
         event_severity_attribute: DEFAULT_EVENT_SEVERITY_ATTRIBUTE.to_string(),
-        poll_interval: None,
-        session_timeout: DEFAULT_SESSION_TIMEOUT_MS,
+        poll_interval_ms: None,
+        session_timeout_ms: DEFAULT_SESSION_TIMEOUT_MS,
         verbose: 0,
         theme: Theme::Default,
         color_by: DEFAULT_COLOR_BY,
         events_only: DEFAULT_EVENTS_ONLY,
-        trace_timeout: DEFAULT_TRACE_TIMEOUT_MS,
-        trace_stragglers_wait: DEFAULT_TRACE_STRAGGLERS_WAIT_MS,
+        trace_timeout_ms: DEFAULT_TRACE_TIMEOUT_MS,
+        trace_stragglers_wait_ms: DEFAULT_TRACE_STRAGGLERS_WAIT_MS,
         grep: None,
-        backtrace: None,
+        backtrace_ms: None,
     };
 
     if config_profile_name.is_none() {
@@ -304,10 +304,10 @@ fn apply_cli_args_to_effective(cli_args: &CliArgs, effective: &mut EffectiveConf
         effective.grep = cli_args.grep.clone();
     }
     if cli_args.backtrace.is_some() {
-        effective.backtrace = cli_args.backtrace;
+        effective.backtrace_ms = cli_args.backtrace;
     }
     if cli_args.poll_interval.is_some() {
-        effective.poll_interval = cli_args.poll_interval;
+        effective.poll_interval_ms = cli_args.poll_interval;
     }
     if cli_args.forward_only {
         effective.forward_only = true;
@@ -316,7 +316,7 @@ fn apply_cli_args_to_effective(cli_args: &CliArgs, effective: &mut EffectiveConf
         effective.event_severity_attribute = val.clone();
     }
     if let Some(val) = cli_args.session_timeout {
-        effective.session_timeout = val;
+        effective.session_timeout_ms = val;
     }
     if let Some(val) = cli_args.color_by {
         effective.color_by = val;
@@ -325,10 +325,10 @@ fn apply_cli_args_to_effective(cli_args: &CliArgs, effective: &mut EffectiveConf
         effective.events_only = val;
     }
     if let Some(val) = cli_args.trace_timeout {
-        effective.trace_timeout = val;
+        effective.trace_timeout_ms = val;
     }
     if let Some(val) = cli_args.trace_stragglers_wait {
-        effective.trace_stragglers_wait = val;
+        effective.trace_stragglers_wait_ms = val;
     }
     if let Some(val) = cli_args.theme {
         effective.theme = val;
@@ -411,19 +411,19 @@ fn apply_profile_to_effective(profile: &ProfileConfig, effective: &mut Effective
 
     if let Some(s_val) = &profile.poll_interval {
         match crate::cli::parse_duration_to_millis(s_val.as_str()) {
-            Ok(ms_val) => effective.poll_interval = Some(ms_val),
+            Ok(ms_val) => effective.poll_interval_ms = Some(ms_val),
             Err(e) => tracing::warn!(
                 profile_key = "poll-interval", value = %s_val, error = %e,
-                "Failed to parse duration from profile for poll-interval. Effective value: {}", effective.poll_interval.map_or_else(|| "None".to_string(), format_millis_to_duration_string)
+                "Failed to parse duration from profile for poll-interval. Effective value: {}", effective.poll_interval_ms.map_or_else(|| "None".to_string(), format_millis_to_duration_string)
             ),
         }
     }
     if let Some(s_val) = &profile.session_timeout {
         match crate::cli::parse_duration_to_millis(s_val.as_str()) {
-            Ok(ms_val) => effective.session_timeout = ms_val,
+            Ok(ms_val) => effective.session_timeout_ms = ms_val,
             Err(e) => tracing::warn!(
                 profile_key = "session-timeout", value = %s_val, error = %e,
-                "Failed to parse duration from profile for session-timeout. Effective value: {}", format_millis_to_duration_string(effective.session_timeout)
+                "Failed to parse duration from profile for session-timeout. Effective value: {}", format_millis_to_duration_string(effective.session_timeout_ms)
             ),
         }
     }
@@ -440,20 +440,20 @@ fn apply_profile_to_effective(profile: &ProfileConfig, effective: &mut Effective
 
     if let Some(s_val) = &profile.trace_timeout {
         match crate::cli::parse_duration_to_millis(s_val.as_str()) {
-            Ok(ms_val) => effective.trace_timeout = ms_val,
+            Ok(ms_val) => effective.trace_timeout_ms = ms_val,
             Err(e) => tracing::warn!(
                 profile_key = "trace-timeout", value = %s_val, error = %e,
-                "Failed to parse duration from profile for trace-timeout. Effective value: {}", format_millis_to_duration_string(effective.trace_timeout)
+                "Failed to parse duration from profile for trace-timeout. Effective value: {}", format_millis_to_duration_string(effective.trace_timeout_ms)
             ),
         }
     }
 
     if let Some(s_val) = &profile.trace_stragglers_wait {
         match crate::cli::parse_duration_to_millis(s_val.as_str()) {
-            Ok(ms_val) => effective.trace_stragglers_wait = ms_val,
+            Ok(ms_val) => effective.trace_stragglers_wait_ms = ms_val,
             Err(e) => tracing::warn!(
                 profile_key = "trace-stragglers-wait", value = %s_val, error = %e,
-                "Failed to parse duration from profile for trace-stragglers-wait. Effective value: {}", format_millis_to_duration_string(effective.trace_stragglers_wait)
+                "Failed to parse duration from profile for trace-stragglers-wait. Effective value: {}", format_millis_to_duration_string(effective.trace_stragglers_wait_ms)
             ),
         }
     }
@@ -463,10 +463,10 @@ fn apply_profile_to_effective(profile: &ProfileConfig, effective: &mut Effective
     }
     if let Some(s_val) = &profile.backtrace {
         match crate::cli::parse_duration_to_millis(s_val.as_str()) {
-            Ok(ms_val) => effective.backtrace = Some(ms_val),
+            Ok(ms_val) => effective.backtrace_ms = Some(ms_val),
             Err(e) => tracing::warn!(
                 profile_key = "backtrace", value = %s_val, error = %e,
-                "Failed to parse duration from profile for backtrace. Effective value: {}", effective.backtrace.map_or_else(|| "None".to_string(), format_millis_to_duration_string)
+                "Failed to parse duration from profile for backtrace. Effective value: {}", effective.backtrace_ms.map_or_else(|| "None".to_string(), format_millis_to_duration_string)
             ),
         }
     }
@@ -701,16 +701,16 @@ backtrace = "5m"       # Example profile duration as string
             forward_only: false,
             attrs: None,
             event_severity_attribute: "default.severity".to_string(),
-            poll_interval: None,
-            session_timeout: DEFAULT_SESSION_TIMEOUT_MS, // Default in ms
+            poll_interval_ms: None,
+            session_timeout_ms: DEFAULT_SESSION_TIMEOUT_MS, // Default in ms
             verbose: 0,
             theme: Theme::Default,
             color_by: ColoringMode::Service,
             events_only: false,
-            trace_timeout: DEFAULT_TRACE_TIMEOUT_MS, // Default in ms
-            trace_stragglers_wait: DEFAULT_TRACE_STRAGGLERS_WAIT_MS, // Default in ms
+            trace_timeout_ms: DEFAULT_TRACE_TIMEOUT_MS, // Default in ms
+            trace_stragglers_wait_ms: DEFAULT_TRACE_STRAGGLERS_WAIT_MS, // Default in ms
             grep: None,
-            backtrace: None,
+            backtrace_ms: None,
         };
         let profile = ProfileConfig {
             // Durations as Option<String>
@@ -758,15 +758,15 @@ backtrace = "5m"       # Example profile duration as string
         assert!(effective.forward_only);
         assert_eq!(effective.attrs, Some("profile.*".to_string()));
         assert_eq!(effective.event_severity_attribute, "profile.severity");
-        assert_eq!(effective.poll_interval, Some(45 * 1000)); // Check for ms
-        assert_eq!(effective.session_timeout, 60 * 60 * 1000); // Check for ms (1h)
+        assert_eq!(effective.poll_interval_ms, Some(45 * 1000)); // Check for ms
+        assert_eq!(effective.session_timeout_ms, 60 * 60 * 1000); // Check for ms (1h)
         assert_eq!(effective.theme, Theme::Solarized);
         assert_eq!(effective.color_by, ColoringMode::Service); // Unchanged by profile
         assert!(effective.events_only);
-        assert_eq!(effective.trace_timeout, 10_000); // Check for ms (10s)
-        assert_eq!(effective.trace_stragglers_wait, 2_000); // Check for ms (2s)
+        assert_eq!(effective.trace_timeout_ms, 10_000); // Check for ms (10s)
+        assert_eq!(effective.trace_stragglers_wait_ms, 2_000); // Check for ms (2s)
         assert_eq!(effective.grep, Some("test-grep".to_string()));
-        assert_eq!(effective.backtrace, Some(60 * 1000)); // Check for ms
+        assert_eq!(effective.backtrace_ms, Some(60 * 1000)); // Check for ms
     }
 
     #[test]
@@ -791,16 +791,16 @@ backtrace = "5m"       # Example profile duration as string
             forward_only: false,
             attrs: None,
             event_severity_attribute: "event.severity".to_string(),
-            poll_interval: None,
-            session_timeout: DEFAULT_EFFECTIVE_SESSION_TIMEOUT_MS,
+            poll_interval_ms: None,
+            session_timeout_ms: DEFAULT_EFFECTIVE_SESSION_TIMEOUT_MS,
             verbose: 0,
             theme: Theme::Default,
             color_by: ColoringMode::Service,
             events_only: false,
-            trace_timeout: DEFAULT_EFFECTIVE_TRACE_TIMEOUT_MS,
-            trace_stragglers_wait: DEFAULT_EFFECTIVE_TRACE_STRAGGLERS_WAIT_MS, // Initialize new field
+            trace_timeout_ms: DEFAULT_EFFECTIVE_TRACE_TIMEOUT_MS,
+            trace_stragglers_wait_ms: DEFAULT_EFFECTIVE_TRACE_STRAGGLERS_WAIT_MS, // Initialize new field
             grep: None,
-            backtrace: None,
+            backtrace_ms: None,
         };
 
         // Load the specific test config file
@@ -833,25 +833,25 @@ backtrace = "5m"       # Example profile duration as string
         const DEFAULT_TRACE_STRAGGLERS_WAIT_MS_TEST: u64 = 0;
 
         assert_eq!(
-            effective.session_timeout,
+            effective.session_timeout_ms,
             cli_args_mock
                 .session_timeout
                 .unwrap_or(DEFAULT_SESSION_TIMEOUT_MS_TEST)
         );
         assert_eq!(
-            effective.trace_timeout,
+            effective.trace_timeout_ms,
             cli_args_mock
                 .trace_timeout
                 .unwrap_or(DEFAULT_TRACE_TIMEOUT_MS_TEST)
         );
         assert_eq!(
-            effective.trace_stragglers_wait,
+            effective.trace_stragglers_wait_ms,
             cli_args_mock
                 .trace_stragglers_wait
                 .unwrap_or(DEFAULT_TRACE_STRAGGLERS_WAIT_MS_TEST)
         );
-        assert_eq!(effective.poll_interval, cli_args_mock.poll_interval); // Some(30000ms) - This is Option<u64> on both sides
-        assert_eq!(effective.backtrace, cli_args_mock.backtrace); // Some(60000ms) - This is Option<u64> on both sides
+        assert_eq!(effective.poll_interval_ms, cli_args_mock.poll_interval); // Some(30000ms) - This is Option<u64> on both sides
+        assert_eq!(effective.backtrace_ms, cli_args_mock.backtrace); // Some(60000ms) - This is Option<u64> on both sides
         assert_eq!(
             effective.event_severity_attribute,
             cli_args_mock
