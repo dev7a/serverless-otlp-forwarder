@@ -23,7 +23,7 @@ pub fn start_live_tail_task(
     cwl_client: CwlClient,
     arns: Vec<String>,
     sender: mpsc::Sender<Result<TelemetryData>>,
-    timeout_minutes: u64,
+    timeout_millis: u64,
 ) {
     tokio::spawn(async move {
         tracing::debug!("Live Tail Adapter: Attempting to start Live Tail stream...");
@@ -53,11 +53,14 @@ pub fn start_live_tail_task(
         };
 
         // Setup timeout
-        let timeout_duration = Duration::from_secs(timeout_minutes * 60);
+        let timeout_duration = Duration::from_millis(timeout_millis);
         let timeout_sleep = sleep(timeout_duration);
         pin!(timeout_sleep);
 
-        tracing::debug!(timeout = ?timeout_duration, "Live Tail Adapter: Waiting for stream events with timeout...");
+        tracing::debug!(
+            timeout_ms = timeout_millis,
+            "Live Tail Adapter: Waiting for stream events with timeout..."
+        );
         loop {
             tokio::select! {
                 // Branch for receiving stream events
@@ -111,7 +114,7 @@ pub fn start_live_tail_task(
                 }
                 // Branch for timeout
                 _ = &mut timeout_sleep => {
-                    tracing::info!(timeout_minutes, "Live Tail Adapter: Session timeout reached. Stopping stream task.");
+                    tracing::info!(timeout_ms = timeout_millis, "Live Tail Adapter: Session timeout reached. Stopping stream task.");
                     break; // Exit loop, task will finish
                 }
             }

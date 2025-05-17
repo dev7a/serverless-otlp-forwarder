@@ -14,8 +14,10 @@ use aws_sdk_cloudwatchlogs::Client as CwlClient;
 use chrono::Utc;
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::pin;
 use tokio::sync::mpsc;
 use tokio::time::interval;
+use tokio::time::sleep;
 
 use crate::processing::{process_log_event_message, TelemetryData};
 
@@ -23,59 +25,86 @@ use crate::processing::{process_log_event_message, TelemetryData};
 pub fn start_polling_task(
     cwl_client: CwlClient,
     arns: Vec<String>,
-    interval_secs: u64,
+    interval_millis: u64,
     sender: mpsc::Sender<Result<TelemetryData>>,
+    backtrace_ms: Option<u64>,
+    session_timeout_millis: u64,
 ) {
     tokio::spawn(async move {
         let mut last_timestamps: HashMap<String, i64> = HashMap::new();
-        let poll_duration = Duration::from_secs(interval_secs);
+        let poll_duration = Duration::from_millis(interval_millis);
         let mut ticker = interval(poll_duration);
 
-        let initial_start_time_ms = Utc::now().timestamp_millis();
+        let session_duration = Duration::from_millis(session_timeout_millis);
+        let session_timer = sleep(session_duration);
+        pin!(session_timer);
         tracing::debug!(
-            start_time = initial_start_time_ms,
-            "Polling will start from current time."
+            timeout_ms = session_timeout_millis,
+            "Polling Adapter: Session timeout configured."
         );
 
+        let mut initial_start_time_ms = Utc::now().timestamp_millis();
+        if let Some(backtrace_ms_val) = backtrace_ms {
+            initial_start_time_ms -= backtrace_ms_val as i64;
+            tracing::info!(
+                backtrace_duration_ms = backtrace_ms_val,
+                calculated_start_time_ms = initial_start_time_ms,
+                "Polling will start from current time minus backtrace duration."
+            );
+        } else {
+            tracing::debug!(
+                start_time = initial_start_time_ms,
+                "Polling will start from current time."
+            );
+        }
+
         tracing::debug!(
-            interval_seconds = interval_secs,
+            interval_ms = interval_millis,
             num_groups = arns.len(),
             "Polling Adapter: Starting polling loop."
         );
 
         loop {
-            ticker.tick().await;
-            tracing::trace!("Polling Adapter: Tick");
+            tokio::select! {
+                _ = ticker.tick() => {
+                    tracing::trace!("Polling Adapter: Tick");
 
-            for arn in &arns {
-                let start_time = *last_timestamps.get(arn).unwrap_or(&initial_start_time_ms);
-                let arn_clone = arn.clone();
-                let client_clone = cwl_client.clone();
-                let sender_clone = sender.clone();
+                    for arn in &arns {
+                        let start_time = *last_timestamps.get(arn).unwrap_or(&initial_start_time_ms);
+                        let arn_clone = arn.clone();
+                        let client_clone = cwl_client.clone();
+                        let sender_clone = sender.clone();
 
-                tracing::debug!(log_group_arn = %arn_clone, %start_time, "Polling Adapter: Fetching events for group.");
+                        tracing::debug!(log_group_arn = %arn_clone, %start_time, "Polling Adapter: Fetching events for group.");
 
-                match filter_log_events_for_group(
-                    &client_clone,
-                    arn_clone.clone(),
-                    start_time,
-                    sender_clone,
-                )
-                .await
-                {
-                    Ok(Some(new_timestamp)) => {
-                        tracing::trace!(log_group_arn=%arn_clone, %new_timestamp, "Polling Adapter: Updating timestamp.");
-                        last_timestamps.insert(arn_clone, new_timestamp);
+                        match filter_log_events_for_group(
+                            &client_clone,
+                            arn_clone.clone(),
+                            start_time,
+                            sender_clone.clone(),
+                        )
+                        .await
+                        {
+                            Ok(Some(new_timestamp)) => {
+                                tracing::trace!(log_group_arn=%arn_clone, %new_timestamp, "Polling Adapter: Updating timestamp.");
+                                last_timestamps.insert(arn_clone, new_timestamp);
+                            }
+                            Ok(None) => {
+                                tracing::trace!(log_group_arn=%arn_clone, "Polling Adapter: No new events found.");
+                            }
+                            Err(e) => {
+                                tracing::error!(log_group_arn = %arn_clone, error = %e, "Polling Adapter: Error polling log group.");
+                            }
+                        }
                     }
-                    Ok(None) => {
-                        tracing::trace!(log_group_arn=%arn_clone, "Polling Adapter: No new events found.");
-                    }
-                    Err(e) => {
-                        tracing::error!(log_group_arn = %arn_clone, error = %e, "Polling Adapter: Error polling log group.");
-                    }
+                }
+                _ = &mut session_timer => {
+                    tracing::info!(timeout_ms = session_timeout_millis, "Polling Adapter: Session timeout reached. Stopping polling task.");
+                    break;
                 }
             }
         }
+        tracing::debug!("Polling Adapter: Task finished.");
     });
 }
 
@@ -115,6 +144,7 @@ async fn filter_log_events_for_group(
 
                         if let Some(msg) = event.message {
                             match process_log_event_message(&msg) {
+                                // Corrected call
                                 Ok(Some(telemetry)) => {
                                     if sender.send(Ok(telemetry)).await.is_err() {
                                         tracing::warn!("Polling Adapter: MPSC channel closed by receiver while sending data.");
