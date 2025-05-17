@@ -719,7 +719,7 @@ fn render_waterfall_table(
             ]);
         }
     }
-    
+
     for root_span in roots {
         // Changed variable name to avoid conflict with `roots` parameter in outer scope if this was inlined
         add_span_to_table(
