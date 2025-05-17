@@ -11,7 +11,11 @@
 //! - Applying a precedence order: CLI arguments > Profile settings > Global settings.
 //! - Saving CLI arguments to a named profile in the configuration file.
 
-use crate::cli::{CliArgs, ColoringMode};
+use crate::cli::{
+    CliArgs, ColoringMode, DEFAULT_COLOR_BY, DEFAULT_EVENTS_ONLY, DEFAULT_EVENT_SEVERITY_ATTRIBUTE,
+    DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_TRACE_STRAGGLERS_WAIT_MS, DEFAULT_TRACE_TIMEOUT_MS,
+};
+use crate::console_display::Theme;
 use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
@@ -19,6 +23,24 @@ use std::{fs, io::Write, path::Path, path::PathBuf};
 
 // Default filename for the configuration
 const LIVETRACE_TOML: &str = ".livetrace.toml";
+
+// Helper function to format milliseconds into a human-readable duration string.
+// Prefers largest whole unit (h, m, s, then ms). Does not produce decimals.
+// Made pub(crate) to be accessible from lib.rs for preamble display.
+pub(crate) fn format_millis_to_duration_string(millis: u64) -> String {
+    if millis == 0 {
+        return "0ms".to_string(); // Or "0s", depending on preference for zero.
+    }
+    if millis % (60 * 60 * 1000) == 0 {
+        format!("{}h", millis / (60 * 60 * 1000))
+    } else if millis % (60 * 1000) == 0 {
+        format!("{}m", millis / (60 * 1000))
+    } else if millis % 1000 == 0 {
+        format!("{}s", millis / 1000)
+    } else {
+        format!("{}ms", millis)
+    }
+}
 
 /// Represents the entire structure of the livetrace.toml file.
 #[derive(Debug, Deserialize, Serialize, Default)]
@@ -65,27 +87,32 @@ pub struct ProfileConfig {
     #[serde(rename = "event-severity-attribute")]
     pub event_severity_attribute: Option<String>,
     #[serde(rename = "theme")]
-    pub theme: Option<String>,
+    pub theme: Option<Theme>,
     #[serde(rename = "color-by", skip_serializing_if = "Option::is_none")]
     pub color_by: Option<ColoringMode>,
 
     // --- Mode --- (Mirroring CliArgs groups)
     #[serde(rename = "poll-interval")]
-    pub poll_interval: Option<u64>,
+    pub poll_interval: Option<String>, // Changed to Option<String>
     #[serde(rename = "session-timeout")]
-    pub session_timeout: Option<u64>,
+    pub session_timeout: Option<String>, // Changed to Option<String>
     // Note: Verbosity (`verbose`) is generally not configured via file.
     #[serde(rename = "events-only", skip_serializing_if = "Option::is_none")]
     pub events_only: Option<bool>,
 
     #[serde(rename = "trace-timeout", skip_serializing_if = "Option::is_none")]
-    pub trace_timeout: Option<u64>,
+    pub trace_timeout: Option<String>, // Changed to Option<String>
+    #[serde(
+        rename = "trace-stragglers-wait",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub trace_stragglers_wait: Option<String>, // New field
 
     // --- Filtering Options ---
     #[serde(rename = "grep", skip_serializing_if = "Option::is_none")]
     pub grep: Option<String>,
     #[serde(rename = "backtrace", skip_serializing_if = "Option::is_none")]
-    pub backtrace: Option<u64>, // Stored as seconds
+    pub backtrace: Option<String>, // Changed to Option<String>
 }
 
 /// Represents the final, merged configuration after applying precedence rules.
@@ -109,24 +136,30 @@ pub struct EffectiveConfig {
     pub event_severity_attribute: String,
     pub color_by: ColoringMode,
     pub events_only: bool,
-    pub trace_timeout: u64,
+    pub trace_timeout: u64,         // Stores milliseconds
+    pub trace_stragglers_wait: u64, // Stores milliseconds, New field
 
     // --- Mode ---
-    pub poll_interval: Option<u64>,
-    pub session_timeout: u64,
+    pub poll_interval: Option<u64>, // Stores milliseconds
+    pub session_timeout: u64,       // Stores milliseconds
 
     // --- Execution Control ---
     pub verbose: u8, // Keep verbosity
-    pub theme: String,
+    pub theme: Theme,
 
     // --- Filtering Options ---
     pub grep: Option<String>,
-    pub backtrace: Option<u64>, // Stored as seconds
+    pub backtrace: Option<u64>, // Stores milliseconds
 }
 
 impl ProfileConfig {
     /// Creates a ProfileConfig from CliArgs, only including non-default values.
     pub fn from_cli_args(args: &CliArgs) -> Self {
+        // Default values from CliArgs definitions, converted to milliseconds
+        const DEFAULT_SESSION_TIMEOUT_STR: &str = "30m";
+        const DEFAULT_TRACE_TIMEOUT_STR: &str = "5s";
+        const DEFAULT_TRACE_STRAGGLERS_WAIT_STR: &str = "0ms";
+
         ProfileConfig {
             log_group_pattern: args.log_group_pattern.clone().filter(|v| !v.is_empty()),
             stack_name: args.stack_name.clone(),
@@ -140,16 +173,28 @@ impl ProfileConfig {
             aws_profile: args.aws_profile.clone(),
             forward_only: Some(args.forward_only).filter(|&f| f),
             attrs: args.attrs.clone(),
-            poll_interval: args.poll_interval,
-            session_timeout: Some(args.session_timeout).filter(|&t| t != 30),
-            event_severity_attribute: Some(args.event_severity_attribute.clone())
-                .filter(|s| s != "event.severity"),
-            theme: Some(args.theme.clone()).filter(|s| s != "default"),
-            color_by: Some(args.color_by).filter(|&c| c != ColoringMode::Service),
-            events_only: Some(args.events_only).filter(|&e| e),
-            trace_timeout: Some(args.trace_timeout).filter(|&t| t != 5),
+            poll_interval: args.poll_interval.map(format_millis_to_duration_string),
+            session_timeout: args
+                .session_timeout
+                .map(format_millis_to_duration_string)
+                .filter(|s| s != DEFAULT_SESSION_TIMEOUT_STR),
+            event_severity_attribute: args
+                .event_severity_attribute
+                .clone()
+                .filter(|s| s != DEFAULT_EVENT_SEVERITY_ATTRIBUTE),
+            theme: args.theme.filter(|&t| t != Theme::Default),
+            color_by: args.color_by.filter(|&c| c != DEFAULT_COLOR_BY),
+            events_only: args.events_only.filter(|&e| e != DEFAULT_EVENTS_ONLY),
+            trace_timeout: args
+                .trace_timeout
+                .map(format_millis_to_duration_string)
+                .filter(|s| s != DEFAULT_TRACE_TIMEOUT_STR),
+            trace_stragglers_wait: args
+                .trace_stragglers_wait
+                .map(format_millis_to_duration_string)
+                .filter(|s| s != DEFAULT_TRACE_STRAGGLERS_WAIT_STR),
             grep: args.grep.clone(),
-            backtrace: args.backtrace,
+            backtrace: args.backtrace.map(format_millis_to_duration_string),
         }
     }
 }
@@ -158,6 +203,11 @@ pub fn load_and_resolve_config(
     config_profile_name: Option<String>,
     cli_args: &CliArgs,
 ) -> Result<EffectiveConfig> {
+    // Default values are now primarily from cli::constants or direct enum variants
+    // const DEFAULT_SESSION_TIMEOUT_MS: u64 = 30 * 60 * 1000; // No longer needed here
+    // const DEFAULT_TRACE_TIMEOUT_MS: u64 = 5 * 1000; // No longer needed here
+    // const DEFAULT_TRACE_STRAGGLERS_WAIT_MS: u64 = 0; // No longer needed here
+
     let mut effective = EffectiveConfig {
         log_group_pattern: None,
         stack_name: None,
@@ -167,19 +217,21 @@ pub fn load_and_resolve_config(
         aws_profile: None,
         forward_only: false,
         attrs: None,
-        event_severity_attribute: "event.severity".to_string(),
+        event_severity_attribute: DEFAULT_EVENT_SEVERITY_ATTRIBUTE.to_string(),
         poll_interval: None,
-        session_timeout: 30,
+        session_timeout: DEFAULT_SESSION_TIMEOUT_MS,
         verbose: 0,
-        theme: "default".to_string(),
-        color_by: ColoringMode::Service,
-        events_only: false,
-        trace_timeout: 5,
+        theme: Theme::Default,
+        color_by: DEFAULT_COLOR_BY,
+        events_only: DEFAULT_EVENTS_ONLY,
+        trace_timeout: DEFAULT_TRACE_TIMEOUT_MS,
+        trace_stragglers_wait: DEFAULT_TRACE_STRAGGLERS_WAIT_MS,
         grep: None,
         backtrace: None,
     };
 
     if config_profile_name.is_none() {
+        // If no profile, apply CLI args (which might be None or Some)
         apply_cli_args_to_effective(cli_args, &mut effective);
         return Ok(effective);
     }
@@ -217,6 +269,12 @@ pub fn load_and_resolve_config(
 }
 
 fn apply_cli_args_to_effective(cli_args: &CliArgs, effective: &mut EffectiveConfig) {
+    // Default values from CliArgs definitions, converted to milliseconds, for comparison
+    // These constants are now only for reference if needed, actual default application is changing.
+    // const DEFAULT_SESSION_TIMEOUT_MS: u64 = 30 * 60 * 1000; // 30m
+    // const DEFAULT_TRACE_TIMEOUT_MS: u64 = 5 * 1000; // 5s
+    // const DEFAULT_TRACE_STRAGGLERS_WAIT_MS: u64 = 0; // 0ms
+
     if cli_args
         .log_group_pattern
         .as_ref()
@@ -254,23 +312,26 @@ fn apply_cli_args_to_effective(cli_args: &CliArgs, effective: &mut EffectiveConf
     if cli_args.forward_only {
         effective.forward_only = true;
     }
-    if cli_args.event_severity_attribute != "event.severity" {
-        effective.event_severity_attribute = cli_args.event_severity_attribute.clone();
+    if let Some(val) = &cli_args.event_severity_attribute {
+        effective.event_severity_attribute = val.clone();
     }
-    if cli_args.poll_interval.is_none() && cli_args.session_timeout != 30 {
-        effective.session_timeout = cli_args.session_timeout;
+    if let Some(val) = cli_args.session_timeout {
+        effective.session_timeout = val;
     }
-    if cli_args.color_by != ColoringMode::default() {
-        effective.color_by = cli_args.color_by;
+    if let Some(val) = cli_args.color_by {
+        effective.color_by = val;
     }
-    if cli_args.events_only {
-        effective.events_only = true;
+    if let Some(val) = cli_args.events_only {
+        effective.events_only = val;
     }
-    if cli_args.trace_timeout != 5 {
-        effective.trace_timeout = cli_args.trace_timeout;
+    if let Some(val) = cli_args.trace_timeout {
+        effective.trace_timeout = val;
     }
-    if cli_args.theme != "default" {
-        effective.theme = cli_args.theme.clone();
+    if let Some(val) = cli_args.trace_stragglers_wait {
+        effective.trace_stragglers_wait = val;
+    }
+    if let Some(val) = cli_args.theme {
+        effective.theme = val;
     }
     effective.verbose = cli_args.verbose;
 }
@@ -347,14 +408,28 @@ fn apply_profile_to_effective(profile: &ProfileConfig, effective: &mut Effective
     if let Some(val) = &profile.event_severity_attribute {
         effective.event_severity_attribute = val.clone();
     }
-    if let Some(val) = profile.poll_interval {
-        effective.poll_interval = Some(val);
+
+    if let Some(s_val) = &profile.poll_interval {
+        match crate::cli::parse_duration_to_millis(s_val.as_str()) {
+            Ok(ms_val) => effective.poll_interval = Some(ms_val),
+            Err(e) => tracing::warn!(
+                profile_key = "poll-interval", value = %s_val, error = %e,
+                "Failed to parse duration from profile for poll-interval. Effective value: {}", effective.poll_interval.map_or_else(|| "None".to_string(), format_millis_to_duration_string)
+            ),
+        }
     }
-    if let Some(val) = profile.session_timeout {
-        effective.session_timeout = val;
+    if let Some(s_val) = &profile.session_timeout {
+        match crate::cli::parse_duration_to_millis(s_val.as_str()) {
+            Ok(ms_val) => effective.session_timeout = ms_val,
+            Err(e) => tracing::warn!(
+                profile_key = "session-timeout", value = %s_val, error = %e,
+                "Failed to parse duration from profile for session-timeout. Effective value: {}", format_millis_to_duration_string(effective.session_timeout)
+            ),
+        }
     }
+
     if let Some(val) = &profile.theme {
-        effective.theme = val.clone();
+        effective.theme = *val;
     }
     if let Some(val) = &profile.color_by {
         effective.color_by = *val;
@@ -362,14 +437,38 @@ fn apply_profile_to_effective(profile: &ProfileConfig, effective: &mut Effective
     if let Some(val) = profile.events_only {
         effective.events_only = val;
     }
-    if let Some(val) = profile.trace_timeout {
-        effective.trace_timeout = val;
+
+    if let Some(s_val) = &profile.trace_timeout {
+        match crate::cli::parse_duration_to_millis(s_val.as_str()) {
+            Ok(ms_val) => effective.trace_timeout = ms_val,
+            Err(e) => tracing::warn!(
+                profile_key = "trace-timeout", value = %s_val, error = %e,
+                "Failed to parse duration from profile for trace-timeout. Effective value: {}", format_millis_to_duration_string(effective.trace_timeout)
+            ),
+        }
     }
+
+    if let Some(s_val) = &profile.trace_stragglers_wait {
+        match crate::cli::parse_duration_to_millis(s_val.as_str()) {
+            Ok(ms_val) => effective.trace_stragglers_wait = ms_val,
+            Err(e) => tracing::warn!(
+                profile_key = "trace-stragglers-wait", value = %s_val, error = %e,
+                "Failed to parse duration from profile for trace-stragglers-wait. Effective value: {}", format_millis_to_duration_string(effective.trace_stragglers_wait)
+            ),
+        }
+    }
+
     if let Some(val) = &profile.grep {
         effective.grep = Some(val.clone());
     }
-    if let Some(val) = profile.backtrace {
-        effective.backtrace = Some(val);
+    if let Some(s_val) = &profile.backtrace {
+        match crate::cli::parse_duration_to_millis(s_val.as_str()) {
+            Ok(ms_val) => effective.backtrace = Some(ms_val),
+            Err(e) => tracing::warn!(
+                profile_key = "backtrace", value = %s_val, error = %e,
+                "Failed to parse duration from profile for backtrace. Effective value: {}", effective.backtrace.map_or_else(|| "None".to_string(), format_millis_to_duration_string)
+            ),
+        }
     }
 }
 
@@ -405,14 +504,30 @@ pub fn merge_into_profile_config(base: &ProfileConfig, overrides: &ProfileConfig
             .event_severity_attribute
             .clone()
             .or_else(|| base.event_severity_attribute.clone()),
-        poll_interval: overrides.poll_interval.or(base.poll_interval),
-        session_timeout: overrides.session_timeout.or(base.session_timeout),
-        theme: overrides.theme.clone().or_else(|| base.theme.clone()),
+        poll_interval: overrides
+            .poll_interval
+            .clone()
+            .or_else(|| base.poll_interval.clone()),
+        session_timeout: overrides
+            .session_timeout
+            .clone()
+            .or_else(|| base.session_timeout.clone()),
+        theme: overrides.theme.or(base.theme),
         color_by: overrides.color_by.or(base.color_by),
         events_only: overrides.events_only.or(base.events_only),
-        trace_timeout: overrides.trace_timeout.or(base.trace_timeout),
+        trace_timeout: overrides
+            .trace_timeout
+            .clone()
+            .or_else(|| base.trace_timeout.clone()),
+        trace_stragglers_wait: overrides
+            .trace_stragglers_wait
+            .clone()
+            .or_else(|| base.trace_stragglers_wait.clone()),
         grep: overrides.grep.clone().or_else(|| base.grep.clone()),
-        backtrace: overrides.backtrace.or(base.backtrace),
+        backtrace: overrides
+            .backtrace
+            .clone()
+            .or_else(|| base.backtrace.clone()),
     }
 }
 
@@ -438,19 +553,20 @@ mod tests {
             verbose: 1,
             forward_only: true,
             attrs: Some("http.*,db.*".to_string()),
-            poll_interval: Some(30),
-            session_timeout: 45,
-            event_severity_attribute: "custom.severity".to_string(),
+            poll_interval: Some(30 * 1000),        // 30s in ms
+            session_timeout: Some(45 * 60 * 1000), // 45m in ms
+            event_severity_attribute: Some("custom.severity".to_string()),
             config_profile: None,
             save_profile: None,
-            theme: "test-theme".to_string(),
+            theme: Some(Theme::Solarized),
             list_themes: false,
-            color_by: ColoringMode::Service,
-            events_only: true,
-            trace_timeout: 10,
+            color_by: Some(ColoringMode::Service),
+            events_only: Some(false),
+            trace_timeout: Some(10 * 1000),   // 10s in ms
+            trace_stragglers_wait: Some(500), // 500ms
             command: None,
             grep: None,
-            backtrace: None,
+            backtrace: Some(60 * 1000), // 60s or 1m in ms
         }
     }
 
@@ -463,15 +579,19 @@ version = 1.0
 [global]
 aws-region = "us-east-1"
 event-severity-attribute = "global.severity"
+trace-timeout = "7s" # Example global duration as string
 
 [profiles.default]
 log-group-pattern = ["default-pattern-a", "default-pattern-b"]
 forward-only = true
+session-timeout = "1h" # Example profile duration as string
 
 [profiles.dev]
 log-group-pattern = ["/aws/lambda/dev-func", "specific-dev-group"]
 otlp-endpoint = "http://dev-collector:4318"
 aws-region = "us-west-1"
+poll-interval = "20s"  # Example profile duration as string
+backtrace = "5m"       # Example profile duration as string
         "#;
         fs::write(&config_path, config_content).expect("Failed to write test config");
         config_path
@@ -502,15 +622,37 @@ aws-region = "us-west-1"
         assert_eq!(profile.aws_profile, Some("test-profile".to_string()));
         assert_eq!(profile.forward_only, Some(true));
         assert_eq!(profile.attrs, Some("http.*,db.*".to_string()));
-        assert_eq!(profile.poll_interval, Some(30));
-        assert_eq!(profile.session_timeout, Some(45));
+        assert_eq!(profile.poll_interval, Some("30s".to_string()));
+        assert_eq!(profile.session_timeout, Some("45m".to_string()));
         assert_eq!(
             profile.event_severity_attribute,
             Some("custom.severity".to_string())
         );
-        assert_eq!(profile.theme, Some("test-theme".to_string()));
-        assert_eq!(profile.events_only, Some(true));
-        assert_eq!(profile.trace_timeout, Some(10));
+        assert_eq!(profile.theme, Some(Theme::Solarized));
+        assert_eq!(profile.color_by, Some(ColoringMode::Service));
+        assert_eq!(profile.events_only, Some(false));
+        assert_eq!(profile.trace_timeout, Some("10s".to_string()));
+        assert_eq!(profile.trace_stragglers_wait, Some("500ms".to_string()));
+        assert_eq!(profile.backtrace, Some("1m".to_string()));
+
+        // Test case where session_timeout and trace_timeout are default
+        let mut args_with_defaults = mock_cli_args();
+        args_with_defaults.session_timeout = Some(DEFAULT_SESSION_TIMEOUT_MS); // Use const
+        args_with_defaults.trace_timeout = Some(DEFAULT_TRACE_TIMEOUT_MS); // Use const
+        args_with_defaults.trace_stragglers_wait = Some(DEFAULT_TRACE_STRAGGLERS_WAIT_MS); // Use const
+        args_with_defaults.theme = Some(Theme::Default); // Default theme
+        args_with_defaults.color_by = Some(DEFAULT_COLOR_BY); // Use const for default color_by
+        args_with_defaults.event_severity_attribute = Some(DEFAULT_EVENT_SEVERITY_ATTRIBUTE.to_string()); // Use const
+        args_with_defaults.events_only = Some(DEFAULT_EVENTS_ONLY); // Use const
+
+        let profile_with_defaults = ProfileConfig::from_cli_args(&args_with_defaults);
+        assert_eq!(profile_with_defaults.session_timeout, None);
+        assert_eq!(profile_with_defaults.trace_timeout, None);
+        assert_eq!(profile_with_defaults.trace_stragglers_wait, None);
+        assert_eq!(profile_with_defaults.theme, None);
+        assert_eq!(profile_with_defaults.color_by, None); // Should now pass
+        assert_eq!(profile_with_defaults.event_severity_attribute, None);
+        assert_eq!(profile_with_defaults.events_only, None); // Added assertion for events_only
     }
 
     #[test]
@@ -543,6 +685,11 @@ aws-region = "us-west-1"
 
     #[test]
     fn test_apply_profile_to_effective() {
+        // Default values in milliseconds for comparison
+        const DEFAULT_SESSION_TIMEOUT_MS: u64 = 30 * 60 * 1000;
+        const DEFAULT_TRACE_TIMEOUT_MS: u64 = 5 * 1000;
+        const DEFAULT_TRACE_STRAGGLERS_WAIT_MS: u64 = 0; // 0ms
+
         let mut effective = EffectiveConfig {
             log_group_pattern: Some(vec!["initial-pattern".to_string()]),
             stack_name: Some("original-stack".to_string()),
@@ -554,36 +701,39 @@ aws-region = "us-west-1"
             attrs: None,
             event_severity_attribute: "default.severity".to_string(),
             poll_interval: None,
-            session_timeout: 30,
+            session_timeout: DEFAULT_SESSION_TIMEOUT_MS, // Default in ms
             verbose: 0,
-            theme: "default".to_string(),
+            theme: Theme::Default,
             color_by: ColoringMode::Service,
             events_only: false,
-            trace_timeout: 5,
+            trace_timeout: DEFAULT_TRACE_TIMEOUT_MS, // Default in ms
+            trace_stragglers_wait: DEFAULT_TRACE_STRAGGLERS_WAIT_MS, // Default in ms
             grep: None,
             backtrace: None,
         };
         let profile = ProfileConfig {
+            // Durations as Option<String>
             log_group_pattern: Some(vec![
                 "profile-pattern-1".to_string(),
                 "profile-pattern-2".to_string(),
             ]),
-            stack_name: None,
+            stack_name: None, // Will keep effective.stack_name
             otlp_endpoint: Some("http://profile-endpoint:4318".to_string()),
             otlp_headers: Some(vec!["Profile-Auth=token123".to_string()]),
-            aws_region: None,
+            aws_region: None, // Will keep effective.aws_region
             aws_profile: Some("profile-aws-profile".to_string()),
             forward_only: Some(true),
             attrs: Some("profile.*".to_string()),
             event_severity_attribute: Some("profile.severity".to_string()),
-            poll_interval: Some(45),
-            session_timeout: None,
-            theme: Some("test-theme".to_string()),
-            color_by: None,
+            poll_interval: Some("45s".to_string()), // String duration
+            session_timeout: Some("1h".to_string()), // String duration, different from effective default
+            theme: Some(Theme::Solarized),
+            color_by: None, // Will keep effective.color_by
             events_only: Some(true),
-            trace_timeout: Some(10),
+            trace_timeout: Some("10000ms".to_string()), // String duration (10s), different from effective default
+            trace_stragglers_wait: Some("2s".to_string()), // String duration (2s)
             grep: Some("test-grep".to_string()),
-            backtrace: Some(60),
+            backtrace: Some("60s".to_string()), // String duration
         };
         apply_profile_to_effective(&profile, &mut effective);
         assert_eq!(
@@ -593,13 +743,13 @@ aws-region = "us-west-1"
                 "profile-pattern-2".to_string()
             ])
         );
-        assert_eq!(effective.stack_name, Some("original-stack".to_string()));
+        assert_eq!(effective.stack_name, Some("original-stack".to_string())); // Unchanged by profile
         assert_eq!(
             effective.otlp_endpoint,
             Some("http://profile-endpoint:4318".to_string())
         );
         assert_eq!(effective.otlp_headers, vec!["Profile-Auth=token123"]);
-        assert_eq!(effective.aws_region, Some("us-east-1".to_string()));
+        assert_eq!(effective.aws_region, Some("us-east-1".to_string())); // Unchanged by profile
         assert_eq!(
             effective.aws_profile,
             Some("profile-aws-profile".to_string())
@@ -607,61 +757,114 @@ aws-region = "us-west-1"
         assert!(effective.forward_only);
         assert_eq!(effective.attrs, Some("profile.*".to_string()));
         assert_eq!(effective.event_severity_attribute, "profile.severity");
-        assert_eq!(effective.poll_interval, Some(45));
-        assert_eq!(effective.session_timeout, 30);
-        assert_eq!(effective.theme, "test-theme".to_string());
+        assert_eq!(effective.poll_interval, Some(45 * 1000)); // Check for ms
+        assert_eq!(effective.session_timeout, 60 * 60 * 1000); // Check for ms (1h)
+        assert_eq!(effective.theme, Theme::Solarized);
+        assert_eq!(effective.color_by, ColoringMode::Service); // Unchanged by profile
         assert!(effective.events_only);
-        assert_eq!(effective.trace_timeout, 10);
+        assert_eq!(effective.trace_timeout, 10_000); // Check for ms (10s)
+        assert_eq!(effective.trace_stragglers_wait, 2_000); // Check for ms (2s)
+        assert_eq!(effective.grep, Some("test-grep".to_string()));
+        assert_eq!(effective.backtrace, Some(60 * 1000)); // Check for ms
     }
 
     #[test]
     fn test_load_and_resolve_config() {
         let temp_dir = tempdir().expect("Failed to create temp dir");
-        let config_path = create_test_config_file(temp_dir.path());
-        let mut args = mock_cli_args();
-        args.config_profile = Some("dev".to_string());
-        let config_file: ConfigFile =
-            toml::from_str(&fs::read_to_string(&config_path).expect("Failed to read test config"))
-                .expect("Failed to parse test config");
+        let config_path = create_test_config_file(temp_dir.path()); // Writes to temp_dir/.livetrace.toml
+
+        let cli_args_mock = mock_cli_args(); // CliArgs with durations in u64 ms
+
+        // Manually replicate the core logic of load_and_resolve_config, but using our specific config_path
+        const DEFAULT_EFFECTIVE_SESSION_TIMEOUT_MS: u64 = 30 * 60 * 1000;
+        const DEFAULT_EFFECTIVE_TRACE_TIMEOUT_MS: u64 = 5 * 1000;
+        const DEFAULT_EFFECTIVE_TRACE_STRAGGLERS_WAIT_MS: u64 = 0; // 0ms
+
         let mut effective = EffectiveConfig {
-            log_group_pattern: args.log_group_pattern.clone(),
-            stack_name: args.stack_name.clone(),
-            otlp_endpoint: args.otlp_endpoint.clone(),
-            otlp_headers: args.otlp_headers.clone(),
-            aws_region: args.aws_region.clone(),
-            aws_profile: args.aws_profile.clone(),
-            forward_only: args.forward_only,
-            attrs: args.attrs.clone(),
-            event_severity_attribute: args.event_severity_attribute.clone(),
-            poll_interval: args.poll_interval,
-            session_timeout: args.session_timeout,
-            verbose: args.verbose,
-            theme: args.theme.clone(),
-            color_by: args.color_by,
-            events_only: args.events_only,
-            trace_timeout: args.trace_timeout,
-            grep: args.grep.clone(),
-            backtrace: args.backtrace,
+            log_group_pattern: None,
+            stack_name: None,
+            otlp_endpoint: None,
+            otlp_headers: Vec::new(),
+            aws_region: None,
+            aws_profile: None,
+            forward_only: false,
+            attrs: None,
+            event_severity_attribute: "event.severity".to_string(),
+            poll_interval: None,
+            session_timeout: DEFAULT_EFFECTIVE_SESSION_TIMEOUT_MS,
+            verbose: 0,
+            theme: Theme::Default,
+            color_by: ColoringMode::Service,
+            events_only: false,
+            trace_timeout: DEFAULT_EFFECTIVE_TRACE_TIMEOUT_MS,
+            trace_stragglers_wait: DEFAULT_EFFECTIVE_TRACE_STRAGGLERS_WAIT_MS, // Initialize new field
+            grep: None,
+            backtrace: None,
         };
+
+        // Load the specific test config file
+        let config_file =
+            load_config_file(&config_path).expect("Test: Failed to load test config file");
+
+        // Apply global config from the test file
         if let Some(global_config) = &config_file.global {
             apply_profile_to_effective(global_config, &mut effective);
         }
+
+        // Apply 'dev' profile from the test file
         if let Some(profile_config) = config_file.profiles.get("dev") {
             apply_profile_to_effective(profile_config, &mut effective);
+        } else {
+            panic!("Test: 'dev' profile not found in test config file");
         }
+
+        // Apply CLI arguments last
+        apply_cli_args_to_effective(&cli_args_mock, &mut effective);
+
+        // Assertions based on precedence: CLI > Profile > Global > EffectiveConfig_default
+        assert_eq!(effective.log_group_pattern, cli_args_mock.log_group_pattern); // CLI
+        assert_eq!(effective.otlp_endpoint, cli_args_mock.otlp_endpoint); // CLI
+        assert_eq!(effective.aws_region, cli_args_mock.aws_region); // CLI overrides profile 'dev' ("us-west-1") and global ("us-east-1")
+
+        // Define constants for programmatic defaults to use in assertions
+        const DEFAULT_SESSION_TIMEOUT_MS_TEST: u64 = 30 * 60 * 1000;
+        const DEFAULT_TRACE_TIMEOUT_MS_TEST: u64 = 5 * 1000;
+        const DEFAULT_TRACE_STRAGGLERS_WAIT_MS_TEST: u64 = 0;
+
         assert_eq!(
-            effective.log_group_pattern,
-            Some(vec![
-                "/aws/lambda/dev-func".to_string(),
-                "specific-dev-group".to_string()
-            ])
+            effective.session_timeout,
+            cli_args_mock
+                .session_timeout
+                .unwrap_or(DEFAULT_SESSION_TIMEOUT_MS_TEST)
         );
         assert_eq!(
-            effective.otlp_endpoint,
-            Some("http://dev-collector:4318".to_string())
+            effective.trace_timeout,
+            cli_args_mock
+                .trace_timeout
+                .unwrap_or(DEFAULT_TRACE_TIMEOUT_MS_TEST)
         );
-        assert_eq!(effective.aws_region, Some("us-west-1".to_string()));
-        assert_eq!(effective.event_severity_attribute, "global.severity");
+        assert_eq!(
+            effective.trace_stragglers_wait,
+            cli_args_mock
+                .trace_stragglers_wait
+                .unwrap_or(DEFAULT_TRACE_STRAGGLERS_WAIT_MS_TEST)
+        );
+        assert_eq!(effective.poll_interval, cli_args_mock.poll_interval); // Some(30000ms) - This is Option<u64> on both sides
+        assert_eq!(effective.backtrace, cli_args_mock.backtrace); // Some(60000ms) - This is Option<u64> on both sides
+        assert_eq!(
+            effective.event_severity_attribute,
+            cli_args_mock
+                .event_severity_attribute
+                .unwrap_or_else(|| "event.severity".to_string())
+        );
+        assert_eq!(
+            effective.color_by,
+            cli_args_mock.color_by.unwrap_or(ColoringMode::Service)
+        );
+        assert_eq!(
+            effective.theme,
+            cli_args_mock.theme.unwrap_or(Theme::Default)
+        );
     }
 
     #[test]
@@ -676,14 +879,15 @@ aws-region = "us-west-1"
             forward_only: Some(false),
             attrs: Some("base.*".to_string()),
             event_severity_attribute: None,
-            poll_interval: Some(10),
-            session_timeout: None,
-            theme: Some("base-theme".to_string()),
+            poll_interval: Some("10s".to_string()), // String duration
+            session_timeout: None,                  // String duration (None)
+            theme: Some(Theme::Material),
             color_by: Some(ColoringMode::Service),
             events_only: Some(false),
-            trace_timeout: None,
+            trace_timeout: Some("7000ms".to_string()), // String duration
+            trace_stragglers_wait: Some("1s".to_string()), // String duration
             grep: None,
-            backtrace: None,
+            backtrace: Some("2m".to_string()), // String duration
         };
         let overrides = ProfileConfig {
             log_group_pattern: None,
@@ -695,33 +899,43 @@ aws-region = "us-west-1"
             forward_only: Some(true),
             attrs: None,
             event_severity_attribute: Some("override.severity".to_string()),
-            poll_interval: None,
-            session_timeout: Some(99),
+            poll_interval: Some("15s".to_string()), // Override string duration
+            session_timeout: Some("90m".to_string()), // Override string duration
             theme: None,
             color_by: Some(ColoringMode::Span),
             events_only: None,
-            trace_timeout: Some(20),
+            trace_timeout: Some("20s".to_string()), // Override string duration
+            trace_stragglers_wait: Some("0ms".to_string()), // Override string duration (to default)
             grep: Some("override-grep".to_string()),
-            backtrace: Some(120),
+            backtrace: None, // Override with None
         };
         let merged = merge_into_profile_config(&base, &overrides);
-        assert_eq!(merged.log_group_pattern, base.log_group_pattern);
-        assert_eq!(merged.otlp_endpoint, base.otlp_endpoint);
-        assert_eq!(merged.aws_profile, base.aws_profile);
-        assert_eq!(merged.attrs, base.attrs);
-        assert_eq!(merged.poll_interval, base.poll_interval);
-        assert_eq!(merged.theme, base.theme);
-        assert_eq!(merged.events_only, base.events_only);
+
+        // Assertions check that overrides take precedence, or base is used if override is None.
+        // Durations are asserted as Option<String>.
+        assert_eq!(merged.log_group_pattern, base.log_group_pattern); // Override is None
         assert_eq!(merged.stack_name, overrides.stack_name);
-        assert_eq!(merged.aws_region, overrides.aws_region);
-        assert_eq!(merged.forward_only, overrides.forward_only);
-        assert_eq!(merged.color_by, overrides.color_by);
+        assert_eq!(merged.otlp_endpoint, base.otlp_endpoint); // Override is None
         assert_eq!(merged.otlp_headers, overrides.otlp_headers);
+        assert_eq!(merged.aws_region, overrides.aws_region);
+        assert_eq!(merged.aws_profile, base.aws_profile); // Override is None
+        assert_eq!(merged.forward_only, overrides.forward_only);
+        assert_eq!(merged.attrs, base.attrs); // Override is None
         assert_eq!(
             merged.event_severity_attribute,
             overrides.event_severity_attribute
         );
+        assert_eq!(merged.poll_interval, overrides.poll_interval);
         assert_eq!(merged.session_timeout, overrides.session_timeout);
+        assert_eq!(merged.theme, base.theme); // Override is None
+        assert_eq!(merged.color_by, overrides.color_by);
+        assert_eq!(merged.events_only, base.events_only); // Override is None
         assert_eq!(merged.trace_timeout, overrides.trace_timeout);
+        assert_eq!(
+            merged.trace_stragglers_wait,
+            overrides.trace_stragglers_wait
+        );
+        assert_eq!(merged.grep, overrides.grep);
+        assert_eq!(merged.backtrace, base.backtrace); // Override is None
     }
 }

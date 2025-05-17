@@ -6,22 +6,62 @@
 //! and helper functions related to CLI argument processing (e.g., parsing glob patterns).
 
 use crate::console_display::Theme;
-use clap::{
-    builder::TypedValueParser, crate_authors, crate_description, error::ErrorKind, ArgGroup,
-    Parser, Subcommand, ValueEnum,
-};
+use clap::{crate_authors, crate_description, ArgGroup, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
+
+// Made public for use in lib.rs
+pub struct ThemeCliInfo {
+    pub name: &'static str,
+    pub description: &'static str,
+}
+
+// Made public for use in lib.rs
+pub const AVAILABLE_THEMES_INFO: &[ThemeCliInfo] = &[
+    ThemeCliInfo {
+        name: "default",
+        description: "OpenTelemetry-inspired blue-purple palette",
+    },
+    ThemeCliInfo {
+        name: "tableau",
+        description: "Tableau 12 color palette with distinct hues",
+    },
+    ThemeCliInfo {
+        name: "colorbrewer",
+        description: "ColorBrewer Set3 palette (pastel colors)",
+    },
+    ThemeCliInfo {
+        name: "material",
+        description: "Material Design palette with bright, modern colors",
+    },
+    ThemeCliInfo {
+        name: "solarized",
+        description: "Solarized color scheme with muted tones",
+    },
+    ThemeCliInfo {
+        name: "monochrome",
+        description: "Grayscale palette for minimal distraction",
+    },
+];
+
+// Public constants for default CLI argument values
+pub const DEFAULT_SESSION_TIMEOUT_MS: u64 = 30 * 60 * 1000; // 30m
+pub const DEFAULT_TRACE_TIMEOUT_MS: u64 = 5 * 1000; // 5s
+pub const DEFAULT_TRACE_STRAGGLERS_WAIT_MS: u64 = 0; // 0ms
+pub const DEFAULT_EVENT_SEVERITY_ATTRIBUTE: &str = "event.severity";
+pub const DEFAULT_EVENTS_ONLY: bool = true;
+pub const DEFAULT_COLOR_BY: ColoringMode = ColoringMode::Span;
 
 /// Defines coloring strategies for the console output
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize, Default)]
 pub enum ColoringMode {
-    /// Color by service name (default)
+    /// Color by span ID (default)
     #[default]
-    Service,
-    /// Color by span ID
     Span,
+    /// Color by service name
+    Service,
 }
 
 const USAGE_EXAMPLES: &str = "\
@@ -33,7 +73,7 @@ EXAMPLES:
     livetrace --log-group-pattern \"/aws/lambda/my-service-\" -e http://localhost:4318
 
     # Poll logs every 30 seconds from a stack, showing only events, with a specific theme
-    livetrace --stack-name my-data-processing --poll-interval 30 --events-only --theme solarized
+    livetrace --stack-name my-data-processing --poll-interval 30s --events-only --theme solarized
 
     # Discover log groups by pattern and save the configuration to a profile named \"dev\"
     livetrace --log-group-pattern \"/aws/lambda/user-service-\" --save-profile dev
@@ -44,10 +84,10 @@ EXAMPLES:
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
 #[derive(Parser, Debug, Clone)]
 #[command(author = crate_authors!(", "), version, about = crate_description!(), long_about = None, after_help = USAGE_EXAMPLES)]
-#[clap(group( // Add group to make poll/timeout mutually exclusive
-    ArgGroup::new("mode")
-        .required(false) // One or neither can be specified
-        .args(["poll_interval", "session_timeout"]),
+#[clap(group( // Group now only for poll_interval to define mode if present
+    ArgGroup::new("mode_selector") // Renamed for clarity, only contains poll_interval if we want to be explicit
+        .required(false)
+        .args(["poll_interval"]), // session_timeout removed from this group
 ))]
 pub struct CliArgs {
     /// Log group name pattern(s) for discovery (case-sensitive substring search). Can be specified multiple times.
@@ -88,16 +128,20 @@ pub struct CliArgs {
     pub attrs: Option<String>,
 
     /// Optional polling interval in seconds. If set, uses FilterLogEvents API instead of StartLiveTail.
-    #[arg(long, group = "mode")]
-    pub poll_interval: Option<u64>,
+    #[arg(long, group = "mode_selector", value_parser = parse_duration_to_millis, help = "Polling interval (e.g., '10s', '1m'). Requires suffix: ms, s, m, h.")]
+    pub poll_interval: Option<u64>, // Stores milliseconds
 
-    /// Session duration in minutes after which livetrace will automatically exit (LiveTail mode only).
-    #[arg(long, default_value_t = 30, group = "mode")]
-    pub session_timeout: u64,
+    /// Overall session duration after which livetrace will automatically exit.
+    /// Applies to both LiveTail and Polling modes.
+    #[arg(long, value_parser = parse_duration_to_millis, help = "Overall session duration (e.g., '30m', '1h'). Requires suffix: ms, s, m, h. [default: 30m]")]
+    pub session_timeout: Option<u64>, // Changed to Option<u64>, removed default_value
 
     /// Event attribute name to use for determining event severity level.
-    #[arg(long, default_value = "event.severity")]
-    pub event_severity_attribute: String,
+    #[arg(
+        long,
+        help = "Event attribute name for severity. [default: event.severity]"
+    )]
+    pub event_severity_attribute: Option<String>, // Changed to Option<String>, removed default_value
 
     /// Load configuration from a specific profile in .livetrace.toml.
     #[arg(long)]
@@ -108,22 +152,15 @@ pub struct CliArgs {
     pub save_profile: Option<String>,
 
     /// Color theme for console output.
-    ///
-    /// Available themes:
-    ///  * default - OpenTelemetry-inspired blue-purple palette
-    ///  * tableau - Tableau 12 color palette with distinct hues
-    ///  * colorbrewer - ColorBrewer Set3 palette (pastel colors)
-    ///  * material - Material Design palette with bright, modern colors
-    ///  * solarized - Solarized color scheme with muted tones
-    ///  * monochrome - Grayscale palette for minimal distraction
+    /// Use --list-themes for all available options and their descriptions.
     #[arg(
         long,
-        default_value = "default",
-        value_parser = ThemeValueParser,
+        value_enum,
         value_name = "THEME",
         help_heading = "Display Options",
+        help = "Color theme for console output. Use --list-themes for options. [default: default]"
     )]
-    pub theme: String,
+    pub theme: Option<Theme>, // Changed to Option<Theme>
 
     /// List available color themes and exit.
     #[arg(
@@ -137,18 +174,29 @@ pub struct CliArgs {
     #[arg(
         long = "color-by",
         value_enum,
-        default_value_t = ColoringMode::Service,
         help_heading = "Display Options",
+        help = "Color output by service name or span ID. [default: span]"
     )]
-    pub color_by: ColoringMode,
+    pub color_by: Option<ColoringMode>, // Changed to Option<ColoringMode>
 
     /// Only display events, hiding span start information in the timeline log view.
-    #[arg(long, help_heading = "Display Options")]
-    pub events_only: bool,
+    #[arg(
+        long,
+        value_name = "true|false", // Explicit values
+        num_args = 0..=1, // Allows --events-only or --events-only=value
+        default_missing_value = "true", // If --events-only is specified without a value, it's true
+        help_heading = "Display Options",
+        help = "Only display events, hiding span start information. [default: true]"
+    )]
+    pub events_only: Option<bool>, // Changed to Option<bool>
 
-    /// Maximum time in seconds to wait for spans belonging to a trace before displaying/forwarding it.
-    #[arg(long, default_value_t = 5, help_heading = "Processing Options")]
-    pub trace_timeout: u64,
+    /// Maximum time to wait for spans belonging to a trace before displaying/forwarding it.
+    #[arg(long, value_parser = parse_duration_to_millis, help_heading = "Processing Options", help = "Max trace buffering time (e.g., '5s', '500ms'). Requires suffix: ms, s, m, h. [default: 5s]")]
+    pub trace_timeout: Option<u64>, // Changed to Option<u64>, removed default_value
+
+    /// Time to wait for late-arriving (straggler) spans after the last observed activity on a trace (if its root span has been received) before flushing.
+    #[arg(long, value_parser = parse_duration_to_millis, help_heading = "Processing Options", help = "Time to wait for straggler spans after last trace activity (if root is present). (e.g., '500ms', '1s'). Requires suffix: ms, s, m, h. [default: 0ms]")]
+    pub trace_stragglers_wait: Option<u64>, // Changed to Option<u64>, removed default_value
 
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -158,23 +206,34 @@ pub struct CliArgs {
     pub grep: Option<String>,
 
     /// Go back in time for initial log poll (e.g., 30, 120s, 3m)
-    #[arg(long, value_parser = parse_backtrace_duration, help_heading = "Filtering Options")]
-    pub backtrace: Option<u64>, // Stores seconds
+    #[arg(long, value_parser = parse_duration_to_millis, help_heading = "Filtering Options")]
+    pub backtrace: Option<u64>, // Stores milliseconds
 }
 
-// Custom parser for --backtrace duration
-fn parse_backtrace_duration(s: &str) -> Result<u64, String> {
-    if let Some(stripped) = s.strip_suffix('m') {
-        stripped
-            .parse::<u64>()
-            .map(|n| n * 60)
-            .map_err(|e| format!("Invalid minutes value: {}", e))
-    } else if let Some(stripped) = s.strip_suffix('s') {
-        stripped
-            .parse::<u64>()
-            .map_err(|e| format!("Invalid seconds value: {}", e))
+// Custom parser for duration strings into milliseconds
+// Made pub(crate) so it can be called from config.rs
+pub(crate) fn parse_duration_to_millis(s: &str) -> Result<u64, String> {
+    let s_lower = s.to_lowercase();
+    if let Some(stripped) = s_lower.strip_suffix("ms") {
+        u64::from_str(stripped)
+            .map_err(|e| format!("Invalid milliseconds value '{}': {}", stripped, e))
+    } else if let Some(stripped) = s_lower.strip_suffix('s') {
+        u64::from_str(stripped)
+            .map(|n| n * 1000)
+            .map_err(|e| format!("Invalid seconds value '{}': {}", stripped, e))
+    } else if let Some(stripped) = s_lower.strip_suffix('m') {
+        u64::from_str(stripped)
+            .map(|n| n * 60 * 1000)
+            .map_err(|e| format!("Invalid minutes value '{}': {}", stripped, e))
+    } else if let Some(stripped) = s_lower.strip_suffix('h') {
+        u64::from_str(stripped)
+            .map(|n| n * 60 * 60 * 1000)
+            .map_err(|e| format!("Invalid hours value '{}': {}", stripped, e))
     } else {
-        s.parse::<u64>().map_err(|e| format!("Invalid duration '{}'. Must be a number (seconds), or end with 's' or 'm'. Error: {}", s, e))
+        Err(format!(
+            "Invalid duration string '{}'. Must end with 'ms', 's', 'm', or 'h'. Bare numbers are not allowed.",
+            s
+        ))
     }
 }
 
@@ -187,74 +246,6 @@ pub enum Commands {
         #[arg(value_enum)]
         shell: Shell,
     },
-}
-
-// Create a custom value parser for themes
-#[derive(Clone)]
-struct ThemeValueParser;
-
-impl TypedValueParser for ThemeValueParser {
-    type Value = String;
-
-    /// This method is called by Clap when validating the theme argument.
-    /// It receives the command, argument definition, and user-provided value.
-    /// We only use the value parameter to validate the theme name.
-    fn parse_ref(
-        &self,
-        _cmd: &clap::Command,
-        _arg: Option<&clap::Arg>,
-        value: &std::ffi::OsStr,
-    ) -> Result<Self::Value, clap::Error> {
-        // Array of valid themes for display
-        let valid_themes = [
-            "default - OpenTelemetry-inspired blue-purple palette",
-            "tableau - Tableau 12 color palette with distinct hues",
-            "colorbrewer - ColorBrewer Set3 palette (pastel colors)",
-            "material - Material Design palette with bright, modern colors",
-            "solarized - Solarized color scheme with muted tones",
-            "monochrome - Grayscale palette for minimal distraction",
-        ];
-
-        // Convert OsStr to a regular string for validation
-        let theme_str = value.to_string_lossy().to_string();
-
-        // Handle empty theme value (when user just types --theme without a value)
-        if theme_str.is_empty() {
-            // Show the themes and exit
-            print_available_themes();
-            // This line should never be reached due to exit()
-            return Ok("default".to_string());
-        }
-
-        // Check if the theme is valid
-        if !Theme::is_valid_theme(&theme_str) {
-            // Create a helpful error message with valid themes
-            let themes_list = valid_themes.join("\n  * ");
-
-            let err = format!(
-                "Invalid theme '{}'. Available themes:\n  * {}",
-                theme_str, themes_list
-            );
-
-            return Err(clap::Error::raw(ErrorKind::InvalidValue, err));
-        }
-
-        // Valid theme, return it
-        Ok(theme_str)
-    }
-}
-
-// Helper function to print available themes
-fn print_available_themes() {
-    println!("\nAvailable themes:");
-    println!("  * default - OpenTelemetry-inspired blue-purple palette");
-    println!("  * tableau - Tableau 12 color palette with distinct hues");
-    println!("  * colorbrewer - ColorBrewer Set3 palette (pastel colors)");
-    println!("  * material - Material Design palette with bright, modern colors");
-    println!("  * solarized - Solarized color scheme with muted tones");
-    println!("  * monochrome - Grayscale palette for minimal distraction");
-    println!("\nUsage: livetrace --theme <THEME>");
-    std::process::exit(0);
 }
 
 /// Parses attribute glob patterns from a string pattern.

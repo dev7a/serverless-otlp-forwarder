@@ -41,20 +41,21 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 // e.g., `aws_setup::setup_aws_resources`.
 // Ensure these items are public in their respective modules.
 use aws_setup::setup_aws_resources;
-use cli::{parse_attr_globs, ColoringMode};
+use cli::{
+    parse_attr_globs, ColoringMode, AVAILABLE_THEMES_INFO, DEFAULT_COLOR_BY, DEFAULT_EVENTS_ONLY,
+    DEFAULT_EVENT_SEVERITY_ATTRIBUTE, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_TRACE_STRAGGLERS_WAIT_MS,
+    DEFAULT_TRACE_TIMEOUT_MS,
+};
 pub use cli::{CliArgs, Commands};
 use config::{
-    load_and_resolve_config, load_or_default_config_file, merge_into_profile_config,
-    save_profile_config, EffectiveConfig, ProfileConfig,
+    format_millis_to_duration_string, load_and_resolve_config, load_or_default_config_file,
+    merge_into_profile_config, save_profile_config, EffectiveConfig, ProfileConfig,
 };
 use console_display::{display_console, get_terminal_width, Theme};
 use forwarder::{parse_otlp_headers_from_vec, send_batch};
 use live_tail_adapter::start_live_tail_task;
 use poller::start_polling_task;
 use processing::{SpanCompactionConfig, TelemetryData};
-
-// Constants for trace buffering timeouts
-const IDLE_TIMEOUT: Duration = Duration::from_millis(500); // Time to wait after root is seen
 
 // Structure to hold state for traces being buffered
 #[derive(Debug)]
@@ -75,12 +76,9 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
     // Check if list-themes was specified
     if args.list_themes {
         println!("\nAvailable themes:");
-        println!("  * default - OpenTelemetry-inspired blue-purple palette");
-        println!("  * tableau - Tableau 12 color palette with distinct hues");
-        println!("  * colorbrewer - ColorBrewer Set3 palette (pastel colors)");
-        println!("  * material - Material Design palette with bright, modern colors");
-        println!("  * solarized - Solarized color scheme with muted tones");
-        println!("  * monochrome - Grayscale palette for minimal distraction");
+        for theme_info in AVAILABLE_THEMES_INFO {
+            println!("  * {} - {}", theme_info.name, theme_info.description);
+        }
         println!("\nUsage: livetrace --theme <THEME>");
         return Ok(());
     }
@@ -117,14 +115,20 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
             aws_profile: args.aws_profile.clone(),
             forward_only: args.forward_only,
             attrs: args.attrs.clone(),
-            event_severity_attribute: args.event_severity_attribute.clone(),
+            event_severity_attribute: args
+                .event_severity_attribute
+                .clone()
+                .unwrap_or_else(|| DEFAULT_EVENT_SEVERITY_ATTRIBUTE.to_string()),
             poll_interval: args.poll_interval,
-            session_timeout: args.session_timeout,
+            session_timeout: args.session_timeout.unwrap_or(DEFAULT_SESSION_TIMEOUT_MS),
             verbose: args.verbose,
-            theme: args.theme.clone(),
-            color_by: args.color_by,
-            events_only: args.events_only,
-            trace_timeout: args.trace_timeout,
+            theme: args.theme.unwrap_or(Theme::Default),
+            color_by: args.color_by.unwrap_or(DEFAULT_COLOR_BY),
+            events_only: args.events_only.unwrap_or(DEFAULT_EVENTS_ONLY),
+            trace_timeout: args.trace_timeout.unwrap_or(DEFAULT_TRACE_TIMEOUT_MS),
+            trace_stragglers_wait: args
+                .trace_stragglers_wait
+                .unwrap_or(DEFAULT_TRACE_STRAGGLERS_WAIT_MS),
             grep: args.grep.clone(),
             backtrace: args.backtrace,
         }
@@ -229,9 +233,10 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
 
     // Setup HTTP Client & Parse Resolved OTLP Headers
     let http_client = ReqwestClient::builder()
+        .timeout(Duration::from_secs(30))
         .build()
         .context("Failed to build Reqwest client")?;
-    tracing::debug!("Reqwest HTTP client created.");
+    tracing::debug!("Reqwest HTTP client created with 30s timeout.");
     let otlp_header_map = parse_otlp_headers_from_vec(&resolved_headers_vec)?;
     let compaction_config = SpanCompactionConfig::default();
 
@@ -271,7 +276,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         println!(
             "  {:<18}: {} minutes",
             "Session Timeout".dimmed(),
-            config.session_timeout
+            config.session_timeout / 1000 // Display as seconds for readability
         );
     }
     println!(
@@ -291,7 +296,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
             resolved_headers_vec.len()
         );
     }
-    println!("  {:<18}: {}", "Theme".dimmed(), config.theme);
+    println!("  {:<18}: {:?}", "Theme".dimmed(), config.theme);
     println!(
         "  {:<18}: {}",
         "Color By".dimmed(),
@@ -318,7 +323,12 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
     println!(
         "  {:<18}: {} seconds",
         "Trace Timeout".dimmed(),
-        config.trace_timeout
+        config.trace_timeout / 1000 // Display as seconds for readability
+    );
+    println!(
+        "  {:<18}: {}",
+        "Stragglers Wait".dimmed(), // New preamble line
+        format_millis_to_duration_string(config.trace_stragglers_wait)  // Use formatter
     );
     if let Some(profile) = &args.config_profile {
         // Use args here as config doesn't store it
@@ -356,6 +366,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
 
     // Create MPSC Channel and Spawn Event Source Task
     let (tx, mut rx) = mpsc::channel::<Result<TelemetryData>>(100);
+    let task_tx = tx.clone(); // Clone the sender for the task that will produce events
 
     if let Some(interval_secs) = config.poll_interval {
         tracing::debug!(
@@ -366,24 +377,26 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         start_polling_task(
             cwl_client,
             resolved_log_group_arns,
-            interval_secs,
-            tx.clone(), // Clone tx for poller
+            config
+                .poll_interval
+                .expect("Poll interval must be Some if poll_interval is configured, this is a bug"),
+            task_tx,
             config.backtrace,
-            grep_regex_arc.clone(),
+            config.session_timeout,
         );
     } else {
         tracing::debug!(
-            timeout_minutes = config.session_timeout,
+            timeout_millis = config.session_timeout,
             "Using StartLiveTail streaming mode with timeout."
         );
         start_live_tail_task(
             cwl_client,
             resolved_log_group_arns,
-            tx.clone(), // Clone tx for live tail
+            task_tx,
             config.session_timeout,
-            grep_regex_arc.clone(),
         );
     }
+    drop(tx); // Drop the original sender from run_livetrace, leaving only the task's sender active
 
     // Main Event Processing Loop
     tracing::debug!("Waiting for telemetry events...");
@@ -467,8 +480,8 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
                     let time_since_last = now.duration_since(state.last_message_received_at);
                     let time_since_first = now.duration_since(state.first_message_received_at);
                     let should_flush =
-                        (state.has_received_root && time_since_last > IDLE_TIMEOUT)
-                        || (time_since_first > Duration::from_secs(config.trace_timeout));
+                        (state.has_received_root && time_since_last > Duration::from_millis(config.trace_stragglers_wait)) // Use new config value
+                        || (time_since_first > Duration::from_millis(config.trace_timeout));
                     if should_flush {
                         trace_ids_to_flush.push(trace_id.clone());
                     }
@@ -499,7 +512,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
                                 &payloads_to_process,
                                 &attr_globs,
                                 &config.event_severity_attribute,
-                                config.theme.parse::<Theme>().unwrap_or(Theme::Default),
+                                config.theme,
                                 config.color_by,
                                 config.events_only,
                                 root_seen,
@@ -533,5 +546,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         }
     }
     spinner.finish_and_clear();
+
+    // Wait for any outstanding send_batch tasks to complete
     Ok(())
 }

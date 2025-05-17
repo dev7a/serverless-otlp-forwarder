@@ -14,10 +14,8 @@ use anyhow::{anyhow, Context, Result};
 use base64::{engine::general_purpose, Engine};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
-use opentelemetry_proto::tonic::common::v1::any_value::Value as OTLPValue;
 use otlp_stdout_span_exporter::ExporterOutput;
 use prost::Message;
-use regex::Regex;
 use reqwest::header::HeaderMap;
 use reqwest::Client as ReqwestClient;
 use reqwest::Url;
@@ -45,99 +43,9 @@ impl Default for SpanCompactionConfig {
     }
 }
 
-fn otlp_any_value_to_string_for_grep(
-    av: &opentelemetry_proto::tonic::common::v1::AnyValue,
-) -> String {
-    // This function should be comprehensive for all types to ensure effective grep.
-    // It might differ from a display-oriented formatter.
-    if let Some(ref val_type) = av.value {
-        match val_type {
-            OTLPValue::StringValue(s) => s.clone(),
-            OTLPValue::BoolValue(b) => b.to_string(),
-            OTLPValue::IntValue(i) => i.to_string(),
-            OTLPValue::DoubleValue(d) => d.to_string(),
-            OTLPValue::ArrayValue(arr) => {
-                // For arrays, concatenate string representations of elements
-                arr.values
-                    .iter()
-                    .map(otlp_any_value_to_string_for_grep)
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            }
-            OTLPValue::KvlistValue(kv_list) => {
-                // For KV lists, format as "key1:value1, key2:value2"
-                kv_list
-                    .values
-                    .iter()
-                    .map(|kv| {
-                        format!(
-                            "{}:{}",
-                            kv.key,
-                            otlp_any_value_to_string_for_grep(
-                                &kv.value.clone().unwrap_or_default()
-                            )
-                        )
-                    })
-                    .collect::<Vec<String>>()
-                    .join(", ")
-            }
-            OTLPValue::BytesValue(b) => format!("bytes_len:{}", b.len()), // Or hex/base64, but length might be enough for grep
-                                                                          // The _ pattern is unreachable because all variants of OTLPValue are covered above.
-                                                                          // If new variants are added to OTLPValue in the future, this match would need to be updated.
-        }
-    } else {
-        String::new()
-    }
-}
-
-fn check_attributes_match(
-    kvs: &[opentelemetry_proto::tonic::common::v1::KeyValue],
-    grep_regex: &Regex,
-) -> bool {
-    kvs.iter().any(|kv| {
-        // Grep should match on attribute *values*
-        if let Some(ref value) = kv.value {
-            let value_str = otlp_any_value_to_string_for_grep(value);
-            if grep_regex.is_match(&value_str) {
-                return true;
-            }
-        }
-        // Optionally, match on keys as well:
-        // if grep_regex.is_match(&kv.key) {
-        //     return true;
-        // }
-        false
-    })
-}
-
-fn check_request_attributes_match(request: &ExportTraceServiceRequest, grep_regex: &Regex) -> bool {
-    for rs in &request.resource_spans {
-        if let Some(ref resource) = rs.resource {
-            if check_attributes_match(&resource.attributes, grep_regex) {
-                return true;
-            }
-        }
-        for ss in &rs.scope_spans {
-            for span in &ss.spans {
-                if check_attributes_match(&span.attributes, grep_regex) {
-                    return true;
-                }
-                for event in &span.events {
-                    if check_attributes_match(&event.attributes, grep_regex) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-    false
-}
-
 /// Processes a single CloudWatch Live Tail log event message string.
-pub fn process_log_event_message(
-    message: &str,
-    grep_regex: Option<&Regex>,
-) -> Result<Option<TelemetryData>> {
+pub fn process_log_event_message(message: &str) -> Result<Option<TelemetryData>> {
+    // grep_regex parameter removed
     tracing::trace!(message, "Processing log event message");
     let record: ExporterOutput = match serde_json::from_str::<ExporterOutput>(message) {
         Ok(output) => {
@@ -173,24 +81,6 @@ pub fn process_log_event_message(
         Some(&record.content_encoding),
     )
     .context("Failed to convert payload to protobuf")?;
-
-    if let Some(re) = grep_regex {
-        match ExportTraceServiceRequest::decode(protobuf_payload.as_slice()) {
-            Ok(request) => {
-                if !check_request_attributes_match(&request, re) {
-                    tracing::trace!(
-                        "Log message's telemetry data did not match grep regex, skipping."
-                    );
-                    return Ok(None); // Discard if no attribute matches
-                }
-                // If it matches, proceed to return Some(TelemetryData)
-            }
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to decode protobuf payload for grep checking, skipping.");
-                return Ok(None);
-            }
-        }
-    }
 
     Ok(Some(TelemetryData {
         payload: protobuf_payload,
@@ -455,7 +345,7 @@ mod tests {
 
         let json_message = serde_json::to_string(&exporter_output).unwrap();
 
-        let result = process_log_event_message(&json_message, None); // Added None for grep_regex
+        let result = process_log_event_message(&json_message); // grep_regex argument removed
         assert!(result.is_ok());
         let result = result.unwrap();
 
@@ -574,7 +464,7 @@ mod tests {
     #[test]
     fn test_process_log_event_message_invalid_json() {
         let invalid_json_message = "{ not json \"";
-        let result = process_log_event_message(invalid_json_message, None); // Added None
+        let result = process_log_event_message(invalid_json_message); // grep_regex argument removed
         assert!(result.is_ok());
         assert!(result.unwrap().is_none()); // Expect Ok(None) for parsing errors
     }
@@ -599,7 +489,7 @@ mod tests {
         let json_message = serde_json::to_string(&exporter_output).unwrap();
 
         // Expect an Err result because base64 decoding fails
-        let result = process_log_event_message(&json_message, None); // Added None
+        let result = process_log_event_message(&json_message); // grep_regex argument removed
         assert!(result.is_err());
         // Optionally check the error message content
         assert!(result
@@ -629,7 +519,7 @@ mod tests {
         let json_message = serde_json::to_string(&exporter_output).unwrap();
 
         // Expect an Err result because gzip decoding fails
-        let result = process_log_event_message(&json_message, None); // Added None
+        let result = process_log_event_message(&json_message); // grep_regex argument removed
         assert!(result.is_err()); // Just check that it errors, context might be less specific
                                   // assert!(result.unwrap_err().to_string().contains("Failed to decompress Gzip payload")); // Removed specific context check
     }

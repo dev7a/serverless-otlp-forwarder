@@ -11,8 +11,6 @@
 
 use anyhow::Result;
 use aws_sdk_cloudwatchlogs::{types::StartLiveTailResponseStream, Client as CwlClient};
-use regex::Regex;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::pin;
 use tokio::sync::mpsc;
@@ -25,8 +23,7 @@ pub fn start_live_tail_task(
     cwl_client: CwlClient,
     arns: Vec<String>,
     sender: mpsc::Sender<Result<TelemetryData>>,
-    timeout_minutes: u64,
-    grep_regex: Option<Arc<Regex>>,
+    timeout_millis: u64,
 ) {
     tokio::spawn(async move {
         tracing::debug!("Live Tail Adapter: Attempting to start Live Tail stream...");
@@ -56,11 +53,14 @@ pub fn start_live_tail_task(
         };
 
         // Setup timeout
-        let timeout_duration = Duration::from_secs(timeout_minutes * 60);
+        let timeout_duration = Duration::from_millis(timeout_millis);
         let timeout_sleep = sleep(timeout_duration);
         pin!(timeout_sleep);
 
-        tracing::debug!(timeout = ?timeout_duration, "Live Tail Adapter: Waiting for stream events with timeout...");
+        tracing::debug!(
+            timeout_ms = timeout_millis,
+            "Live Tail Adapter: Waiting for stream events with timeout..."
+        );
         loop {
             tokio::select! {
                 // Branch for receiving stream events
@@ -80,7 +80,7 @@ pub fn start_live_tail_task(
                                     tracing::trace!("Live Tail Adapter: Received update with {} log events.", log_events.len());
                                     for log_event in log_events {
                                         if let Some(msg) = log_event.message() {
-                                            match process_log_event_message(msg, grep_regex.as_deref()) {
+                                            match process_log_event_message(msg) {
                                                 Ok(Some(telemetry)) => {
                                                     if sender.send(Ok(telemetry)).await.is_err() {
                                                         tracing::warn!("Live Tail Adapter: MPSC channel closed by receiver while sending data.");
@@ -114,7 +114,7 @@ pub fn start_live_tail_task(
                 }
                 // Branch for timeout
                 _ = &mut timeout_sleep => {
-                    tracing::info!(timeout_minutes, "Live Tail Adapter: Session timeout reached. Stopping stream task.");
+                    tracing::info!(timeout_ms = timeout_millis, "Live Tail Adapter: Session timeout reached. Stopping stream task.");
                     break; // Exit loop, task will finish
                 }
             }

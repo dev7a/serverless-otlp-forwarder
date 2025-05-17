@@ -2,6 +2,30 @@
 
 `livetrace` is a command-line tool designed to enhance local development workflows when working with distributed tracing in serverless environments using the [Serverless OTLP Forwarder Architecture](https://dev7a.github.io/serverless-otlp-forwarder/architecture/).
 
+## Table of Contents
+
+*   [Overview](#overview)
+*   [Features](#features)
+*   [Installation](#installation)
+    *   [Prerequisites](#prerequisites)
+    *   [From Crates.io (Recommended)](#from-cratesio-recommended)
+    *   [From Source](#from-source)
+*   [Usage](#usage)
+    *   [Discovery Options](#discovery-options)
+    *   [Mode and Duration Control](#mode-and-duration-control)
+    *   [OTLP Forwarding](#otlp-forwarding)
+    *   [Console Display Options](#console-display-options)
+    *   [Other Options](#other-options)
+*   [Console Output](#console-output)
+*   [Configuration Profiles](#configuration-profiles)
+    *   [Saving a Profile](#saving-a-profile)
+    *   [Using a Profile](#using-a-profile)
+    *   [Configuration File Format](#configuration-file-format)
+*   [Shell Completions](#shell-completions)
+    *   [Installation Examples](#installation-examples)
+*   [Development](#development)
+*   [License](#license)
+
 ## Overview
 
 In the Serverless OTLP Forwarder architecture, Lambda functions (or other compute resources) emit OpenTelemetry (OTLP) trace data to standard output. This tool enables you to correlate and visualize complete traces—especially valuable during development. Because logs from different services involved in a single request may be distributed across multiple Log Groups, _livetrace_ can tail several log groups simultaneously and reconstruct traces spanning all participating services.
@@ -79,7 +103,7 @@ If you want to build from the latest source code or contribute to development:
 livetrace [OPTIONS]
 ```
 
-### Discovery Options (One or Both Required)
+### Discovery Options
 
 You must specify at least one of the following to identify the log groups. They can be used together:
 
@@ -101,29 +125,29 @@ You must specify at least one of the following to identify the log groups. They 
     livetrace --stack-name my-api-stack --log-group-pattern "/aws/lambda/auth-"
     ```
 
-### Mode Selection (Optional, Mutually Exclusive Group)
+### Mode and Duration Control
 
-You can specify *at most one* of the following:
-
-*   `--poll-interval <SECONDS>`: Use the `FilterLogEvents` API instead of `StartLiveTail`, polling every specified number of seconds.
+*   `--poll-interval <DURATION>`: Use the `FilterLogEvents` API instead of `StartLiveTail`, polling at the specified interval. Duration format requires a unit suffix (e.g., `10s`, `1500ms`, `1m`). Decimal values are not supported. If this option is not provided, Live Tail mode is used by default.
     ```bash
     # Poll every 15 seconds
-    livetrace --stack-name my-dev-stack --poll-interval 15
+    livetrace --stack-name my-dev-stack --poll-interval 15s
     ```
-*   `--backtrace <DURATION>`: (Polling mode only) Fetch logs starting from `<DURATION>` ago (e.g., `30s`, `5m`, `120` for 120 seconds) for the initial poll. Subsequent polls fetch new logs.
+*   `--backtrace <DURATION>`: (Polling mode only) Fetch logs starting from `<DURATION>` ago for the initial poll. Duration format requires a unit suffix (e.g., `30s`, `5m`, `2h`). Decimal values are not supported. Subsequent polls fetch new logs.
     ```bash
     # Poll, fetching initial logs from the last 2 minutes
-    livetrace --stack-name my-dev-stack --poll-interval 15 --backtrace 2m
+    livetrace --stack-name my-dev-stack --poll-interval 15s --backtrace 2m
     ```
-*   `--session-timeout <MINUTES>`: (Default: 30) Automatically exit after the specified number of minutes. **Only applicable in Live Tail mode (when `--poll-interval` is *not* used).**
+*   `--session-timeout <DURATION>`: (Default: `30m`) Automatically exit after the specified duration. Applies to both Live Tail mode and Polling mode. Duration format requires a unit suffix (e.g., `30m`, `1h`, `900s`). Decimal values are not supported.
     ```bash
     # Use Live Tail, but exit after 60 minutes
-    livetrace --pattern "my-service-" --session-timeout 60
+    livetrace --pattern "my-service-" --session-timeout 60m
+    # Poll every 10 seconds, but exit after 5 minutes total
+    livetrace --stack-name my-app --poll-interval 10s --session-timeout 5m
     ```
 [!NOTE]
 > Live Tail mode is the default, but it's not free, at 1c/minute. For long sessions, it's probably better to use the `FilterLogEvents` API with a polling interval.
 
-### OTLP Forwarding (Optional)
+### OTLP Forwarding
 
 Configure forwarding to send traces to another OTLP receiver:
 
@@ -151,21 +175,25 @@ export OTEL_EXPORTER_OTLP_HEADERS="x-api-key=secret123,x-tenant-id=abc"
 livetrace --stack-name my-stack
 ```
 
-### Console Display Options (Optional)
+### Console Display Options
 
 Control the appearance of the console output:
 
 *   `--theme <THEME>`: Select a color theme (e.g., `default`, `tableau`, `monochrome`). Default is `default`.
 *   `--list-themes`: List all available color themes with descriptions and exit.
 *   `--attrs <GLOB_LIST>`: Comma-separated list of glob patterns (e.g., `"http.*,db.statement,my.custom.*"`) to filter which attributes are displayed. Applied to both span attributes and event attributes. If omitted, all attributes are shown.
-*   `--grep <REGEX>`: Filter spans and events displayed in the console. Only telemetry where at least one attribute *value* matches the provided Rust-compatible regular expression will be shown. Matching text within attribute values will be highlighted (yellow background) in the timeline log.
+*   `--grep <REGEX>`: Filter entries in the **Timeline Log**. Only SpanStart and Event entries where at least one attribute *value* (including parent span attributes for events) matches the provided Rust-compatible regular expression will be shown. Matching text within attribute values will be highlighted (yellow background). This filter does not affect the waterfall span display.
     ```bash
-    # Show only telemetry where an attribute value contains "error" or "failure"
+    # Show only timeline log entries where an attribute value contains "error" or "failure"
     livetrace --pattern "my-app" --grep "error|failure"
     ```
+*   `--color-by <MODE>`: Specify how spans are colored in the waterfall and timeline views.
+    *   `service`: Color by service name.
+    *   `span`: Color by span ID. (Default: `span`)
 *   `--event-severity-attribute <ATTRIBUTE_NAME>`: (Default: `event.severity`) Specify the event attribute key used to determine the severity level for coloring event output.
-*   `--events-only`: Only display events in the timeline log, hiding span start information.
-*   `--trace-timeout <SECONDS>`: (Default: 5) Maximum time in seconds to wait for spans belonging to a trace before displaying/forwarding it, even if the root span hasn't been received.
+*   `--events-only [true|false]`: Controls visibility of span start entries in the timeline log. By default (`true`), only events are shown. Use `--events-only=false` to include span start information. Providing the flag without a value (e.g., `--events-only`) implies `true`.
+*   `--trace-timeout <DURATION>`: (Default: `5s`) Maximum time to wait for spans belonging to a trace before displaying/forwarding it. Duration format requires a unit suffix (e.g., `5s`, `500ms`, `1m`). Decimal values are not supported.
+*   `--trace-stragglers-wait <DURATION>`: (Default: `500ms`) Time to wait for late-arriving (straggler) spans after the last observed activity on a trace (if its root span has been received) before flushing. Useful for collecting additional spans that might arrive slightly out of order. Duration format requires a unit suffix (e.g., `500ms`, `1s`). Decimal values are not supported.
 
 ### Other Options
 

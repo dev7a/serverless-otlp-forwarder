@@ -14,8 +14,8 @@ use anyhow::Result;
 use chrono::{TimeZone, Utc};
 use colored::*;
 use comfy_table::{
-    presets, Attribute, Cell, CellAlignment, ColumnConstraint, ContentArrangement, Table,
-    TableComponent, Width::Fixed,
+    presets, Attribute, Cell, CellAlignment, Color as TableColor, ColumnConstraint,
+    ContentArrangement, Table, TableComponent, Width::Fixed,
 };
 use globset::GlobSet;
 use opentelemetry_proto::tonic::{
@@ -26,23 +26,23 @@ use opentelemetry_proto::tonic::{
 use prost::Message;
 use regex::Regex;
 use std::collections::HashMap;
-use std::str::FromStr;
 use terminal_size::{self, Height, Width};
+
+// Add clap::ValueEnum and serde imports
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
 
 // Constants
 const SERVICE_NAME_WIDTH: usize = 25;
 const SPAN_NAME_WIDTH: usize = 40;
-const SPAN_ID_WIDTH: usize = 10;
+const SPAN_ID_WIDTH: usize = 12;
 const SPAN_KIND_WIDTH: usize = 10; // Width for the Span Kind column
-const STATUS_WIDTH: usize = 8; // Width for the Status column
+const STATUS_WIDTH: usize = 7; // Width for the Status column
 const DURATION_WIDTH: usize = 13; // Width for the Duration column
-
-// Define a bright red color for errors
-const ERROR_COLOR: (u8, u8, u8) = (255, 0, 0); // Bright red
 
 // Define all color palettes
 // Default color palette
-const SERVICE_COLORS: [(u8, u8, u8); 12] = [
+const DEFAULT_COLORS: [(u8, u8, u8); 12] = [
     (46, 134, 193), // Blue
     (142, 68, 173), // Purple
     (39, 174, 96),  // Green
@@ -62,7 +62,7 @@ const TABLEAU_12: [(u8, u8, u8); 12] = [
     (31, 119, 180),  // Blue
     (255, 127, 14),  // Orange
     (44, 160, 44),   // Green
-    (214, 39, 40),   // Red
+    (100, 100, 100), // Medium Gray (Replacement for Red)
     (148, 103, 189), // Purple
     (140, 86, 75),   // Brown
     (227, 119, 194), // Pink
@@ -89,18 +89,18 @@ const COLORBREWER_SET3_12: [(u8, u8, u8); 12] = [
 ];
 
 const MATERIAL_12: [(u8, u8, u8); 12] = [
-    (244, 67, 54),  // Red
-    (233, 30, 99),  // Pink
-    (156, 39, 176), // Purple
-    (103, 58, 183), // Deep Purple
-    (63, 81, 181),  // Indigo
-    (33, 150, 243), // Blue
-    (0, 188, 212),  // Cyan
-    (0, 150, 136),  // Teal
-    (76, 175, 80),  // Green
-    (205, 220, 57), // Lime
-    (255, 152, 0),  // Orange
-    (121, 85, 72),  // Brown
+    (100, 180, 100), // Muted Green (Replacement for Red)
+    (180, 100, 180), // Muted Purple (Replacement for Pink)
+    (156, 39, 176),  // Purple
+    (103, 58, 183),  // Deep Purple
+    (63, 81, 181),   // Indigo
+    (33, 150, 243),  // Blue
+    (0, 188, 212),   // Cyan
+    (0, 150, 136),   // Teal
+    (76, 175, 80),   // Green
+    (205, 220, 57),  // Lime
+    (255, 152, 0),   // Orange
+    (121, 85, 72),   // Brown
 ];
 
 const SOLARIZED_12: [(u8, u8, u8); 12] = [
@@ -109,7 +109,7 @@ const SOLARIZED_12: [(u8, u8, u8); 12] = [
     (42, 161, 152),  // Cyan
     (133, 153, 0),   // Green
     (203, 75, 22),   // Orange
-    (220, 50, 47),   // Red
+    (100, 100, 180), // Muted Blue (Replacement for Red)
     (181, 137, 0),   // Yellow
     (108, 113, 196), // Violet
     (147, 161, 161), // Base1 (Gray)
@@ -134,8 +134,10 @@ const MONOCHROME_12: [(u8, u8, u8); 12] = [
 ];
 
 // Theme enum to represent all available themes
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
 pub enum Theme {
+    #[default] // Default for the enum
     Default,
     Tableau,
     ColorBrewer,
@@ -144,29 +146,27 @@ pub enum Theme {
     Monochrome,
 }
 
-impl FromStr for Theme {
-    type Err = String; // Define an error type for parsing
-
-    // Parse a theme name string to an enum value
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "default" => Ok(Theme::Default),
-            "tableau" => Ok(Theme::Tableau),
-            "colorbrewer" => Ok(Theme::ColorBrewer),
-            "material" => Ok(Theme::Material),
-            "solarized" => Ok(Theme::Solarized),
-            "monochrome" => Ok(Theme::Monochrome),
-            _ => Err(format!("Invalid theme name: {}", s)),
-        }
-    }
-}
-
 // Keep the original methods for Theme, but from_str is now part of FromStr
 impl Theme {
+    // FNV-1a constants (32-bit)
+    const FNV_OFFSET_BASIS: usize = 2166136261;
+    const FNV_PRIME: usize = 16777619;
+
+    // Helper function for FNV-1a hashing
+    fn fnv1a_hash_str(input: &str) -> usize {
+        let mut hash = Self::FNV_OFFSET_BASIS;
+        for byte in input.as_bytes() {
+            // Process bytes for better distribution
+            hash ^= *byte as usize;
+            hash = hash.wrapping_mul(Self::FNV_PRIME);
+        }
+        hash
+    }
+
     // Get the color palette for the theme
     pub fn get_palette(&self) -> &'static [(u8, u8, u8); 12] {
         match self {
-            Theme::Default => &SERVICE_COLORS,
+            Theme::Default => &DEFAULT_COLORS,
             Theme::Tableau => &TABLEAU_12,
             Theme::ColorBrewer => &COLORBREWER_SET3_12,
             Theme::Material => &MATERIAL_12,
@@ -177,28 +177,16 @@ impl Theme {
 
     // Get a color for a service based on its name hash
     pub fn get_color_for_service(&self, service_name: &str) -> (u8, u8, u8) {
-        let service_hash = service_name.chars().fold(0, |acc, c| acc + (c as usize));
+        let service_hash = Self::fnv1a_hash_str(service_name);
         let palette = self.get_palette();
         palette[service_hash % palette.len()]
     }
 
     // Get a color for a span based on its ID hash
     pub fn get_color_for_span(&self, span_id: &str) -> (u8, u8, u8) {
-        // Use a different hashing approach for span IDs to avoid collisions with service names
-        let mut span_hash: usize = 5381; // Initial prime
-        for c in span_id.chars() {
-            span_hash = span_hash.wrapping_add(c as usize).wrapping_mul(33); // Basic multiplicative hash
-        }
+        let span_hash = Self::fnv1a_hash_str(span_id);
         let palette = self.get_palette();
         palette[span_hash % palette.len()]
-    }
-
-    // Helper method to check if a theme name is valid
-    pub fn is_valid_theme(theme_name: &str) -> bool {
-        matches!(
-            theme_name.to_lowercase().as_str(),
-            "default" | "tableau" | "colorbrewer" | "material" | "solarized" | "monochrome"
-        )
     }
 }
 
@@ -231,7 +219,6 @@ struct TimelineItem {
     span_id: String,
     name: String,              // Span Name or Event Name
     level_or_status: String,   // Formatted Level (e.g., INFO) or Status (e.g., OK)
-    is_error: bool,            // To help color span ID for SpanStart items
     attributes: Vec<KeyValue>, // Filtered attributes for the specific item
     // Optional: Store parent span attributes separately *only* for events
     parent_span_attributes: Option<Vec<KeyValue>>,
@@ -317,51 +304,85 @@ fn generate_timeline_scale(trace_duration_ns: u64, timeline_width: usize) -> Str
     buffer.into_iter().collect()
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn display_console(
-    batch: &[TelemetryData],
-    attr_globs: &Option<GlobSet>,
-    event_severity_attribute_name: &str,
-    theme: Theme,
-    color_by: ColoringMode,
-    events_only: bool,
-    root_span_received: bool, // New parameter to indicate if the root span was found
-    grep_regex: Option<&Regex>,
-) -> Result<()> {
-    // Debug logging with theme and coloring mode
-    tracing::debug!("Display console called with theme={:?}, color_by={:?}, events_only={}, root_span_received={}, has_grep_regex={}", 
-                  theme, color_by, events_only, root_span_received, grep_regex.is_some());
+// Helper function to convert AnyValue to a comprehensive string for grep matching
+fn get_string_value_for_grep(value_opt: &Option<AnyValue>) -> String {
+    if let Some(any_value) = value_opt {
+        if let Some(ref val_type) = any_value.value {
+            return match val_type {
+                ProtoValue::StringValue(s) => s.clone(),
+                ProtoValue::BoolValue(b) => b.to_string(),
+                ProtoValue::IntValue(i) => i.to_string(),
+                ProtoValue::DoubleValue(d) => d.to_string(),
+                ProtoValue::ArrayValue(arr) => arr
+                    .values
+                    .iter()
+                    .map(|v_val| get_string_value_for_grep(&Some(v_val.clone()))) // Recurse for elements
+                    .collect::<Vec<String>>()
+                    .join(", "),
+                ProtoValue::KvlistValue(kv_list) => kv_list
+                    .values
+                    .iter()
+                    .map(|kv| format!("{}:{}", kv.key, get_string_value_for_grep(&kv.value)))
+                    .collect::<Vec<String>>()
+                    .join(", "),
+                ProtoValue::BytesValue(b) => format!("bytes_len:{}", b.len()),
+            };
+        }
+    }
+    String::new()
+}
 
+// --- Helper function to prepare trace data from a batch ---
+fn prepare_trace_data_from_batch(
+    batch: &[TelemetryData],
+) -> Result<HashMap<String, Vec<(Span, String)>>> {
+    // Initialize a vector to store tuples of (Span, ServiceName).
+    // This will be populated by decoding each TelemetryData item in the batch.
     let mut spans_with_service: Vec<(Span, String)> = Vec::new();
 
+    // Iterate over each TelemetryData item in the input batch.
     for item in batch {
+        // Attempt to decode the payload of the TelemetryData item into an ExportTraceServiceRequest.
+        // The payload is expected to be a protobuf message.
         match ExportTraceServiceRequest::decode(item.payload.as_slice()) {
             Ok(request) => {
+                // If decoding is successful, iterate over the resource_spans in the request.
                 for resource_span in request.resource_spans {
+                    // Find the service name from the resource attributes.
+                    // Defaults to "<unknown>" if "service.name" attribute is not found.
                     let service_name = find_service_name(
                         resource_span
                             .resource
                             .as_ref()
                             .map_or(&[], |r| &r.attributes),
                     );
+                    // Iterate over scope_spans within the current resource_span.
                     for scope_span in resource_span.scope_spans {
+                        // Iterate over individual spans within the current scope_span.
                         for span in scope_span.spans {
+                            // Add the cloned span and its associated service name to the spans_with_service vector.
                             spans_with_service.push((span.clone(), service_name.clone()));
                         }
                     }
                 }
             }
             Err(e) => {
+                // If decoding fails, log a warning and skip this item.
+                // Processing continues with the next item in the batch.
                 tracing::warn!(error = %e, "Failed to decode payload for console display, skipping item.");
-                // Continue processing other items in the batch if possible
             }
         }
     }
 
+    // If no spans were successfully decoded and collected, return an empty map or handle as an error if preferred.
+    // For now, an empty map means no traces to display further down.
     if spans_with_service.is_empty() {
-        return Ok(());
+        return Ok(HashMap::new());
     }
 
+    // Group spans by trace ID.
+    // A HashMap is used where keys are trace IDs (hex encoded strings) and
+    // values are vectors of (Span, ServiceName) tuples belonging to that trace.
     let mut traces: HashMap<String, Vec<(Span, String)>> = HashMap::new();
     for (span, service_name) in spans_with_service {
         let trace_id_hex = hex::encode(&span.trace_id);
@@ -370,11 +391,15 @@ pub fn display_console(
             .or_default()
             .push((span, service_name));
     }
+    Ok(traces)
+}
 
-    // Calculate approximate total table width for header ruling
-    const SPACING: usize = 6; // Approx spaces between 7 columns
+// --- Helper function to calculate console layout widths ---
+fn calculate_layout_widths(default_terminal_width: usize) -> (usize, usize, usize) {
+    // Define fixed widths for various columns in the waterfall display.
+    const SPACING: usize = 6; // Approximate number of spaces for padding between 7 columns.
 
-    // Calculate the fixed width excluding the timeline
+    // Calculate the total width occupied by columns with fixed sizes.
     let fixed_width_excluding_timeline = SERVICE_NAME_WIDTH
         + SPAN_NAME_WIDTH
         + SPAN_KIND_WIDTH
@@ -383,370 +408,527 @@ pub fn display_console(
         + STATUS_WIDTH
         + SPACING;
 
-    // Get terminal width and calculate dynamic timeline width
-    let terminal_width = get_terminal_width(120); // Use a larger default fallback
-                                                  // Ensure timeline width is at least some minimum (e.g., 10) or doesn't cause overflow
+    // Get the current terminal width, defaulting to `default_terminal_width` if it cannot be determined.
+    let terminal_width = get_terminal_width(default_terminal_width);
+    // Calculate the width available for the timeline visualization.
+    // It's the terminal width minus the fixed column widths, with a minimum of 10 characters.
     let calculated_timeline_width = terminal_width
         .saturating_sub(fixed_width_excluding_timeline)
         .max(10);
 
-    // Total width is now just the terminal width for header padding
-    let total_table_width = terminal_width;
+    (terminal_width, calculated_timeline_width, terminal_width)
+}
 
-    for (trace_id, spans_in_trace_with_service) in traces {
-        // 1. Define base and suffix
-        let base_heading = format!("Trace ID: {}", trace_id);
-        let suffix = if root_span_received {
-            ""
-        } else {
-            " (Missing Root)"
-        };
+// --- Helper function to print the trace header ---
+fn print_trace_header(trace_id: &str, root_span_received: bool, total_table_width: usize) {
+    // Construct the base heading for the trace.
+    let base_heading = format!("Trace ID: {}", trace_id);
+    // Add a suffix if the root span for this trace was not received.
+    let suffix = if root_span_received {
+        ""
+    } else {
+        " (Missing Root)"
+    };
 
-        // 2. Calculate total visible length
-        let visible_heading_len = base_heading.len() + suffix.len();
+    // Calculate the visible length of the heading (base + suffix).
+    let visible_heading_len = base_heading.len() + suffix.len();
 
-        // 3. Apply styling
-        let styled_heading = format!("{}{}", base_heading.bold(), suffix.dimmed());
+    // Style the heading: bold for the base, dimmed for the suffix.
+    let styled_heading = format!("{}{}", base_heading.bold(), suffix.dimmed());
 
-        // 4. Calculate padding dashes needed
-        // Subtract heading length and 2 spaces (one before, one after heading)
-        let total_dash_len = total_table_width.saturating_sub(visible_heading_len + 2);
-        // Ensure at least one dash on each side if possible
-        let left_dashes = 1;
-        let right_dashes = total_dash_len.saturating_sub(left_dashes);
+    // Calculate the number of dashes needed for padding around the heading
+    // to make the header line span the `total_table_width`.
+    let total_dash_len = total_table_width.saturating_sub(visible_heading_len + 2); // +2 for spaces around heading
+    let left_dashes = 1; // At least one dash on the left.
+    let right_dashes = total_dash_len.saturating_sub(left_dashes);
 
-        // 5. Print the header
-        println!(
-            "\n{} {} {}\n\n",
-            "─".repeat(left_dashes).dimmed(),
-            styled_heading, // Already styled
-            "─".repeat(right_dashes).dimmed()
-        );
+    // Print the formatted trace header.
+    println!(
+        "\n{} {} {}\n\n",
+        "─".repeat(left_dashes).dimmed(),
+        styled_heading,
+        "─".repeat(right_dashes).dimmed()
+    );
+}
 
-        if spans_in_trace_with_service.is_empty() {
-            continue;
+// --- Helper function to collect and filter timeline items for a trace ---
+fn collect_and_filter_timeline_items_for_trace(
+    spans_in_trace_with_service: &[(Span, String)],
+    attr_globs: &Option<GlobSet>,
+    event_severity_attribute_name: &str,
+    events_only: bool,
+    grep_regex: Option<&Regex>,
+) -> Vec<TimelineItem> {
+    let mut timeline_items: Vec<TimelineItem> = Vec::new();
+
+    for (span, service_name) in spans_in_trace_with_service {
+        let span_id_hex = hex::encode(&span.span_id);
+        let status_code = span.status.as_ref().map_or(status::StatusCode::Unset, |s| {
+            status::StatusCode::try_from(s.code).unwrap_or(status::StatusCode::Unset)
+        });
+        let is_error = status_code == status::StatusCode::Error;
+
+        if !events_only {
+            let filtered_span_attrs: Vec<KeyValue> = match attr_globs {
+                Some(globs) => span
+                    .attributes
+                    .iter()
+                    .filter(|kv| globs.is_match(&kv.key))
+                    .cloned()
+                    .collect(),
+                None => span.attributes.clone(),
+            };
+
+            let span_start_item = TimelineItem {
+                timestamp_ns: span.start_time_unix_nano,
+                item_type: ItemType::SpanStart,
+                service_name: service_name.clone(),
+                span_id: span_id_hex.clone(),
+                name: span.name.clone(),
+                level_or_status: format_span_status(status_code),
+                attributes: filtered_span_attrs,
+                parent_span_attributes: None,
+            };
+
+            let mut include_item = true;
+            if let Some(re) = grep_regex {
+                include_item = false;
+                for attr in &span_start_item.attributes {
+                    let value_str = get_string_value_for_grep(&attr.value);
+                    if re.is_match(&value_str) {
+                        include_item = true;
+                        break;
+                    }
+                }
+            }
+            if include_item {
+                timeline_items.push(span_start_item);
+            }
         }
 
-        // Replace the trace_events and span_error_status with timeline_items
-        let mut timeline_items: Vec<TimelineItem> = Vec::new();
+        for event in &span.events {
+            let mut level = if is_error {
+                "ERROR".to_string()
+            } else {
+                "INFO".to_string()
+            };
 
-        for (span, service_name) in &spans_in_trace_with_service {
-            let span_id_hex = hex::encode(&span.span_id);
-            let status_code = span.status.as_ref().map_or(status::StatusCode::Unset, |s| {
-                status::StatusCode::try_from(s.code).unwrap_or(status::StatusCode::Unset)
-            });
-            let is_error = status_code == status::StatusCode::Error;
-
-            if !events_only {
-                // Only add span starts if not events_only mode
-                let filtered_span_attrs: Vec<KeyValue> = match attr_globs {
-                    Some(globs) => span
-                        .attributes
-                        .iter()
-                        .filter(|kv| globs.is_match(&kv.key))
-                        .cloned()
-                        .collect(),
-                    None => span.attributes.clone(), // Collect all if no globs
-                };
-
-                timeline_items.push(TimelineItem {
-                    timestamp_ns: span.start_time_unix_nano,
-                    item_type: ItemType::SpanStart,
-                    service_name: service_name.clone(),
-                    span_id: span_id_hex.clone(),
-                    name: span.name.clone(),
-                    level_or_status: format_span_status(status_code),
-                    is_error,
-                    attributes: filtered_span_attrs,
-                    parent_span_attributes: None, // Not applicable for SpanStart
-                });
+            for attr in &event.attributes {
+                if attr.key == event_severity_attribute_name {
+                    if let Some(val) = &attr.value {
+                        if let Some(ProtoValue::StringValue(s)) = &val.value {
+                            level = s.clone().to_uppercase();
+                            break;
+                        }
+                    }
+                }
             }
 
-            // Add events - similar to the existing events logic but store in timeline_items
-            for event in &span.events {
-                let mut level = if is_error {
-                    "ERROR".to_string()
-                } else {
-                    "INFO".to_string()
-                };
+            let filtered_event_attrs: Vec<KeyValue> = match attr_globs {
+                Some(globs) => event
+                    .attributes
+                    .iter()
+                    .filter(|kv| globs.is_match(&kv.key))
+                    .cloned()
+                    .collect(),
+                None => event.attributes.clone(),
+            };
+            let filtered_parent_span_attrs: Vec<KeyValue> = match attr_globs {
+                Some(globs) => span
+                    .attributes
+                    .iter()
+                    .filter(|kv| globs.is_match(&kv.key))
+                    .cloned()
+                    .collect(),
+                None => span.attributes.clone(),
+            };
 
-                for attr in &event.attributes {
-                    if attr.key == event_severity_attribute_name {
-                        if let Some(val) = &attr.value {
-                            if let Some(opentelemetry_proto::tonic::common::v1::any_value::Value::StringValue(s)) = &val.value {
-                                level = s.clone().to_uppercase();
+            let event_item = TimelineItem {
+                timestamp_ns: event.time_unix_nano,
+                item_type: ItemType::Event,
+                service_name: service_name.clone(),
+                span_id: span_id_hex.clone(),
+                name: event.name.clone(),
+                level_or_status: level,
+                attributes: filtered_event_attrs,
+                parent_span_attributes: Some(filtered_parent_span_attrs),
+            };
+
+            let mut include_event_item = true;
+            if let Some(re) = grep_regex {
+                include_event_item = false;
+                for attr in &event_item.attributes {
+                    let value_str = get_string_value_for_grep(&attr.value);
+                    if re.is_match(&value_str) {
+                        include_event_item = true;
+                        break;
+                    }
+                }
+                if !include_event_item {
+                    if let Some(parent_attrs_for_event) = &event_item.parent_span_attributes {
+                        for attr in parent_attrs_for_event {
+                            let value_str = get_string_value_for_grep(&attr.value);
+                            if re.is_match(&value_str) {
+                                include_event_item = true;
                                 break;
                             }
                         }
                     }
                 }
-
-                // Filter attributes based on globs
-                let filtered_event_attrs: Vec<KeyValue> = match attr_globs {
-                    Some(globs) => event
-                        .attributes
-                        .iter()
-                        .filter(|kv| globs.is_match(&kv.key))
-                        .cloned()
-                        .collect(),
-                    None => event.attributes.clone(),
-                };
-                let filtered_parent_span_attrs: Vec<KeyValue> = match attr_globs {
-                    Some(globs) => span
-                        .attributes
-                        .iter()
-                        .filter(|kv| globs.is_match(&kv.key))
-                        .cloned()
-                        .collect(),
-                    None => span.attributes.clone(),
-                };
-
-                timeline_items.push(TimelineItem {
-                    timestamp_ns: event.time_unix_nano,
-                    item_type: ItemType::Event,
-                    service_name: service_name.clone(),
-                    span_id: span_id_hex.clone(),
-                    name: event.name.clone(),
-                    level_or_status: level,
-                    is_error,
-                    attributes: filtered_event_attrs,
-                    parent_span_attributes: Some(filtered_parent_span_attrs),
-                });
             }
-        }
-
-        // Sort by timestamp
-        timeline_items.sort_by_key(|item| item.timestamp_ns);
-
-        let mut span_map: HashMap<String, Span> = HashMap::new();
-        let mut service_name_map: HashMap<String, String> = HashMap::new();
-        let mut parent_to_children_map: HashMap<String, Vec<String>> = HashMap::new();
-        let mut root_ids: Vec<String> = Vec::new();
-
-        for (span, service_name) in spans_in_trace_with_service {
-            let span_id_hex = hex::encode(&span.span_id);
-            span_map.insert(span_id_hex.clone(), span);
-            service_name_map.insert(span_id_hex.clone(), service_name);
-        }
-
-        for (span_id_hex, span) in &span_map {
-            let parent_id_hex = if span.parent_span_id.is_empty() {
-                None
-            } else {
-                Some(hex::encode(&span.parent_span_id))
-            };
-            match parent_id_hex {
-                Some(ref p_id) if span_map.contains_key(p_id) => {
-                    parent_to_children_map
-                        .entry(p_id.clone())
-                        .or_default()
-                        .push(span_id_hex.clone());
-                }
-                _ => {
-                    root_ids.push(span_id_hex.clone());
-                }
-            }
-        }
-
-        let mut roots: Vec<ConsoleSpan> = root_ids
-            .iter()
-            .map(|root_id| {
-                build_console_span(
-                    root_id,
-                    &span_map,
-                    &parent_to_children_map,
-                    &service_name_map,
-                )
-            })
-            .collect();
-        roots.sort_by_key(|s| s.start_time);
-
-        let min_start_time = roots.iter().map(|r| r.start_time).min().unwrap_or(0);
-        let max_end_time = span_map
-            .values()
-            .map(|s| s.end_time_unix_nano)
-            .max()
-            .unwrap_or(0);
-        let trace_duration_ns = max_end_time.saturating_sub(min_start_time);
-
-        let mut table = Table::new();
-        // Apply comfy-table preset and dynamic arrangement
-        table
-            .load_preset(presets::NOTHING)
-            .set_content_arrangement(ContentArrangement::DynamicFullWidth)
-            .set_width(total_table_width as u16)
-            .set_style(TableComponent::MiddleHeaderIntersections, '┴')
-            .set_style(TableComponent::BottomBorder, '─')
-            .set_style(TableComponent::BottomBorderIntersections, '─')
-            .set_style(TableComponent::HeaderLines, '─');
-
-        // Add table headers using comfy-table API with bold attribute
-        table.set_header(vec![
-            Cell::new("Service").add_attribute(Attribute::Bold),
-            Cell::new("Span Name").add_attribute(Attribute::Bold),
-            Cell::new("Kind").add_attribute(Attribute::Bold),
-            Cell::new("Duration (ms)").add_attribute(Attribute::Bold),
-            Cell::new("Span ID").add_attribute(Attribute::Bold),
-            Cell::new("Status").add_attribute(Attribute::Bold),
-            Cell::new("Timeline").add_attribute(Attribute::Bold),
-        ]);
-
-        // Define column widths for constraints
-        let column_widths: [(usize, u16); 6] = [
-            (0, SERVICE_NAME_WIDTH as u16),
-            (1, SPAN_NAME_WIDTH as u16),
-            (2, SPAN_KIND_WIDTH as u16),
-            (3, DURATION_WIDTH as u16),
-            (4, SPAN_ID_WIDTH as u16),
-            (5, STATUS_WIDTH as u16),
-        ];
-
-        // Apply constraints to fixed-width columns (0-5)
-        for (index, width) in &column_widths {
-            if let Some(column) = table.column_mut(*index) {
-                column.set_constraint(ColumnConstraint::UpperBoundary(Fixed(*width)));
-            }
-        }
-
-        // --- Add the timeline scale row ---
-        if trace_duration_ns > 0 {
-            let scale_content =
-                generate_timeline_scale(trace_duration_ns, calculated_timeline_width);
-            if !scale_content.trim().is_empty() {
-                // Add the scale row using comfy_table Cells
-                table.add_row(vec![
-                    Cell::new(""),            // Service
-                    Cell::new(""),            // Span Name
-                    Cell::new(""),            // Kind
-                    Cell::new(""),            // Duration (ms)
-                    Cell::new(""),            // Span ID
-                    Cell::new(""),            // Status
-                    Cell::new(scale_content), // Timeline scale content
-                ]);
-            }
-        }
-        // --- End timeline scale row ---
-
-        for root in roots {
-            add_span_to_table(
-                &mut table,
-                &root,
-                0,
-                min_start_time,
-                trace_duration_ns,
-                calculated_timeline_width,
-                theme,
-                &span_map,
-                color_by,
-            )?;
-        }
-
-        println!("{}", table);
-
-        if !timeline_items.is_empty() {
-            // Print Header
-            // let header_text = if events_only {
-            //     format!("Events for Trace: {}", trace_id)
-            // } else {
-            //     format!("Timeline Log for Trace: {}", trace_id)
-            // };
-            // let events_padding = total_table_width.saturating_sub(header_text.len() + 3);
-            // println!(
-            //     "\n{} {} {}",
-            //     "─".dimmed(),
-            //     header_text.bold(),
-            //     "─".repeat(events_padding)
-            // );
-
-            // Print each item
-            for item in timeline_items {
-                let timestamp = Utc.timestamp_nanos(item.timestamp_ns as i64);
-                let formatted_time = timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string();
-
-                // Get color for span ID prefix
-                let (prefix_r, prefix_g, prefix_b) = match color_by {
-                    ColoringMode::Service => theme.get_color_for_service(&item.service_name),
-                    ColoringMode::Span => theme.get_color_for_span(&item.span_id),
-                };
-
-                let span_id_prefix = item.span_id.chars().take(8).collect::<String>();
-
-                // Color span ID
-                let colored_span_id_prefix = if item.is_error {
-                    span_id_prefix
-                        .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
-                        .to_string()
-                } else {
-                    span_id_prefix
-                        .truecolor(prefix_r, prefix_g, prefix_b)
-                        .to_string()
-                };
-
-                // Type tag
-                let type_tag = match item.item_type {
-                    ItemType::SpanStart => "[SPAN]".to_string(),
-                    ItemType::Event => "[EVENT]".to_string(),
-                };
-
-                // Format and color level/status
-                let colored_level_status = match item.level_or_status.to_uppercase().as_str() {
-                    "ERROR" => item
-                        .level_or_status
-                        .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
-                        .bold(),
-                    "WARN" | "WARNING" => item.level_or_status.yellow().bold(),
-                    "OK" => item.level_or_status.green(), // For span status OK
-                    "UNSET" => item.level_or_status.dimmed(), // For span status UNSET
-                    _ => item.level_or_status.bright_black().bold(), // Default for INFO etc.
-                };
-                let level_status_tag = format!("[{}]", colored_level_status);
-
-                // Format attributes
-                let mut attrs_to_display: Vec<String> = Vec::new();
-
-                // Add the item's own attributes
-                for attr in &item.attributes {
-                    attrs_to_display.push(format_keyvalue(attr, grep_regex));
-                }
-
-                // If it's an Event, also add parent span attributes
-                if let Some(parent_attrs) = &item.parent_span_attributes {
-                    for attr in parent_attrs {
-                        // For parent attributes, we might not want to highlight them based on the event's grep match,
-                        // or we might. For simplicity now, format them without highlighting or pass grep_regex if needed.
-                        // Let's assume for now we only highlight direct attributes of the item that matched.
-                        let value_str = format_anyvalue(&attr.value);
-                        attrs_to_display.push(format!(
-                            "{}: {}",
-                            attr.key.bright_black(),
-                            value_str
-                        ));
-                    }
-                }
-
-                // Format the attrs suffix
-                let attrs_suffix = if !attrs_to_display.is_empty() {
-                    format!(" - {}", attrs_to_display.join(", "))
-                } else {
-                    String::new()
-                };
-
-                // Assemble and print the final line
-                println!(
-                    "{} {} [{}] {} {} {}{}",
-                    formatted_time.bright_black(),
-                    colored_span_id_prefix,
-                    item.service_name,
-                    type_tag,
-                    level_status_tag,
-                    item.name,
-                    attrs_suffix
-                );
+            if include_event_item {
+                timeline_items.push(event_item);
             }
         }
     }
 
+    timeline_items.sort_by_key(|item| item.timestamp_ns);
+    timeline_items
+}
+
+// --- Helper function to build waterfall hierarchy and gather metadata ---
+fn build_waterfall_hierarchy_and_meta(
+    spans_in_trace_with_service: &[(Span, String)],
+) -> (Vec<ConsoleSpan>, u64, u64, HashMap<String, Span>) {
+    // `span_map`: Maps span ID (hex string) to the `Span` object.
+    // `service_name_map`: Maps span ID (hex string) to its service name.
+    // `parent_to_children_map`: Maps parent span ID (hex string) to a list of its child span IDs.
+    // `root_ids`: A list of span IDs that are roots (have no parent or parent is not in this trace batch).
+    let mut span_map: HashMap<String, Span> = HashMap::new();
+    let mut service_name_map: HashMap<String, String> = HashMap::new();
+    let mut parent_to_children_map: HashMap<String, Vec<String>> = HashMap::new();
+    let mut root_ids: Vec<String> = Vec::new();
+
+    // Populate `span_map` and `service_name_map`.
+    for (span, service_name) in spans_in_trace_with_service {
+        let span_id_hex = hex::encode(&span.span_id);
+        // Clone span and service_name before inserting, as `spans_in_trace_with_service` is a slice of tuples.
+        span_map.insert(span_id_hex.clone(), span.clone());
+        service_name_map.insert(span_id_hex.clone(), service_name.clone());
+    }
+
+    // Populate `parent_to_children_map` and identify `root_ids`.
+    for (span_id_hex, span) in &span_map {
+        // Iterate over the populated span_map.
+        let parent_id_hex = if span.parent_span_id.is_empty() {
+            None
+        } else {
+            Some(hex::encode(&span.parent_span_id))
+        };
+        match parent_id_hex {
+            Some(ref p_id) if span_map.contains_key(p_id) => {
+                // If span has a parent and the parent is in our map, add it to children list.
+                parent_to_children_map
+                    .entry(p_id.clone())
+                    .or_default()
+                    .push(span_id_hex.clone());
+            }
+            _ => {
+                // Otherwise, it's a root span (or its parent is missing from this batch).
+                root_ids.push(span_id_hex.clone());
+            }
+        }
+    }
+
+    // Build `ConsoleSpan` structures (hierarchical representation for waterfall) from root spans.
+    let mut roots: Vec<ConsoleSpan> = root_ids
+        .iter()
+        .map(|root_id| {
+            build_console_span(
+                root_id,
+                &span_map,
+                &parent_to_children_map,
+                &service_name_map,
+            )
+        })
+        .collect();
+    // Sort root spans by their start time.
+    roots.sort_by_key(|s| s.start_time);
+
+    // Determine the overall start time and end time of the trace from all spans.
+    let min_start_time_ns = roots.iter().map(|r| r.start_time).min().unwrap_or(0);
+    let max_end_time_ns = span_map // Uses the span_map which contains all spans in this trace
+        .values()
+        .map(|s| s.end_time_unix_nano)
+        .max()
+        .unwrap_or(0);
+    // Calculate the total duration of the trace.
+    let trace_duration_ns = max_end_time_ns.saturating_sub(min_start_time_ns);
+
+    (roots, min_start_time_ns, trace_duration_ns, span_map)
+}
+
+// --- Helper function to render the waterfall table ---
+#[allow(clippy::too_many_arguments)]
+fn render_waterfall_table(
+    roots: &[ConsoleSpan],
+    min_start_time_ns: u64,
+    trace_duration_ns: u64,
+    calculated_timeline_width: usize,
+    total_table_width: usize, // For table.set_width()
+    theme: Theme,
+    color_by: ColoringMode,
+    span_map: &HashMap<String, Span>, // For add_span_to_table
+) -> Result<()> {
+    let mut table = Table::new();
+    table
+        .load_preset(presets::NOTHING)
+        .set_content_arrangement(ContentArrangement::DynamicFullWidth)
+        .set_width(total_table_width as u16)
+        .set_style(TableComponent::MiddleHeaderIntersections, '┴')
+        .set_style(TableComponent::BottomBorder, '─')
+        .set_style(TableComponent::BottomBorderIntersections, '─')
+        .set_style(TableComponent::HeaderLines, '─');
+
+    table.set_header(vec![
+        Cell::new("Service")
+            .add_attribute(Attribute::Bold)
+            .fg(comfy_table::Color::Rgb {
+                r: 128,
+                g: 255,
+                b: 128,
+            }),
+        Cell::new("Span Name").add_attribute(Attribute::Bold),
+        Cell::new("Kind").add_attribute(Attribute::Bold),
+        Cell::new("Duration (ms)").add_attribute(Attribute::Bold),
+        Cell::new("Span ID").add_attribute(Attribute::Bold),
+        Cell::new("Status").add_attribute(Attribute::Bold),
+        Cell::new("Timeline").add_attribute(Attribute::Bold),
+    ]);
+
+    let column_widths: [(usize, u16); 6] = [
+        (0, SERVICE_NAME_WIDTH as u16),
+        (1, SPAN_NAME_WIDTH as u16),
+        (2, SPAN_KIND_WIDTH as u16),
+        (3, DURATION_WIDTH as u16),
+        (4, SPAN_ID_WIDTH as u16),
+        (5, STATUS_WIDTH as u16),
+    ];
+
+    for (index, width) in &column_widths {
+        if let Some(column) = table.column_mut(*index) {
+            column.set_constraint(ColumnConstraint::UpperBoundary(Fixed(*width)));
+        }
+    }
+
+    if trace_duration_ns > 0 {
+        let scale_content = generate_timeline_scale(trace_duration_ns, calculated_timeline_width);
+        if !scale_content.trim().is_empty() {
+            table.add_row(vec![
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(""),
+                Cell::new(scale_content),
+            ]);
+        }
+    }
+
+    for root_span in roots {
+        // Changed variable name to avoid conflict with `roots` parameter in outer scope if this was inlined
+        add_span_to_table(
+            &mut table,
+            root_span,
+            0, // Initial depth
+            min_start_time_ns,
+            trace_duration_ns,
+            calculated_timeline_width,
+            theme,
+            span_map, // Pass the original `Span` map
+            color_by,
+        )?;
+    }
+
+    println!("{}", table);
     Ok(())
+}
+
+// --- Helper function to print the timeline log ---
+fn print_timeline_log(
+    timeline_items: &[TimelineItem],
+    color_by: ColoringMode,
+    theme: Theme,
+    grep_regex: Option<&Regex>,
+) {
+    if timeline_items.is_empty() {
+        return;
+    }
+
+    // First pass: determine maximum lengths for service_name and item.name
+    let mut max_service_name_len = 0;
+    let mut max_item_name_len = 0;
+
+    for item in timeline_items {
+        max_service_name_len = max_service_name_len.max(item.service_name.len());
+        max_item_name_len = max_item_name_len.max(item.name.len());
+    }
+
+    // Second pass: print timeline items with padding
+    for item in timeline_items {
+        // Iterate over the sorted `TimelineItem`s.
+        // Format timestamp into a readable string.
+        let timestamp = Utc.timestamp_nanos(item.timestamp_ns as i64);
+        let formatted_time = timestamp.format("%Y-%m-%dT%H:%M:%S%.6fZ").to_string();
+
+        // Get color for the span ID prefix based on `color_by` setting (service or span ID).
+        let (prefix_r, prefix_g, prefix_b) = match color_by {
+            ColoringMode::Service => theme.get_color_for_service(&item.service_name),
+            ColoringMode::Span => theme.get_color_for_span(&item.span_id),
+        };
+
+        // Take the first 8 characters of the span ID for display.
+        let span_id_prefix = item.span_id.chars().take(8).collect::<String>();
+
+        // Determine the type tag ("SPAN" or "EVENT").
+        let type_tag = match item.item_type {
+            ItemType::SpanStart => "SPAN".to_string(),
+            ItemType::Event => "EVENT".to_string(),
+        };
+
+        // --- Logic to get raw status/level text for consistent processing ---
+        let raw_text_for_status_or_level = if item.item_type == ItemType::SpanStart {
+            if item.level_or_status.contains("UNSET") {
+                "UNSET".to_string()
+            } else if item.level_or_status.contains("ERROR") {
+                "ERROR".to_string()
+            } else if item.level_or_status.contains("OK") {
+                "OK".to_string()
+            } else {
+                "STATUS?".to_string()
+            }
+        } else {
+            item.level_or_status.to_uppercase()
+        };
+
+        let text_to_format_and_color = format!("{} {:5}", type_tag, raw_text_for_status_or_level);
+
+        // --- Re-apply coloring for the actual output based on the raw status/level text ---
+        let level_status_colored = match raw_text_for_status_or_level.as_str() {
+            "ERROR" => text_to_format_and_color.red(),
+            "WARN" | "WARNING" => text_to_format_and_color.yellow(),
+            "INFO" | "OK" => text_to_format_and_color.green(),
+            "UNSET" => text_to_format_and_color.dimmed(),
+            _ => text_to_format_and_color.dimmed(),
+        };
+
+        let colored_span_id_for_print = span_id_prefix
+            .truecolor(prefix_r, prefix_g, prefix_b)
+            .to_string();
+
+        // Pad service_name and item.name to their respective maximum lengths for alignment
+        let service_name_padded = format!(
+            "{:<width$}",
+            item.service_name,
+            width = max_service_name_len
+        );
+        let item_name_padded = format!("{:<width$}", item.name, width = max_item_name_len);
+
+        let mut attrs_to_display: Vec<String> = Vec::new();
+        for attr in &item.attributes {
+            attrs_to_display.push(format_keyvalue(attr, grep_regex));
+        }
+        if let Some(parent_attrs) = &item.parent_span_attributes {
+            for attr in parent_attrs {
+                let value_str = format_anyvalue(&attr.value);
+                attrs_to_display.push(format!("{}: {}", attr.key.dimmed(), value_str));
+            }
+        }
+
+        let attrs_suffix = if !attrs_to_display.is_empty() {
+            format!(" - {}", attrs_to_display.join(", "))
+        } else {
+            String::new()
+        };
+
+        println!(
+            "{}  {:12} {} {} {} {}", // Adjusted for padded names and attrs_suffix structure
+            formatted_time.dimmed(),
+            level_status_colored,
+            colored_span_id_for_print,
+            service_name_padded, // Use padded service name
+            item_name_padded,    // Use padded item name
+            attrs_suffix         // attrs_suffix includes " - " or is empty
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn display_console(
+    batch: &[TelemetryData], // A collection of telemetry data items, each potentially containing multiple spans.
+    attr_globs: &Option<GlobSet>, // Optional set of glob patterns for filtering attributes to display.
+    event_severity_attribute_name: &str, // The attribute key used to determine event severity (e.g., "event.severity").
+    theme: Theme,                        // The color theme to use for console output.
+    color_by: ColoringMode,              // How to color items: by service name or by span ID.
+    events_only: bool, // If true, only events are shown in the timeline log (spans are hidden).
+    root_span_received: bool, // Indicates if the root span for the trace was found.
+    grep_regex: Option<&Regex>, // Optional regex for filtering timeline items by attribute values.
+) -> Result<()> {
+    // Debug logging with theme and coloring mode
+    tracing::debug!("Display console called with theme={:?}, color_by={:?}, events_only={}, root_span_received={}, has_grep_regex={}",
+                  theme, color_by, events_only, root_span_received, grep_regex.is_some());
+
+    // Prepare trace data: decode batch, extract spans, and group by trace ID.
+    let traces = prepare_trace_data_from_batch(batch)?;
+
+    // If no traces were found after preparation, exit early.
+    if traces.is_empty() {
+        tracing::debug!("No traces found in batch after preparation.");
+        return Ok(());
+    }
+
+    // Calculate console layout widths.
+    let (_terminal_width, calculated_timeline_width, total_table_width) =
+        calculate_layout_widths(120);
+
+    // Iterate over each trace collected in the `traces` HashMap.
+    // `trace_id` is the hex string of the trace ID.
+    // `spans_in_trace_with_service` is a vector of (Span, ServiceName) for this trace.
+    for (trace_id, spans_in_trace_with_service) in traces {
+        // ---- Print Trace Header ----
+        print_trace_header(&trace_id, root_span_received, total_table_width);
+
+        // If there are no spans in this particular trace (e.g., after filtering or if data was empty),
+        // skip to the next trace.
+        if spans_in_trace_with_service.is_empty() {
+            continue;
+        }
+
+        // Collect and filter timeline items (span starts and events) for the current trace.
+        let timeline_items = collect_and_filter_timeline_items_for_trace(
+            &spans_in_trace_with_service,
+            attr_globs,
+            event_severity_attribute_name,
+            events_only,
+            grep_regex,
+        );
+
+        // Build the waterfall hierarchy (ConsoleSpans) and get timing metadata.
+        let (roots, min_start_time_ns, trace_duration_ns, span_map) =
+            build_waterfall_hierarchy_and_meta(&spans_in_trace_with_service);
+
+        // Render and print the waterfall table.
+        render_waterfall_table(
+            &roots, // Pass roots as a slice
+            min_start_time_ns,
+            trace_duration_ns,
+            calculated_timeline_width,
+            total_table_width,
+            theme,
+            color_by,
+            &span_map,
+        )?;
+
+        // ---- Print Timeline Log ----
+        // If there are sorted timeline items (span starts or events), print them.
+        if !timeline_items.is_empty() {
+            print_timeline_log(&timeline_items, color_by, theme, grep_regex);
+        }
+    }
+    // End of loop for each trace.
+
+    Ok(()) // Indicate successful display.
 }
 
 // Private Helper Functions
@@ -839,19 +1021,17 @@ fn add_span_to_table(
         ColoringMode::Span => theme.get_color_for_span(&node.id),
     };
 
-    // --- Create Uncolored Cell Content ---
+    // --- Create Cell Content ---
     let service_name_content = node
         .service_name
         .chars()
         .take(SERVICE_NAME_WIDTH)
         .collect::<String>();
 
-    let span_name_width = SPAN_NAME_WIDTH.saturating_sub(indent.len());
-    let truncated_span_name = node.name.chars().take(span_name_width).collect::<String>();
-    let span_name_cell_content = format!("{} {}", indent, truncated_span_name);
-
-    let duration_ms = node.duration_ns as f64 / 1_000_000.0;
-    let duration_content = format!("{:.2}", duration_ms);
+    let span_name_cell_content = format!("{} {}", indent, node.name)
+        .chars()
+        .take(SPAN_NAME_WIDTH)
+        .collect::<String>();
 
     // Timeline bar remains colored
     let bar_cell_content = render_bar(
@@ -860,38 +1040,31 @@ fn add_span_to_table(
         trace_start_time_ns,
         trace_duration_ns,
         timeline_width,
-        (r, g, b), // Pass color to render_bar
     );
 
     // Get the actual span object for additional data
     let span_obj = span_map.get(&node.id);
 
-    // Format span kind (uncolored)
+    // Format span kind
     let kind_cell_content = span_obj
         .map_or("UNKNOWN".to_string(), |span| format_span_kind(span.kind))
         .chars()
         .take(SPAN_KIND_WIDTH)
         .collect::<String>();
 
-    let span_id_prefix = node.id.chars().take(8).collect::<String>();
-    let colored_span_id_str = if node.status_code == status::StatusCode::Error {
-        span_id_prefix
-            .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
-            .to_string()
-    } else {
-        span_id_prefix.truecolor(r, g, b).to_string()
-    };
+    let span_id_prefix = node.id.chars().take(SPAN_ID_WIDTH).collect::<String>();
 
     let status_content_str = format_span_status(node.status_code);
+    let formatted_duration = format!("{:.2}", node.duration_ns as f64 / 1_000_000.0);
 
     table.add_row(vec![
         Cell::new(service_name_content),
         Cell::new(span_name_cell_content),
         Cell::new(kind_cell_content),
-        Cell::new(duration_content).set_alignment(CellAlignment::Right), // Right-align duration
-        Cell::new(colored_span_id_str),
-        Cell::new(status_content_str),
-        Cell::new(bar_cell_content),
+        Cell::new(formatted_duration).set_alignment(CellAlignment::Right), // Right-align duration
+        Cell::new(span_id_prefix).fg(TableColor::Rgb { r, g, b }),
+        format_cell_level_color(&status_content_str),
+        Cell::new(bar_cell_content).fg(TableColor::Rgb { r, g, b }),
     ]);
 
     let mut children = node.children.clone();
@@ -920,7 +1093,6 @@ fn render_bar(
     trace_start_time_ns: u64,
     trace_duration_ns: u64,
     timeline_width: usize,
-    service_color: (u8, u8, u8),
 ) -> String {
     // If there's no duration, return empty space
     if trace_duration_ns == 0 {
@@ -945,9 +1117,7 @@ fn render_bar(
         }
     }
 
-    // Apply color to the entire bar string
-    let (r, g, b) = service_color;
-    bar_content.truecolor(r, g, b).to_string()
+    bar_content
 }
 
 fn format_span_kind(kind: i32) -> String {
@@ -974,10 +1144,10 @@ fn format_keyvalue(kv: &KeyValue, grep_regex: Option<&Regex>) -> String {
                 last_end = mat.end();
             }
             highlighted_value.push_str(&value_str[last_end..]);
-            return format!("{}: {}", kv.key.bright_black(), highlighted_value);
+            return format!("{}: {}", kv.key.dimmed(), highlighted_value);
         }
     }
-    format!("{}: {}", kv.key.bright_black(), value_str)
+    format!("{}: {}", kv.key.dimmed(), value_str)
 }
 
 fn format_anyvalue(av: &Option<AnyValue>) -> String {
@@ -998,11 +1168,17 @@ fn format_anyvalue(av: &Option<AnyValue>) -> String {
 
 fn format_span_status(status_code: status::StatusCode) -> String {
     match status_code {
-        status::StatusCode::Ok => "OK".green().to_string(),
-        status::StatusCode::Error => "ERROR"
-            .truecolor(ERROR_COLOR.0, ERROR_COLOR.1, ERROR_COLOR.2)
-            .bold()
-            .to_string(),
-        status::StatusCode::Unset => "UNSET".dimmed().to_string(),
+        status::StatusCode::Ok => "OK",
+        status::StatusCode::Error => "ERROR",
+        status::StatusCode::Unset => "UNSET",
+    }
+    .to_string()
+}
+
+fn format_cell_level_color(value: &str) -> Cell {
+    match value {
+        "OK" => Cell::new(value).fg(TableColor::Green),
+        "ERROR" => Cell::new(value).fg(TableColor::Red),
+        _ => Cell::new(value).fg(TableColor::DarkGrey),
     }
 }
