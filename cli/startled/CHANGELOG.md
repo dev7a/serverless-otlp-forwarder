@@ -9,7 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated `startled` CLI version from 0.3.2 to 0.3.3 in `Cargo.toml`.
-- Updated `testbed/functions/rust/collector/Cargo.toml` to use the latest version of `opentelemetry-otlp`.
 - Removed `serde_yaml` and `reqwest` from the `Cargo.toml` file.
 
 
