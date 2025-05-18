@@ -45,7 +45,6 @@ impl Default for SpanCompactionConfig {
 
 /// Processes a single CloudWatch Live Tail log event message string.
 pub fn process_log_event_message(message: &str) -> Result<Option<TelemetryData>> {
-    // grep_regex parameter removed
     tracing::trace!(message, "Processing log event message");
     let record: ExporterOutput = match serde_json::from_str::<ExporterOutput>(message) {
         Ok(output) => {
