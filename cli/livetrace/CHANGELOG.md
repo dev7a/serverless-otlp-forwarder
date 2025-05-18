@@ -13,8 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `regex` dependency for implementing the `--grep` feature.
 - Implemented shell completion for the `--theme` argument using `clap::ValueEnum` for a better user experience.
 - Introduced "red-safe" alternatives in `TABLEAU_12`, `MATERIAL_12`, and `SOLARIZED_12` color palettes to prevent them from being mistaken for error indicators.
-- Implemented dynamic column width adjustment in the timeline log for `service_name` and `item.name` to ensure consistent alignment.
-
 ### Changed
 - Updated `livetrace` version to `0.2.0` in `Cargo.toml`.
 - Enhanced `README.md` to include examples and descriptions for the new `--grep` and `--backtrace` options.
