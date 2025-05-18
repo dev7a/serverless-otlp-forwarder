@@ -550,12 +550,5 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         }
     }
     spinner.finish_and_clear();
-
-    // Wait for any outstanding send_batch tasks to complete
-    for handle in send_batch_handles {
-        if let Err(e) = handle.await {
-            tracing::error!("Error in send_batch task: {:?}", e);
-        }
-    }
     Ok(())
 }
