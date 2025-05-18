@@ -1,4 +1,4 @@
-# Release Notes - startled v0.3.23
+# Release Notes - startled v0.3.3
 
 **Release Date:** 2025-05-13
 
