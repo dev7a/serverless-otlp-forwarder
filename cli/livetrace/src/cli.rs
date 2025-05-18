@@ -6,7 +6,7 @@
 //! and helper functions related to CLI argument processing (e.g., parsing glob patterns).
 
 use crate::console_display::Theme;
-use clap::{crate_authors, crate_description, ArgGroup, Parser, Subcommand, ValueEnum};
+use clap::{crate_authors, crate_description, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde::{Deserialize, Serialize};
