@@ -4,6 +4,9 @@
 
 `livetrace` is a command-line tool designed to enhance local development workflows when working with distributed tracing in serverless environments using the [Serverless OTLP Forwarder Architecture](https://dev7a.github.io/serverless-otlp-forwarder/architecture/).
 
+![livetracing a demo app](https://github.com/user-attachments/assets/a407781b-cf19-4612-accc-b97da9e5cdd7)
+---
+
 ## Table of Contents
 
 *   [Overview](#overview)
@@ -29,9 +32,6 @@
 *   [License](#license)
 
 ## Overview
-
-![livetracing a demo app](https://github.com/user-attachments/assets/a407781b-cf19-4612-accc-b97da9e5cdd7)
----
 
 In the [Serverless OTLP Forwarder architecture](https://dev7a.github.io/serverless-otlp-forwarder/architecture/), Lambda functions (or other compute resources) emit OpenTelemetry (OTLP) trace data to standard output. This tool enables you to correlate and visualize complete traces—especially valuable during development. Because logs from different services involved in a single request may be distributed across multiple Log Groups, _livetrace_ can tail several log groups simultaneously and reconstruct traces spanning all participating services.
 

@@ -1,3 +1,12 @@
+## livetrace v0.2.1 - 2025-05-18
+
+This minor release of `livetrace` introduces a new screenshot of the `livetrace` CLI in action.
+
+### New Features and Enhancements:
+
+*   **README.md:**
+    *   Added a new screenshot of the `livetrace` CLI in action.
+
 ## livetrace v0.2.0 - 2025-05-17
 
 This release of `livetrace` introduces powerful new filtering and log fetching capabilities, enhances usability with improved CLI arguments and color palettes, and includes important bug fixes and code refactoring for better maintainability.
