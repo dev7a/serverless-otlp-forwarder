@@ -6,6 +6,30 @@
 
 ![benchmarking otel implementations](https://github.com/user-attachments/assets/013e6ed9-508a-4831-a98e-3383a4be57b9)
 ---
+
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+  - [From Crates.io (Recommended)](#from-cratesio-recommended)
+  - [From Source](#from-source)
+- [Shell Completions](#shell-completions)
+  - [Installation Examples](#installation-examples)
+- [Usage](#usage)
+  - [Commands](#commands)
+    - [1. `function`](#1-function)
+    - [2. `stack`](#2-stack)
+    - [3. `report`](#3-report)
+- [How It Works](#how-it-works)
+  - [Benchmarking Process Stages](#benchmarking-process-stages)
+  - [Metric Collection Details](#metric-collection-details)
+  - [Report Generation Process](#report-generation-process)
+  - [Output File Structure](#output-file-structure)
+- [The `benchmark/testbed/` Environment](#the-benchmarktestbed-environment)
+- [Proxy Function Contract](#proxy-function-contract)
+- [Development and Code Structure](#development-and-code-structure)
+
 ## Key Features
 
 -   **Flexible Benchmarking Targets**:

@@ -13,7 +13,6 @@ lambda_runtime.workspace = true
 tracing.workspace = true
 tracing-opentelemetry.workspace = true
 opentelemetry.workspace = true
-reqwest.workspace = true
 opentelemetry-otlp = { workspace = true, features = ["trace","http-proto","reqwest-blocking-client"] }
 opentelemetry_sdk.workspace = true
 tracing-subscriber.workspace = true

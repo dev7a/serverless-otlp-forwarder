@@ -7,13 +7,17 @@ use lambda_runtime::{
 use opentelemetry::{global, trace::TracerProvider};
 use opentelemetry_aws::trace::XrayPropagator;
 use opentelemetry_otlp::{Protocol, SpanExporter, WithExportConfig};
-use opentelemetry_sdk::{propagation::TraceContextPropagator, trace::{SdkTracerProvider, Sampler}, Resource};
+use opentelemetry_sdk::{
+    propagation::TraceContextPropagator,
+    trace::{Sampler, SdkTracerProvider},
+    Resource,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::env;
 use std::sync::OnceLock;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::prelude::*;
-use std::env;
 
 const DEFAULT_DEPTH: u64 = 2;
 const DEFAULT_ITERATIONS: u64 = 4;
@@ -81,9 +85,11 @@ fn get_resource() -> Resource {
     RESOURCE
         .get_or_init(|| {
             Resource::builder()
-                .with_service_name(std::env::var("OTEL_SERVICE_NAME")
-                    .or_else(|_| std::env::var("AWS_LAMBDA_FUNCTION_NAME"))
-                    .unwrap_or_else(|_| env!("CARGO_PKG_NAME").to_string()))
+                .with_service_name(
+                    std::env::var("OTEL_SERVICE_NAME")
+                        .or_else(|_| std::env::var("AWS_LAMBDA_FUNCTION_NAME"))
+                        .unwrap_or_else(|_| env!("CARGO_PKG_NAME").to_string()),
+                )
                 .build()
         })
         .clone()
@@ -148,12 +154,14 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     let benchmark_event = event.payload;
 
     // Extract depth with fallback to 3
-    let depth = benchmark_event.get("depth")
+    let depth = benchmark_event
+        .get("depth")
         .and_then(|v| v.as_u64())
         .unwrap_or(DEFAULT_DEPTH);
 
     // Extract iterations with fallback to 4
-    let iterations = benchmark_event.get("iterations")
+    let iterations = benchmark_event
+        .get("iterations")
         .and_then(|v| v.as_u64())
         .unwrap_or(DEFAULT_ITERATIONS);
 
