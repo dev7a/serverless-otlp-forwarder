@@ -144,7 +144,7 @@ async fn filter_log_events_for_group(
 
                         if let Some(msg) = event.message {
                             match process_log_event_message(&msg) {
-                                // Corrected call
+                                // Process the log event message and send telemetry data if available
                                 Ok(Some(telemetry)) => {
                                     if sender.send(Ok(telemetry)).await.is_err() {
                                         tracing::warn!("Polling Adapter: MPSC channel closed by receiver while sending data.");
