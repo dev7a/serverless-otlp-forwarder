@@ -84,11 +84,7 @@ EXAMPLES:
 /// livetrace: Tail CloudWatch Logs for OTLP/stdout traces and forward them.
 #[derive(Parser, Debug, Clone)]
 #[command(author = crate_authors!(", "), version, about = crate_description!(), long_about = None, after_help = USAGE_EXAMPLES)]
-#[clap(group( // Group now only for poll_interval to define mode if present
-    ArgGroup::new("mode_selector") // Renamed for clarity, only contains poll_interval if we want to be explicit
-        .required(false)
-        .args(["poll_interval"]), // session_timeout removed from this group
-))]
+// Removed the `mode_selector` group as it no longer serves its original purpose.
 pub struct CliArgs {
     /// Log group name pattern(s) for discovery (case-sensitive substring search). Can be specified multiple times.
     #[arg(short = 'g', long = "log-group-pattern", num_args(1..))]
