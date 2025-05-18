@@ -28,7 +28,7 @@
 
 ## Overview
 
-In the Serverless OTLP Forwarder architecture, Lambda functions (or other compute resources) emit OpenTelemetry (OTLP) trace data to standard output. This tool enables you to correlate and visualize complete traces—especially valuable during development. Because logs from different services involved in a single request may be distributed across multiple Log Groups, _livetrace_ can tail several log groups simultaneously and reconstruct traces spanning all participating services.
+In the [Serverless OTLP Forwarder architecture](https://dev7a.github.io/serverless-otlp-forwarder/architecture/), Lambda functions (or other compute resources) emit OpenTelemetry (OTLP) trace data to standard output. This tool enables you to correlate and visualize complete traces—especially valuable during development. Because logs from different services involved in a single request may be distributed across multiple Log Groups, _livetrace_ can tail several log groups simultaneously and reconstruct traces spanning all participating services.
 
 `livetrace` supports:
 
@@ -41,6 +41,22 @@ In the Serverless OTLP Forwarder architecture, Lambda functions (or other comput
 7.  **Optionally forwarding** the raw OTLP protobuf data to a specified OTLP-compatible endpoint (like a local OpenTelemetry Collector or Jaeger instance).
 
 It acts as a local observability companion, giving you immediate feedback on trace behavior without needing to navigate the AWS console, your o11y tool, or wait for logs to propagate fully to a backend system.
+
+To instrument your lambda functions, you can use the OTLP stdout span exporter, available for Node, Python, and Rust:
+
+*   [npm](https://www.npmjs.com/package/@dev7a/otlp-stdout-span-exporter)
+*   [pypi](https://pypi.org/project/otlp-stdout-span-exporter/)
+*   [crates.io](https://crates.io/crates/otlp-stdout-span-exporter)
+
+Or, you can use the Lambda Otel Lite library, which also simplifies setting up your OpenTelemetry pipeline:
+
+*   [npm](https://www.npmjs.com/package/@dev7a/lambda-otel-lite)
+*   [pypi](https://pypi.org/project/lambda-otel-lite/)
+*   [crates.io](https://crates.io/crates/lambda-otel-lite)
+
+
+
+
 
 ## Features
 

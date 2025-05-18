@@ -268,17 +268,21 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
         println!("  {:<18}: {}", "CloudFormation".dimmed(), stack);
     }
     println!();
-    if let Some(poll_secs) = config.poll_interval_ms {
+    if let Some(poll_interval_value_ms) = config.poll_interval_ms {
         println!("  {:<18}: Polling", "Mode".dimmed());
-        println!("  {:<18}: {} seconds", "Poll Interval".dimmed(), poll_secs);
+        println!(
+            "  {:<18}: {}",
+            "Poll Interval".dimmed(),
+            format_millis_to_duration_string(poll_interval_value_ms)
+        );
     } else {
         println!("  {:<18}: Live Tail", "Mode".dimmed());
-        println!(
-            "  {:<18}: {} minutes",
-            "Session Timeout".dimmed(),
-            config.session_timeout_ms / 1000 // Display as seconds for readability
-        );
     }
+    println!(
+        "  {:<18}: {}",
+        "Session Timeout".dimmed(),
+        format_millis_to_duration_string(config.session_timeout_ms)
+    );
     println!(
         "  {:<18}: {}",
         "Forward Only".dimmed(),
