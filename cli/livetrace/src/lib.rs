@@ -300,7 +300,7 @@ pub async fn run_livetrace(args: CliArgs) -> Result<()> {
             resolved_headers_vec.len()
         );
     }
-    println!("  {:<18}: {:?}", "Theme".dimmed(), config.theme);
+    println!("  {:<18}: {}", "Theme".dimmed(), config.theme);
     println!(
         "  {:<18}: {}",
         "Color By".dimmed(),

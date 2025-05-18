@@ -146,6 +146,19 @@ pub enum Theme {
     Monochrome,
 }
 
+impl std::fmt::Display for Theme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Theme::Default => write!(f, "default"),
+            Theme::Tableau => write!(f, "tableau"),
+            Theme::ColorBrewer => write!(f, "color-brewer"),
+            Theme::Material => write!(f, "material"),
+            Theme::Solarized => write!(f, "solarized"),
+            Theme::Monochrome => write!(f, "monochrome"),
+        }
+    }
+}
+
 // Keep the original methods for Theme, but from_str is now part of FromStr
 impl Theme {
     // FNV-1a constants (32-bit)
