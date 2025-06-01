@@ -72,7 +72,7 @@ async fn main() -> Result<(), Error> {
 
 The router automatically integrates with OpenTelemetry for tracing, adding semantic http attributes to the span 
 and setting the span name to the route path. 
-It also support setting additional attributes to the spanas shown in the following example:
+It also support setting additional attributes to the spans shown in the following example:
 
 ```rust,ignore
 #[route(path = "/users/{id}")]
