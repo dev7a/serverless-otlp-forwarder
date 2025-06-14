@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2025-06-14
+
+### Changed
+- **BREAKING**: Upgraded OpenTelemetry dependencies to 2.x versions:
+  - `@opentelemetry/core`: ^1.30.1 → ^2.0.0
+  - `@opentelemetry/sdk-trace-base`: ^1.30.1 → ^2.0.0
+  - `@opentelemetry/otlp-transformer`: ^0.57.2 → ^0.200.0
+  - `@opentelemetry/api`: ^1.9.0 → ^1.1.0 (peer dependency)
+  - `@opentelemetry/sdk-trace-node`: ^1.30.1 → ^2.0.0 (dev dependency)
+- **BREAKING**: Updated minimum Node.js version requirement to `^18.19.0 || >=20.6.0` (aligned with OpenTelemetry 2.x requirements)
+
+### Migration Notes
+- This version requires OpenTelemetry SDK 2.x. If you're using OpenTelemetry 1.x, please use version 0.15.0
+- Minimum Node.js version is now 18.19.0 or 20.6.0+ (previously 18.0.0+)
+- No API changes required in user code - the upgrade is compatible at the usage level
+
 ## [0.15.0] - 2025-04-30
 
 ### Added

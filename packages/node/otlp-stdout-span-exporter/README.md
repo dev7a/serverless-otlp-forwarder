@@ -6,7 +6,7 @@ A Node.js span exporter that writes OpenTelemetry spans to stdout, using a custo
 
 ```json
 {
-  "__otel_otlp_stdout": "0.1.0",
+  "__otel_otlp_stdout": "0.16.0",
   "source": "my-service",
   "endpoint": "http://localhost:4318/v1/traces",
   "method": "POST",
@@ -152,7 +152,7 @@ The exporter writes JSON objects to stdout with the following structure:
 
 ```json
 {
-  "__otel_otlp_stdout": "0.1.0",
+  "__otel_otlp_stdout": "0.16.0",
   "source": "my-service",
   "endpoint": "http://localhost:4318/v1/traces",
   "method": "POST",
