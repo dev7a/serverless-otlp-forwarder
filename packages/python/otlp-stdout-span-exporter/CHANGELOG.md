@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.16.0] - 2025-06-14
+
+### Added
+- Added entry points for OpenTelemetry auto-discovery (otlpstdout)
+
+### Changed
+- Updated development dependencies to newer versions:
+  - pytest>=8.4.0 (from 7.4.0)
+  - pytest-asyncio>=1.0.0 (from 0.21.0)
+  - pytest-cov>=6.2.1 (from 4.1.0)
+  - ruff>=0.9.6 (from 0.1.0)
+  - mypy>=1.15.0 (from 1.7.0)
+
 ## [0.15.0] - 2025-04-28
 
 ### Added
