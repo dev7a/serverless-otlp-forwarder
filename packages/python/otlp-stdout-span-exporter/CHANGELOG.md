@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [0.16.0] - 2025-06-14
 
 ### Added
-- Added entry points for OpenTelemetry auto-discovery (oltpstdout)
+- Added entry points for OpenTelemetry auto-discovery (otlpstdout)
 
 ### Changed
 - Updated development dependencies to newer versions:
