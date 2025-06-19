@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **BREAKING**: Moved OpenTelemetry packages from `dependencies` to `peerDependencies` for better version management
 - Users now need to install OpenTelemetry packages separately (see README for instructions)
+- Updated peer dependency requirements to align with OpenTelemetry SDK 2.x (which uses API 1.3.0+)
 
 ## [0.16.0] - 2025-06-14
 

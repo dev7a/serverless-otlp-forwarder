@@ -59,7 +59,7 @@ npm install @dev7a/otlp-stdout-span-exporter @opentelemetry/api @opentelemetry/c
 ```
 
 >[!NOTE]
->This package requires OpenTelemetry SDK 2.x. If you're using OpenTelemetry 1.x, please use version 0.15.0 of this package.
+>This package requires OpenTelemetry SDK 2.x (with API 1.3.0+). If you're using OpenTelemetry 1.x, please use version 0.15.0 of this package.
 
 ## Usage
 
