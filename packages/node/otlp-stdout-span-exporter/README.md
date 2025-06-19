@@ -44,7 +44,38 @@ Outputting telemetry data in this format directly to stdout makes the library ea
 npm install @dev7a/otlp-stdout-span-exporter
 ```
 
+### Peer Dependencies
+
+This package requires the following OpenTelemetry packages to be installed:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/core @opentelemetry/otlp-transformer @opentelemetry/sdk-trace-base
+```
+
+Or install everything in one command:
+
+```bash
+npm install @dev7a/otlp-stdout-span-exporter @opentelemetry/api @opentelemetry/core @opentelemetry/otlp-transformer @opentelemetry/sdk-trace-base
+```
+
+>[!NOTE]
+>This package requires OpenTelemetry SDK 2.x (with API 1.3.0+). If you're using OpenTelemetry 1.x, please use version 0.15.0 of this package.
+
 ## Usage
+
+The exporter works with both CommonJS and ES modules:
+
+### CommonJS
+```javascript
+const { OTLPStdoutSpanExporter } = require('@dev7a/otlp-stdout-span-exporter');
+```
+
+### ES Modules
+```javascript
+import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter';
+// or
+import OTLPStdoutSpanExporter from '@dev7a/otlp-stdout-span-exporter';
+```
 
 The recommended way to use this exporter is with the standard OpenTelemetry `BatchSpanProcessor`, which provides better performance by buffering and exporting spans in batches, or, in conjunction with the [lambda-otel-lite](https://www.npmjs.com/package/@dev7a/lambda-otel-lite) package, with the `LambdaSpanProcessor`, which is particularly optimized for AWS Lambda.
 
