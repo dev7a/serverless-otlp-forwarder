@@ -31,11 +31,18 @@ interface ExtensionRegistrationRequest {
 
 /**
  * Make an HTTP request using the fetch API with proper error handling
+ * @param url The URL to request
+ * @param options Fetch options
+ * @param timeoutMs Optional timeout in milliseconds. If not provided, no timeout is applied.
  */
-async function syncHttpRequest(url: string, options: RequestInit = {}): Promise<HttpResponse> {
-  // Set default timeout
+async function syncHttpRequest(url: string, options: RequestInit = {}, timeoutMs?: number): Promise<HttpResponse> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_HTTP_TIMEOUT_MS);
+  let timeoutId: NodeJS.Timeout | undefined;
+  
+  // Only set timeout if explicitly provided
+  if (timeoutMs !== undefined) {
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  }
 
   try {
     const fetchOptions: RequestInit = {
@@ -63,8 +70,10 @@ async function syncHttpRequest(url: string, options: RequestInit = {}): Promise<
     }
     throw error;
   } finally {
-    // Always clear the timeout to prevent resource leaks
-    clearTimeout(timeoutId);
+    // Clear the timeout if it was set
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
@@ -82,6 +91,7 @@ function getRuntimeApiBaseUrl(): string {
 
 /**
  * Request the next event from the Lambda Extensions API
+ * This is a long-polling request that should not timeout
  */
 async function requestNextEvent(extensionId: string): Promise<void> {
   try {
@@ -89,6 +99,7 @@ async function requestNextEvent(extensionId: string): Promise<void> {
     const baseUrl = getRuntimeApiBaseUrl();
     const url = `${baseUrl}/2020-01-01/extension/event/next`;
 
+    // No timeout for long-polling - this request blocks until an event occurs
     const response = await syncHttpRequest(url, {
       method: 'GET',
       headers: {
@@ -153,6 +164,7 @@ async function shutdownTelemetry(): Promise<void> {
 
 /**
  * Register the extension with Lambda Runtime API
+ * This is an admin operation that should complete quickly
  */
 async function registerExtension(events: string[]): Promise<string> {
   const baseUrl = getRuntimeApiBaseUrl();
@@ -161,6 +173,7 @@ async function registerExtension(events: string[]): Promise<string> {
 
   logger.debug(`[extension] registering extension with events: [${events.join(', ')}]`);
 
+  // Use timeout for admin operations - they should complete quickly
   const response = await syncHttpRequest(url, {
     method: 'POST',
     headers: {
@@ -168,7 +181,7 @@ async function registerExtension(events: string[]): Promise<string> {
       'Lambda-Extension-Name': 'lambda-otel-lite-internal',
     },
     body: JSON.stringify(registrationData),
-  });
+  }, DEFAULT_HTTP_TIMEOUT_MS);
 
   if (response.status !== 200) {
     throw new Error(

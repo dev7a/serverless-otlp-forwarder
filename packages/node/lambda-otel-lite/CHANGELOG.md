@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.1] - 2025-06-20
+
+### Fixed
+- **Critical**: Fixed timeout issue in Lambda Extensions API long-polling that caused extensions to fail with "HTTP request timeout" errors
+- Made HTTP timeout optional in `syncHttpRequest` function - long-polling requests (event polling) no longer have timeouts while admin operations (registration) retain 5-second timeouts
+- Improved error handling and documentation for different types of HTTP requests in the extension
+
 ## [0.16.0] - 2025-06-20
 
 ### Changed
