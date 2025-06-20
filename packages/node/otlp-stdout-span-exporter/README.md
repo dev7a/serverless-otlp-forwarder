@@ -76,6 +76,9 @@ const { OTLPStdoutSpanExporter } = require('@dev7a/otlp-stdout-span-exporter');
 
 This package provides experimental ESM support via a subpath export. Due to bundler compatibility issues, ESM is not available via the main export.
 
+>[!NOTE]
+>ESM support via the `/esm` subpath was broken in v0.17.2 but has been fixed in v0.17.3.
+
 To use ESM in native Node.js environments:
 
 ```javascript
