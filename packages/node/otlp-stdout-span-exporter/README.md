@@ -72,13 +72,14 @@ const { OTLPStdoutSpanExporter } = require('@dev7a/otlp-stdout-span-exporter');
 
 ### ES Modules
 ```javascript
-import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter';
+// For native ESM support (not bundled)
+import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter/esm';
 // or
-import OTLPStdoutSpanExporter from '@dev7a/otlp-stdout-span-exporter';
+import OTLPStdoutSpanExporter from '@dev7a/otlp-stdout-span-exporter/esm';
 ```
 
 >[!NOTE]
->When using bundlers like webpack, the package will use CommonJS by default to ensure compatibility. Native Node.js environments will automatically use the ESM wrapper when importing.
+>When using bundlers like webpack, the package will use CommonJS by default to ensure compatibility. Native Node.js environments can use the `/esm` subpath for true ES module imports.
 
 The recommended way to use this exporter is with the standard OpenTelemetry `BatchSpanProcessor`, which provides better performance by buffering and exporting spans in batches, or, in conjunction with the [lambda-otel-lite](https://www.npmjs.com/package/@dev7a/lambda-otel-lite) package, with the `LambdaSpanProcessor`, which is particularly optimized for AWS Lambda.
 

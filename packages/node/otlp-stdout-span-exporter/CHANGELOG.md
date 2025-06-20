@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.2] - 2025-06-19
+
+### Fixed
+- Fixed webpack bundling issue properly by removing ESM from main export path
+- ESM support now available via `/esm` subpath export for native Node.js environments
+- Main export now always uses CommonJS to ensure compatibility with all bundlers
+
 ## [0.17.1] - 2025-06-19
 
 ### Fixed
