@@ -11,8 +11,7 @@
       "default": "./dist/index.js"
     },
     "./esm": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts", 
       "default": "./dist/index.mjs"
     }
   },
@@ -22,10 +21,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm run clean && npm run generate:version && tsc -p tsconfig.json && npm run build:esm-wrapper && echo 'Build completed successfully'",
-    "build:esm-wrapper": "node scripts/build-esm-wrapper.js",
+    "build": "npm run clean && npm run generate:version && tsc -p tsconfig.json && echo 'Build completed successfully'",
     "clean": "rm -rf dist",
     "generate:version": "echo '// This file is auto-generated. Do not edit manually.\nexport const VERSION = \"'$(node -p \"require('./package.json').version\")'\";' > src/version.ts",
+    "build-esm-wrapper": "node scripts/build-esm-wrapper.js",
     "test": "jest",
     "lint": "eslint src/*.ts src/**/*.ts --quiet",
     "prepare": "npm run build",

@@ -8,9 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.17.2] - 2025-06-19
 
 ### Fixed
-- Fixed webpack bundling issue properly by removing ESM from main export path
-- ESM support now available via `/esm` subpath export for native Node.js environments
-- Main export now always uses CommonJS to ensure compatibility with all bundlers
+- Fixed webpack bundling issue by changing export strategy
+- Main export now always provides CommonJS for compatibility
+- ESM support moved to `/esm` subpath export for native Node.js environments only
+
+### Changed
+- ESM is no longer available via the main export due to webpack incompatibility
+- Added error detection for webpack bundling in ESM wrapper
 
 ## [0.17.1] - 2025-06-19
 

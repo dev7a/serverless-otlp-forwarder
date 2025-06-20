@@ -63,23 +63,44 @@ npm install @dev7a/otlp-stdout-span-exporter @opentelemetry/api @opentelemetry/c
 
 ## Usage
 
-The exporter works with both CommonJS and ES modules:
+The exporter works with CommonJS:
 
-### CommonJS
 ```javascript
 const { OTLPStdoutSpanExporter } = require('@dev7a/otlp-stdout-span-exporter');
 ```
 
-### ES Modules
+>[!NOTE]
+>ESM support has been temporarily removed due to bundler compatibility issues. This package currently only supports CommonJS imports.
+
+### ESM Support
+
+This package provides experimental ESM support via a subpath export. Due to bundler compatibility issues, ESM is not available via the main export.
+
+To use ESM in native Node.js environments:
+
 ```javascript
-// For native ESM support (not bundled)
+// Use the /esm subpath
 import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter/esm';
-// or
-import OTLPStdoutSpanExporter from '@dev7a/otlp-stdout-span-exporter/esm';
 ```
 
->[!NOTE]
->When using bundlers like webpack, the package will use CommonJS by default to ensure compatibility. Native Node.js environments can use the `/esm` subpath for true ES module imports.
+>[!WARNING]
+>The ESM export is not compatible with webpack bundling. If you're using webpack, please use the CommonJS syntax instead.
+
+### Webpack Configuration
+
+If you're using webpack and encountering module resolution issues, add this package to your externals:
+
+```javascript
+module.exports = {
+  // ... your config
+  externals: [
+    '@dev7a/otlp-stdout-span-exporter',
+    // ... other externals
+  ],
+};
+```
+
+This ensures webpack doesn't try to bundle the package and uses Node.js's native module resolution at runtime.
 
 The recommended way to use this exporter is with the standard OpenTelemetry `BatchSpanProcessor`, which provides better performance by buffering and exporting spans in batches, or, in conjunction with the [lambda-otel-lite](https://www.npmjs.com/package/@dev7a/lambda-otel-lite) package, with the `LambdaSpanProcessor`, which is particularly optimized for AWS Lambda.
 
