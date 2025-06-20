@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.2] - 2025-06-20
+
+### Fixed
+- Fixed shutdown order issue in `LambdaSpanProcessor` where `isShutdown` flag was set before calling `forceFlush()`, causing buffered spans to be lost during shutdown
+- Spans are now properly flushed before the processor is marked as shutdown, ensuring no data loss during Lambda function termination
+
 ## [0.16.1] - 2025-06-20
 
 ### Fixed

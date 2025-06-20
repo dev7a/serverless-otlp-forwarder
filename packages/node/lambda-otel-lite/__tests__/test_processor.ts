@@ -66,14 +66,15 @@ describe('LambdaSpanProcessor', () => {
     expect(exporter.spans.length).toBe(numSpans);
   });
 
-  it('should shutdown cleanly without exporting after shutdown flag', async () => {
+  it('should shutdown cleanly and export buffered spans during shutdown', async () => {
     const span = createTestSpan();
     processor.onStart(createSpan(), context.active());
     processor.onEnd(span);
 
     await processor.shutdown();
     expect(exporter.shutdownOnce).toBe(true);
-    expect(exporter.spans.length).toBe(0);
+    expect(exporter.spans.length).toBe(1); // Spans should be exported during shutdown
+    expect(exporter.spans[0].name).toBe(span.name);
   });
 
   it('should drop spans when maxQueueSize is reached', async () => {
@@ -100,12 +101,13 @@ describe('LambdaSpanProcessor', () => {
 
     await processor.shutdown();
     expect(exporter.shutdownOnce).toBe(true);
-    expect(exporter.spans.length).toBe(0);
+    expect(exporter.spans.length).toBe(1); // First shutdown exports the span
+    expect(exporter.spans[0].name).toBe(span.name);
 
     // Second shutdown should be no-op
     await processor.shutdown();
     expect(exporter.shutdownOnce).toBe(true); // Should not change
-    expect(exporter.spans.length).toBe(0); // Should not change
+    expect(exporter.spans.length).toBe(1); // Should not change - no duplicate export
   });
 
   it('should not accept spans after shutdown', async () => {

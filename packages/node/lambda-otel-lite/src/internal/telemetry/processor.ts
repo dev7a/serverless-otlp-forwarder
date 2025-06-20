@@ -241,8 +241,8 @@ export class LambdaSpanProcessor implements SpanProcessor {
    * @returns Promise that resolves when shutdown is complete
    */
   async shutdown(): Promise<void> {
-    this.isShutdown = true;
     await this.forceFlush();
+    this.isShutdown = true;
     await this.exporter.shutdown();
   }
 }
