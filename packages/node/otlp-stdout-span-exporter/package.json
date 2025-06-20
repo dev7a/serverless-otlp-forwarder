@@ -1,17 +1,18 @@
 {
   "name": "@dev7a/otlp-stdout-span-exporter",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "description": "OpenTelemetry OTLP Span Exporter that writes to stdout",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "node": {
-        "import": "./dist/index.mjs",
-        "require": "./dist/index.js"
-      },
+      "require": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./esm": {
+      "types": "./dist/index.d.ts", 
+      "default": "./dist/index.mjs"
     }
   },
   "files": [
@@ -20,10 +21,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm run clean && npm run generate:version && tsc -p tsconfig.json && npm run build:esm-wrapper && echo 'Build completed successfully'",
-    "build:esm-wrapper": "node scripts/build-esm-wrapper.js",
+    "build": "npm run clean && npm run generate:version && tsc -p tsconfig.json && echo 'Build completed successfully'",
     "clean": "rm -rf dist",
     "generate:version": "echo '// This file is auto-generated. Do not edit manually.\nexport const VERSION = \"'$(node -p \"require('./package.json').version\")'\";' > src/version.ts",
+    "build-esm-wrapper": "node scripts/build-esm-wrapper.js",
     "test": "jest",
     "lint": "eslint src/*.ts src/**/*.ts --quiet",
     "prepare": "npm run build",
