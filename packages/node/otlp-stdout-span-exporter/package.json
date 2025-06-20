@@ -1,6 +1,6 @@
 {
   "name": "@dev7a/otlp-stdout-span-exporter",
-  "version": "0.17.2",
+  "version": "0.17.3",
   "description": "OpenTelemetry OTLP Span Exporter that writes to stdout",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,7 +21,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "npm run clean && npm run generate:version && tsc -p tsconfig.json && echo 'Build completed successfully'",
+    "build": "npm run clean && npm run generate:version && tsc -p tsconfig.json && npm run build-esm-wrapper && echo 'Build completed successfully'",
     "clean": "rm -rf dist",
     "generate:version": "echo '// This file is auto-generated. Do not edit manually.\nexport const VERSION = \"'$(node -p \"require('./package.json').version\")'\";' > src/version.ts",
     "build-esm-wrapper": "node scripts/build-esm-wrapper.js",
