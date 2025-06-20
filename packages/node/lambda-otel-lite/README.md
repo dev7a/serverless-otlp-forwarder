@@ -9,6 +9,9 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
 >[!IMPORTANT]
 >This package is highly experimental and should not be used in production. Contributions are welcome.
 
+>[!NOTE]
+>**OpenTelemetry 2.x Support**: Starting with version 0.16.0, this package supports OpenTelemetry SDK 2.x. For OpenTelemetry 1.x compatibility, use version 0.15.x or earlier. The upgrade to 2.x is API-compatible at the user level - no code changes are required in your Lambda functions.
+
 ## Table of Contents
 
 - [Requirements](#requirements)
@@ -38,7 +41,8 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
 - [See Also](#see-also)
 
 ## Requirements
-- Node.js >= 18.0.0
+- Node.js >= 18.19.0 or >= 20.6.0
+- OpenTelemetry SDK 2.x (supported since version 0.16.0)
 
 ## Features
 

@@ -1,4 +1,4 @@
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes, defaultResource } from '@opentelemetry/resources';
 import { createLogger } from '../logger';
 import { ENV_VARS, DEFAULTS, RESOURCE_ATTRIBUTES } from '../../constants';
 
@@ -18,7 +18,7 @@ const logger = createLogger('resource');
  *
  * @returns Resource instance with AWS Lambda and OTEL environment attributes
  */
-export function getLambdaResource(): Resource {
+export function getLambdaResource() {
   // Start with Lambda attributes
   const attributes: Record<string, string | number> = {
     'cloud.provider': 'aws',
@@ -115,6 +115,6 @@ export function getLambdaResource(): Resource {
   }
 
   // Create resource and merge with default resource
-  const resource = new Resource(attributes);
-  return Resource.default().merge(resource);
+  const resource = resourceFromAttributes(attributes);
+  return defaultResource().merge(resource);
 }

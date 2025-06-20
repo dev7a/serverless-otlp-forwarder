@@ -32,7 +32,6 @@ Resources:
       FunctionName: !Sub '${AWS::StackName}-example'
       CodeUri: ./handler
       Handler: app.handler
-      Tracing: Active
       Description: 'Demo Node Lambda function to showcase OpenTelemetry integration'
       FunctionUrlConfig:
         AuthType: NONE
