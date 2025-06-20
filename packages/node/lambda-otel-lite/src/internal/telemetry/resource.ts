@@ -1,4 +1,4 @@
-import { resourceFromAttributes, defaultResource, Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes, defaultResource, type Resource } from '@opentelemetry/resources';
 import { createLogger } from '../logger';
 import { ENV_VARS, DEFAULTS, RESOURCE_ATTRIBUTES } from '../../constants';
 

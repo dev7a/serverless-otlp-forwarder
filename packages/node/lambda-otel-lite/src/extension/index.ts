@@ -33,19 +33,17 @@ interface ExtensionRegistrationRequest {
  * Make an HTTP request using the fetch API with proper error handling
  */
 async function syncHttpRequest(url: string, options: RequestInit = {}): Promise<HttpResponse> {
-  try {
-    // Set default timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_HTTP_TIMEOUT_MS);
+  // Set default timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_HTTP_TIMEOUT_MS);
 
+  try {
     const fetchOptions: RequestInit = {
       signal: controller.signal,
       ...options,
     };
 
     const response = await fetch(url, fetchOptions);
-    clearTimeout(timeoutId);
-
     const body = await response.text();
 
     return {
@@ -64,6 +62,9 @@ async function syncHttpRequest(url: string, options: RequestInit = {}): Promise<
       logger.error('[extension] HTTP request failed:', error);
     }
     throw error;
+  } finally {
+    // Always clear the timeout to prevent resource leaks
+    clearTimeout(timeoutId);
   }
 }
 
