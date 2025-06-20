@@ -179,11 +179,11 @@ describe('LambdaSpanProcessor', () => {
   it('should always call exporter even with empty span buffer', async () => {
     // Create empty processor with no spans
     const emptyProcessor = new LambdaSpanProcessor(exporter);
-    
+
     // Mock exporter to track calls with empty arrays
     let exportCalledWithEmptyArray = false;
     const originalExport = exporter.export;
-    exporter.export = function(spans, callback) {
+    exporter.export = function (spans, callback) {
       if (spans.length === 0) {
         exportCalledWithEmptyArray = true;
       }
@@ -192,7 +192,7 @@ describe('LambdaSpanProcessor', () => {
 
     await emptyProcessor.forceFlush();
     expect(exportCalledWithEmptyArray).toBe(true);
-    
+
     // Restore original export function
     exporter.export = originalExport;
   });

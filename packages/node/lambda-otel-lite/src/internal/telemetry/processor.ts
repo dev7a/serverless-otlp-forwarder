@@ -165,10 +165,10 @@ export class LambdaSpanProcessor implements SpanProcessor {
       logger.warn('Cannot force flush - span processor is shutdown');
       return Promise.resolve();
     }
-    
+
     // Get all spans from buffer (might be empty)
     const spansToExport = this.buffer.drain();
-    
+
     // Always call export, even with empty spans array, to ensure EOF signal is properly triggered
     return new Promise<void>((resolve, reject) => {
       this.exporter.export(spansToExport, (result: ExportResult) => {

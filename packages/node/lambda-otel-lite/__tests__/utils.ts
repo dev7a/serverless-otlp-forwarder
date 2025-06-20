@@ -1,7 +1,7 @@
 import { SpanContext, SpanKind, TraceFlags } from '@opentelemetry/api';
 import { ExportResultCode } from '@opentelemetry/core';
 import { ReadableSpan, SpanExporter, Span } from '@opentelemetry/sdk-trace-base';
-import { Resource } from '@opentelemetry/resources';
+import { emptyResource } from '@opentelemetry/resources';
 
 /**
  * Test implementation of SpanExporter for testing purposes
@@ -48,7 +48,6 @@ export const createSpan = (spanName = 'default'): Span => {
       spanId: '6e0c63257de34c92',
       traceFlags: TraceFlags.SAMPLED,
     }),
-    parentSpanId: undefined,
     startTime: [1566156729, 709],
     endTime: [1566156731, 709],
     ended: true,
@@ -57,8 +56,8 @@ export const createSpan = (spanName = 'default'): Span => {
     links: [],
     events: [],
     duration: [32, 800000000],
-    resource: new Resource({}),
-    instrumentationLibrary: { name: 'default', version: '0.0.1' },
+    resource: emptyResource(),
+    instrumentationScope: { name: 'default', version: '0.0.1' },
     _spanContext: {
       traceId: 'd4cda95b652f4a1592b449d5929fda1b',
       spanId: '6e0c63257de34c92',
@@ -92,7 +91,6 @@ export const createTestSpan = (spanName = 'default'): ReadableSpan => {
         traceFlags: TraceFlags.SAMPLED,
       };
     },
-    parentSpanId: undefined,
     startTime: [1566156729, 709],
     endTime: [1566156731, 709],
     ended: true,
@@ -101,8 +99,8 @@ export const createTestSpan = (spanName = 'default'): ReadableSpan => {
     links: [],
     events: [],
     duration: [32, 800000000],
-    resource: new Resource({}),
-    instrumentationLibrary: { name: 'default', version: '0.0.1' },
+    resource: emptyResource(),
+    instrumentationScope: { name: 'default', version: '0.0.1' },
     droppedAttributesCount: 0,
     droppedEventsCount: 0,
     droppedLinksCount: 0,

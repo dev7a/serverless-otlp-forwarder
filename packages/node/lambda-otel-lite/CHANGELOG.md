@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2025-06-20
+
+### Changed
+- **BREAKING**: Upgraded OpenTelemetry dependencies to 2.x versions:
+  - `@opentelemetry/core`: ^1.30.1 → ^2.0.0
+  - `@opentelemetry/resources`: ^1.30.1 → ^2.0.0
+  - `@opentelemetry/sdk-trace-base`: ^1.30.1 → ^2.0.0
+  - `@opentelemetry/sdk-trace-node`: ^1.30.1 → ^2.0.0
+  - `@opentelemetry/propagator-aws-xray`: ^1.3.1 → ^2.1.0
+- **BREAKING**: Updated minimum Node.js version requirement to `^18.19.0 || >=20.6.0` (aligned with OpenTelemetry 2.x requirements)
+- Updated `@dev7a/otlp-stdout-span-exporter` to ^0.17.3 (with OpenTelemetry 2.x support)
+- Converted Lambda extension from JavaScript to TypeScript for better maintainability:
+  - Enhanced type safety with proper TypeScript interfaces
+  - Improved error handling and HTTP response processing
+  - Added comprehensive JSDoc documentation
+  - Better integration with the overall TypeScript codebase
+- Refactored extension HTTP client to use native `fetch` API instead of Node.js `http` module:
+  - Simplified code with ~60 fewer lines of manual stream handling
+  - Better timeout management using `AbortController`
+  - Cleaner error handling and more maintainable code
+  - Leverages modern web standard APIs available in Node.js 18+
+
+### Fixed
+- Updated Resource API usage to be compatible with OpenTelemetry 2.x:
+  - Replaced `new Resource()` with `resourceFromAttributes()`
+  - Replaced `Resource.default()` with `defaultResource()`
+  - Replaced `new Resource({})` with `emptyResource()`
+- Fixed TypeScript compilation issues related to OpenTelemetry 2.x changes
+- Removed outdated manual type definition files in favor of auto-generated ones
+
+### Migration Notes
+- This version requires OpenTelemetry SDK 2.x. If you're using OpenTelemetry 1.x, please use version 0.15.0
+- Minimum Node.js version is now 18.19.0 or 20.6.0+ (previously 18.0.0+)
+- No API changes required in user code - the upgrade is compatible at the usage level
+- The Lambda extension is now a TypeScript module but maintains full backward compatibility
+
 ## [0.15.0] - 2025-04-30
 
 ### Changed
