@@ -33,6 +33,7 @@ Resources:
       CodeUri: ./handler
       Handler: app.handler
       Description: 'Demo Node Lambda function to showcase OpenTelemetry integration'
+      # Note: Tracing is handled by lambda-otel-lite package, not AWS Lambda's built-in X-Ray tracing
       FunctionUrlConfig:
         AuthType: NONE
       Environment:

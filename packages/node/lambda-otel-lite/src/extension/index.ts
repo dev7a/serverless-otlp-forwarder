@@ -4,6 +4,9 @@ import { createLogger } from '../internal/logger';
 
 const logger = createLogger('extension');
 
+// Configuration constants
+const DEFAULT_HTTP_TIMEOUT_MS = 5000;
+
 // Types for better type safety
 interface HttpResponse {
   status: number;
@@ -33,7 +36,7 @@ async function syncHttpRequest(url: string, options: RequestInit = {}): Promise<
   try {
     // Set default timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_HTTP_TIMEOUT_MS);
 
     const fetchOptions: RequestInit = {
       signal: controller.signal,
@@ -142,6 +145,7 @@ async function shutdownTelemetry(): Promise<void> {
   } catch (error) {
     logger.error('[extension] error during shutdown:', error);
   } finally {
+    // Exit cleanly - this is the expected behavior for Lambda extensions during SIGTERM
     process.exit(0);
   }
 }
