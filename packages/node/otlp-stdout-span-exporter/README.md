@@ -77,6 +77,9 @@ import { OTLPStdoutSpanExporter } from '@dev7a/otlp-stdout-span-exporter';
 import OTLPStdoutSpanExporter from '@dev7a/otlp-stdout-span-exporter';
 ```
 
+>[!NOTE]
+>When using bundlers like webpack, the package will use CommonJS by default to ensure compatibility. Native Node.js environments will automatically use the ESM wrapper when importing.
+
 The recommended way to use this exporter is with the standard OpenTelemetry `BatchSpanProcessor`, which provides better performance by buffering and exporting spans in batches, or, in conjunction with the [lambda-otel-lite](https://www.npmjs.com/package/@dev7a/lambda-otel-lite) package, with the `LambdaSpanProcessor`, which is particularly optimized for AWS Lambda.
 
 You can create a simple tracer provider with the BatchSpanProcessor and the OTLPStdoutSpanExporter:

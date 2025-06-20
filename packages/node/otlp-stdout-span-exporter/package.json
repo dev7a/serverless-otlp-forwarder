@@ -1,14 +1,16 @@
 {
   "name": "@dev7a/otlp-stdout-span-exporter",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "OpenTelemetry OTLP Span Exporter that writes to stdout",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js",
+      "node": {
+        "import": "./dist/index.mjs",
+        "require": "./dist/index.js"
+      },
       "default": "./dist/index.js"
     }
   },
