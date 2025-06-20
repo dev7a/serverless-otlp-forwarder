@@ -9,7 +9,7 @@ import {
 } from '@opentelemetry/api';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SpanProcessor, IdGenerator } from '@opentelemetry/sdk-trace-base';
-import { initTelemetry, isColdStart, setColdStart } from '../src/internal/telemetry/init';
+import { initTelemetry, isColdStart, setColdStart, getLambdaResource } from '../src/internal/telemetry/init';
 import { state } from '../src/internal/state';
 import { EnvVarManager } from './utils';
 
@@ -243,10 +243,15 @@ describe('telemetry/init', () => {
         AWS_LAMBDA_FUNCTION_NAME: 'lambda-function',
       });
 
-      const { completionHandler: _ } = initTelemetry();
+      const { completionHandler } = initTelemetry();
 
-      // Just verify that the initialization succeeded
-      expect(_).toBeDefined();
+      expect(completionHandler).toBeDefined();
+      expect(state.provider).toBeDefined();
+      
+      // Test the resource creation directly with the same environment
+      const resource = getLambdaResource();
+      expect(resource.attributes['service.name']).toBe('env-service');
+      expect(resource.attributes['cloud.provider']).toBe('aws');
     });
 
     it('should fallback to Lambda function name if OTEL_SERVICE_NAME not set', () => {
@@ -254,42 +259,63 @@ describe('telemetry/init', () => {
         AWS_LAMBDA_FUNCTION_NAME: 'lambda-function',
       });
 
-      const { completionHandler: _ } = initTelemetry();
+      const { completionHandler } = initTelemetry();
 
-      // Just verify that the initialization succeeded
-      expect(_).toBeDefined();
+      expect(completionHandler).toBeDefined();
+      
+      // Test the resource creation to verify Lambda function name is used as service name
+      const resource = getLambdaResource();
+      expect(resource.attributes['service.name']).toBe('lambda-function');
+      expect(resource.attributes['faas.name']).toBe('lambda-function');
+      expect(resource.attributes['cloud.provider']).toBe('aws');
     });
 
     it('should use unknown_service if no environment variables set', () => {
       envManager.setup({});
-      const { completionHandler: _ } = initTelemetry();
+      const { completionHandler } = initTelemetry();
 
-      // Just verify that the initialization succeeded
-      expect(_).toBeDefined();
+      expect(completionHandler).toBeDefined();
+      
+      // Test the resource creation to verify default service name is used
+      const resource = getLambdaResource();
+      expect(resource.attributes['service.name']).toBe('unknown_service');
+      expect(resource.attributes['cloud.provider']).toBe('aws');
     });
 
     it('should use custom resource service name if provided', () => {
-      const { completionHandler: _ } = initTelemetry({
-        resource: resourceFromAttributes({
-          'service.name': 'test-service',
-        }),
+      const customResource = resourceFromAttributes({
+        'service.name': 'test-service',
+        'custom.attribute': 'custom-value',
+      });
+      
+      const { completionHandler } = initTelemetry({
+        resource: customResource,
       });
 
-      // Just verify that the initialization succeeded
-      expect(_).toBeDefined();
+      expect(completionHandler).toBeDefined();
+      
+      // Verify the custom resource attributes are preserved
+      expect(customResource.attributes['service.name']).toBe('test-service');
+      expect(customResource.attributes['custom.attribute']).toBe('custom-value');
     });
 
     it('should use custom resource if provided', () => {
       const customResource = resourceFromAttributes({
-        'custom.attribute': 'value',
+        'custom.attribute': 'custom-value',
+        'service.name': 'custom-service',
+        'service.version': '1.0.0',
       });
 
-      const { completionHandler: _ } = initTelemetry({
+      const { completionHandler } = initTelemetry({
         resource: customResource,
       });
 
-      // Just verify that the initialization succeeded
-      expect(_).toBeDefined();
+      expect(completionHandler).toBeDefined();
+      
+      // Verify the custom resource attributes are preserved
+      expect(customResource.attributes['custom.attribute']).toBe('custom-value');
+      expect(customResource.attributes['service.name']).toBe('custom-service');
+      expect(customResource.attributes['service.version']).toBe('1.0.0');
     });
 
     it('should use provided span processors', () => {
