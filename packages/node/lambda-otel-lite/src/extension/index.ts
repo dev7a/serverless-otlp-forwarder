@@ -278,10 +278,7 @@ if (process.env.AWS_LAMBDA_RUNTIME_API) {
       logger.error('[extension] fatal error during initialization:', error);
       state.extensionInitialized = false;
     }
-  })().catch((error) => {
-    logger.error('[extension] unhandled error in initialization IIFE:', error);
-    state.extensionInitialized = false;
-  });
+  })();
 } else {
   logger.debug('[extension] not in Lambda environment, skipping extension initialization');
 }
