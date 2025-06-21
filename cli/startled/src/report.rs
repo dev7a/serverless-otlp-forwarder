@@ -48,6 +48,7 @@ struct BarChartRenderData {
     y_axis_categories: Vec<String>, // e.g., ["AVG", "P99", "P95", "P50"]
     series: Vec<SeriesRenderData>,
     page_type: String, // e.g., "cold_init", for context in JS if needed
+    description: Option<String>, // AWS-documentation-based description of the metric
 }
 
 #[derive(Serialize)]
@@ -72,6 +73,7 @@ struct LineChartRenderData {
     series: Vec<LineSeriesRenderData>,
     total_x_points: usize,
     page_type: String,
+    description: Option<String>, // AWS-documentation-based description of the metric
 }
 
 #[derive(Serialize)]
@@ -163,6 +165,7 @@ async fn generate_chart(
     ctx.insert("chart_id", "chart");
     ctx.insert("page_type", page_type);
     ctx.insert("chart_data_js", data_js_filename);
+    ctx.insert("description", &bar.description);
 
     // Add sidebar context
     ctx.insert("report_structure", report_structure);
@@ -1418,6 +1421,7 @@ fn prepare_bar_chart_render_data(
         ],
         series: series_render_data,
         page_type: page_type.to_string(),
+        description: get_metric_description(page_type).map(|s| s.to_string()),
     }
 }
 
@@ -1526,6 +1530,110 @@ fn prepare_metric_line_chart_render_data(
         series: series_render_data,
         total_x_points: max_x,
         page_type: format!("{}_time", page_type),
+        description: get_metric_description(page_type).map(|s| s.to_string()),
+    }
+}
+
+/// Gets the AWS-documentation-based description for a metric type
+/// These descriptions are based on official AWS Lambda documentation and help users understand
+/// what each metric represents in terms of Lambda performance characteristics.
+fn get_metric_description(page_type: &str) -> Option<&'static str> {
+    match page_type {
+        // Cold Start Metrics
+        "cold_init" => Some(
+            "The time AWS Lambda spends initializing your function during a cold start. This includes downloading code/layers, \
+            initializing the runtime, and running initialization code outside the main handler. Cold starts occur when Lambda \
+            creates a new execution environment (first invocation or after inactivity). The Init phase is limited to 10 seconds \
+            for standard functions. Measured in milliseconds."
+        ),
+        "cold_server" => Some(
+            "The time your function code spends processing an event during a cold start invocation. This measures only the \
+            execution time of your function handler logic, excluding the initialization overhead. This is equivalent to the \
+            AWS CloudWatch 'Duration' metric for cold start invocations. Measured in milliseconds."
+        ),
+        "cold_extension_overhead" => Some(
+            "The additional time consumed by Lambda extensions after your function code completes during cold start. Extensions \
+            are external processes that run alongside your function (e.g., monitoring, security tools). This is part of the \
+            AWS CloudWatch 'PostRuntimeExtensionsDuration' metric. Higher values indicate extensions are impacting performance. \
+            Measured in milliseconds."
+        ),
+        "cold_total_duration" => Some(
+            "The complete end-to-end time for a cold start invocation, including initialization, function execution, and \
+            extension processing. This represents the total latency experienced when Lambda creates a new execution environment. \
+            This is the sum of Init Duration + Function Duration + Extension Overhead. Measured in milliseconds."
+        ),
+        "cold_start_response_latency" => Some(
+            "The time between when the Lambda service receives an invocation request and when the response becomes available \
+            during cold starts. This is measured at the platform level and includes network and service processing overhead \
+            beyond your function's execution time. Part of the platform.runtimeDone metrics. Measured in milliseconds."
+        ),
+        "cold_start_response_duration" => Some(
+            "The time taken by the Lambda runtime to prepare and send the response back to the caller during cold start invocations. \
+            This measures the overhead of response serialization and transmission at the platform level. Part of the \
+            platform.runtimeDone metrics from AWS Lambda's internal instrumentation. Measured in milliseconds."
+        ),
+        "cold_start_runtime_overhead" => Some(
+            "The additional time consumed by the Lambda runtime infrastructure beyond your function's execution time during \
+            cold starts. This includes runtime initialization, request/response handling, and internal Lambda service overhead. \
+            Derived from platform.runtimeDone metrics that provide insight into Lambda's internal performance. Measured in milliseconds."
+        ),
+        "cold_start_runtime_done_duration" => Some(
+            "The total time measured by Lambda's runtime from invocation start to completion during cold starts. This is an \
+            internal AWS metric that captures the complete runtime processing time including function execution and runtime \
+            overhead. Part of the platform.runtimeDone telemetry that provides deep runtime insights. Measured in milliseconds."
+        ),
+
+        // Warm Start Metrics  
+        "client" => Some(
+            "The end-to-end response time measured from the client perspective during warm start invocations. This includes \
+            network latency, Lambda service processing time, and function execution time. Warm starts reuse existing execution \
+            environments, skipping the Init phase, resulting in significantly lower latency than cold starts. Measured in milliseconds."
+        ),
+        "server" => Some(
+            "The time your function code spends processing an event during warm start invocations. Since warm starts reuse \
+            existing execution environments, this excludes initialization overhead and focuses purely on your application logic \
+            performance. This corresponds to the AWS CloudWatch 'Duration' metric for warm invocations. Measured in milliseconds."
+        ),
+        "extension_overhead" => Some(
+            "The additional time consumed by Lambda extensions after your function code completes during warm starts. Even though \
+            extensions are already initialized in warm starts, they may still perform post-invocation processing (e.g., sending \
+            telemetry, cleanup). This is the AWS CloudWatch 'PostRuntimeExtensionsDuration' metric. Measured in milliseconds."
+        ),
+        "warm_start_response_latency" => Some(
+            "The time between when the Lambda service receives an invocation request and when the response becomes available \
+            during warm start invocations. Since warm starts skip initialization, this latency is typically much lower than \
+            cold starts. Part of the platform.runtimeDone metrics providing platform-level insights. Measured in milliseconds."
+        ),
+        "warm_start_response_duration" => Some(
+            "The time taken by the Lambda runtime to prepare and send the response back to the caller during warm start invocations. \
+            This measures response processing overhead at the platform level for reused execution environments. Part of the \
+            platform.runtimeDone metrics from AWS Lambda's internal instrumentation. Measured in milliseconds."
+        ),
+        "warm_start_runtime_overhead" => Some(
+            "The additional time consumed by the Lambda runtime infrastructure beyond your function's execution time during \
+            warm starts. While typically lower than cold starts, this still includes request/response handling and internal \
+            service overhead. Derived from platform.runtimeDone metrics for runtime performance analysis. Measured in milliseconds."
+        ),
+        "warm_start_runtime_done_duration" => Some(
+            "The total time measured by Lambda's runtime from invocation start to completion during warm starts. This internal \
+            AWS metric captures the complete runtime processing time for reused execution environments. Part of the \
+            platform.runtimeDone telemetry providing detailed runtime performance insights. Measured in milliseconds."
+        ),
+
+        // Resource Metrics
+        "memory" => Some(
+            "The maximum amount of memory used by your Lambda function during execution. This is reported by AWS CloudWatch \
+            as 'MaxMemoryUsed' and helps you understand actual memory consumption versus allocated memory. Optimizing memory \
+            allocation can improve both performance and cost-effectiveness. Memory impacts CPU allocation proportionally. Measured in megabytes (MB)."
+        ),
+        "produced_bytes" => Some(
+            "The number of bytes produced by your Lambda function during execution, typically representing the size of the \
+            response payload. This metric helps track data transfer and can indicate the efficiency of your response \
+            serialization. Large responses may impact performance and incur additional data transfer costs. Part of the \
+            platform.runtimeDone metrics. Measured in bytes."
+        ),
+
+        _ => None,
     }
 }
 
@@ -1630,6 +1738,7 @@ mod tests {
         assert_eq!(render_data.title, title);
         assert_eq!(render_data.unit, unit);
         assert_eq!(render_data.page_type, page_type);
+        assert_eq!(render_data.description, None); // test_bar doesn't have a description
         assert_eq!(
             render_data.y_axis_categories,
             vec!["AVG", "P50", "P95", "P99"]
@@ -1725,6 +1834,7 @@ mod tests {
         assert_eq!(render_data.title, title);
         assert_eq!(render_data.unit, unit);
         assert_eq!(render_data.page_type, format!("{}_time", page_type));
+        assert_eq!(render_data.description, None); // test_line doesn't have a description
         assert_eq!(render_data.x_axis_label, "Test Sequence");
         assert_eq!(render_data.y_axis_label, "Duration (ms)");
 
@@ -1793,5 +1903,32 @@ mod tests {
         assert_eq!(render_data.series[0].points.len(), 0);
         assert_eq!(render_data.series[0].mean, None);
         assert_eq!(render_data.total_x_points, 0); // max_x remains 0 if no points
+    }
+
+    #[test]
+    fn test_metric_descriptions() {
+        // Test known metric types have descriptions
+        assert!(get_metric_description("cold_init").is_some());
+        assert!(get_metric_description("cold_server").is_some());
+        assert!(get_metric_description("extension_overhead").is_some());
+        assert!(get_metric_description("memory").is_some());
+        
+        // Test unknown metric type returns None
+        assert!(get_metric_description("unknown_metric").is_none());
+        
+        // Test that bar chart includes description for known metric types
+        let function_names = vec!["test_func".to_string()];
+        let stats = vec![(10.0, 15.0, 14.0, 12.0, 1.0)];
+        
+        let bar_data = prepare_bar_chart_render_data(
+            &function_names, 
+            &stats, 
+            "Cold Start - Init Duration", 
+            "ms", 
+            "cold_init"
+        );
+        
+        assert!(bar_data.description.is_some());
+        assert!(bar_data.description.unwrap().contains("AWS Lambda spends initializing"));
     }
 }

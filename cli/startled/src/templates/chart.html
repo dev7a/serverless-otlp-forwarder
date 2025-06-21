@@ -31,6 +31,11 @@
                  <div class="header">
                      <div class="title-section">
                          <h1 class="chart-title">{{ title }}</h1>
+                         {% if description %}
+                         <div class="metric-description">
+                             <p>{{ description }}</p>
+                         </div>
+                         {% endif %}
                          <div class="chart-subtitle">
                              <div class="metadata-line">
                                  <ul class="metadata-list">

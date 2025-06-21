@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-06-21
+
+### Added
+- **AWS-Documentation-Based Metric Descriptions**: Each chart page now displays comprehensive descriptions explaining what each metric represents, based on official AWS Lambda documentation
+  - Cold start metrics: init duration, server duration, extension overhead, total duration, response latency/duration, runtime overhead
+  - Warm start metrics: client/server duration, extension overhead, response latency/duration, runtime overhead  
+  - Resource metrics: memory usage, produced bytes
+  - Descriptions explain AWS CloudWatch equivalents, platform.runtimeDone metrics, and performance implications
+- Enhanced visual styling for metric description display with dedicated CSS styling
+
+### Changed
+- Improved color contrast in dark theme (text-secondary: `#565f89` → `#b1bfff`)
+- Lightened background in light theme (secondary-bg: `#f5f5f5` → `#f7f7f7`)
+- Simplified readme content styling for better readability
+
 ## [0.4.1] - 2025-06-21
 
 ### Fixed
