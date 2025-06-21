@@ -95,9 +95,10 @@ async function syncHttpRequest(
     }
 
     req.on('error', (error) => {
-      if (error.message === 'socket hang up' || error.message.includes('ECONNRESET')) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError.code === 'ECONNRESET' || nodeError.code === 'ETIMEDOUT') {
         logger.error('[extension] HTTP request timeout or connection reset');
-        reject(new Error('HTTP request timeout'));
+        reject(new Error('HTTP request timeout or connection reset'));
       } else {
         logger.error('[extension] HTTP request failed:', error.message);
         reject(error);
