@@ -7,6 +7,7 @@ const logger = createLogger('extension');
 
 // Configuration constants
 const DEFAULT_HTTP_TIMEOUT_MS = 5000;
+const DEFAULT_RUNTIME_API_PORT = 9001;
 
 // Create HTTP agent for connection pooling
 const httpAgent = new http.Agent({
@@ -51,11 +52,11 @@ function parseRuntimeApi(): { host: string; port: number } {
   const parsedPort = parseInt(port, 10);
   const isValidPort = !isNaN(parsedPort) && parsedPort >= 0 && parsedPort <= 65535;
   if (!isValidPort) {
-    logger.warn(`[extension] Invalid port value "${port}" in AWS_LAMBDA_RUNTIME_API. Defaulting to 9001.`);
+    logger.warn(`[extension] Invalid port value "${port}" in AWS_LAMBDA_RUNTIME_API. Defaulting to ${DEFAULT_RUNTIME_API_PORT}.`);
   }
   return {
     host: host || 'localhost',
-    port: isValidPort ? parsedPort : 9001,
+    port: isValidPort ? parsedPort : DEFAULT_RUNTIME_API_PORT,
   };
 }
 
@@ -91,6 +92,11 @@ async function httpRequest(
           body: body
         });
       });
+
+      res.on('error', (error) => {
+        logger.error('[extension] HTTP response stream error:', error.message);
+        reject(error);
+      });
     });
 
     // Set custom timeout if provided
@@ -103,9 +109,12 @@ async function httpRequest(
 
     req.on('error', (error) => {
       const nodeError = error as NodeJS.ErrnoException;
-      if (nodeError.code === 'ECONNRESET' || nodeError.code === 'ETIMEDOUT') {
-        logger.error('[extension] HTTP request timeout or connection reset');
-        reject(new Error('HTTP request timeout or connection reset'));
+      if (nodeError.code === 'ETIMEDOUT') {
+        logger.error('[extension] HTTP request timeout');
+        reject(new Error('HTTP request timeout'));
+      } else if (nodeError.code === 'ECONNRESET') {
+        logger.error('[extension] HTTP connection reset');
+        reject(new Error('HTTP connection reset'));
       } else {
         logger.error('[extension] HTTP request failed:', error.message);
         reject(error);
