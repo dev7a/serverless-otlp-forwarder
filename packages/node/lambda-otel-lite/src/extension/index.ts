@@ -46,9 +46,14 @@ function parseRuntimeApi(): { host: string; port: number } {
   }
 
   const [host, port] = runtimeApi.split(':');
+  const parsedPort = parseInt(port, 10);
+  const isValidPort = !isNaN(parsedPort) && parsedPort >= 0 && parsedPort <= 65535;
+  if (!isValidPort) {
+    logger.warn(`[extension] Invalid port value "${port}" in AWS_LAMBDA_RUNTIME_API. Defaulting to 9001.`);
+  }
   return {
     host: host || 'localhost',
-    port: parseInt(port, 10) || 9001,
+    port: isValidPort ? parsedPort : 9001,
   };
 }
 
@@ -58,7 +63,7 @@ function parseRuntimeApi(): { host: string; port: number } {
  * @param data Optional request body
  * @param timeoutMs Optional timeout in milliseconds. If not provided, no additional timeout is applied.
  */
-async function syncHttpRequest(
+async function httpRequest(
   options: http.RequestOptions,
   data?: string,
   timeoutMs?: number
@@ -123,7 +128,7 @@ async function requestNextEvent(extensionId: string): Promise<void> {
     const { host, port } = parseRuntimeApi();
 
     // No timeout for long-polling - this request blocks until an event occurs
-    const response = await syncHttpRequest({
+    const response = await httpRequest({
       host,
       port,
       path: '/2020-01-01/extension/event/next',
@@ -199,7 +204,7 @@ async function registerExtension(events: string[]): Promise<string> {
   logger.debug(`[extension] registering extension with events: [${events.join(', ')}]`);
 
   // Use timeout for admin operations - they should complete quickly
-  const response = await syncHttpRequest(
+  const response = await httpRequest(
     {
       host,
       port,
