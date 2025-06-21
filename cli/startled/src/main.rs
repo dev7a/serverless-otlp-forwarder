@@ -32,7 +32,8 @@ EXAMPLES:
     startled function my-lambda-function --memory 512 --payload-file ./payload.json
 
     # Generate HTML reports from benchmark results in a directory
-    startled report -d ./benchmark_results -o ./reports --screenshot light
+    startled report -d ./benchmark_results -o ./reports --screenshot light \\
+        --title \"Performance Analysis\" --description \"Comparison of OTEL configurations\"
 
     # Generate shell completions for bash
     startled generate-completions bash";
@@ -147,6 +148,14 @@ enum Commands {
         /// Output directory for report files
         #[arg(short = 'o', long = "output", required = true)]
         output_dir: String,
+
+        /// Title for the report landing page
+        #[arg(long = "title")]
+        title: Option<String>,
+
+        /// Description text to display on the landing page
+        #[arg(long = "description")]
+        description: Option<String>,
 
         /// Generate screenshots with specified theme
         #[arg(long, value_name = "THEME")]
@@ -317,6 +326,8 @@ async fn run() -> Result<()> {
         Commands::Report {
             input_dir,
             output_dir,
+            title,
+            description,
             screenshot,
             template_dir,
             readme_file,
@@ -330,7 +341,8 @@ async fn run() -> Result<()> {
             generate_reports(
                 &input_dir,
                 &output_dir,
-                None,
+                title.as_deref(),
+                description.as_deref(),
                 base_url.as_deref(),
                 screenshot_theme,
                 template_dir,

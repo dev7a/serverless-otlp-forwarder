@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-06-21
+
+### Added
+- `--title` option to `report` command for customizing the report landing page title
+- `--description` option to `report` command for adding descriptive text to the landing page
+
+### Changed
+- Removed duplicative items-grid section from landing page template in favor of cleaner sidebar navigation
+- Updated CLI usage examples to demonstrate new `--title` and `--description` options
+
 ## [0.3.3] - 2025-05-18
 
 ### Changed

@@ -300,6 +300,7 @@ async fn generate_landing_page(
     output_directory: &str,
     report_structure: &ReportStructure,
     custom_title: Option<&str>,
+    description: Option<&str>,
     pb: &ProgressBar,
     template_dir: Option<&String>,
     readme_file: Option<&str>,
@@ -343,6 +344,9 @@ async fn generate_landing_page(
 
     let mut ctx = TeraContext::new();
     ctx.insert("title", custom_title.unwrap_or("Benchmark Reports"));
+    if let Some(desc) = description {
+        ctx.insert("description", desc);
+    }
     // Landing page specific context
     ctx.insert("is_landing_page", &true);
     // Add link_suffix for local browsing
@@ -434,6 +438,7 @@ pub async fn generate_reports(
     input_directory: &str,
     output_directory: &str,
     custom_title: Option<&str>,
+    description: Option<&str>,
     base_url: Option<&str>,
     screenshot_theme: Option<&str>,
     template_dir: Option<String>,
@@ -528,6 +533,7 @@ pub async fn generate_reports(
         output_directory,
         &report_structure,
         custom_title,
+        description,
         &landing_pb,
         template_dir.as_ref(),
         readme_file.as_deref(),
