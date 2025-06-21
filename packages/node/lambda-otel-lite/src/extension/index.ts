@@ -45,7 +45,9 @@ function parseRuntimeApi(): { host: string; port: number } {
     throw new Error('AWS_LAMBDA_RUNTIME_API environment variable is not set');
   }
 
-  const [host, port] = runtimeApi.split(':');
+  const lastColonIndex = runtimeApi.lastIndexOf(':');
+  const host = lastColonIndex !== -1 ? runtimeApi.slice(0, lastColonIndex) : runtimeApi;
+  const port = lastColonIndex !== -1 ? runtimeApi.slice(lastColonIndex + 1) : '';
   const parsedPort = parseInt(port, 10);
   const isValidPort = !isNaN(parsedPort) && parsedPort >= 0 && parsedPort <= 65535;
   if (!isValidPort) {
@@ -86,7 +88,7 @@ async function httpRequest(
         resolve({
           status: res.statusCode || 500,
           headers: res.headers,
-          body: body,
+          body: body
         });
       });
     });
