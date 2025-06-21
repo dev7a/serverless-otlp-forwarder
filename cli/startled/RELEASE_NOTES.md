@@ -1,32 +1,23 @@
-# Release Notes - startled v0.4.0
+# Release Notes - startled v0.4.1
 
 **Release Date:** 2025-06-21
 
-This release enhances the `report` command with new customization options and improves the landing page UI.
+This is a **critical bug fix release** that resolves an issue preventing distributed binaries from functioning properly.
 
-## New Features
+## Bug Fix
 
-### Enhanced Report Customization
-- **`--title` option**: Customize the title of your benchmark report landing page
-- **`--description` option**: Add descriptive text to provide context about your benchmark results
+### JavaScript File Embedding Issue
+- **Fixed**: Resolved "Failed to copy default lib.js" error that occurred when using startled binaries downloaded from GitHub releases
+- **Root Cause**: The JavaScript file copying logic was using `env!("CARGO_MANIFEST_DIR")` which only exists during compilation, not in distributed binaries
+- **Solution**: Changed to use `include_str!()` to properly embed the JavaScript file at compile time, consistent with how CSS files are handled
 
-## Improvements
+## Impact
 
-### User Interface
-- **Cleaner Landing Page**: Removed the duplicative items-grid section from the report landing page in favor of the existing sidebar navigation, resulting in a cleaner and less cluttered interface
+This fix ensures that the `report` command works correctly in all deployment scenarios:
+- ✅ **Development**: Works when building from source
+- ✅ **CI/CD**: Works when downloaded from GitHub releases
+- ✅ **Distribution**: Works for all binary distribution methods
 
-### Documentation
-- **Updated Examples**: CLI usage examples now demonstrate the new `--title` and `--description` options
+## Migration
 
-## Example Usage
-
-```bash
-startled report \
-  --input-dir ./benchmark_results \
-  --output-dir ./reports \
-  --title "Lambda Performance Analysis" \
-  --description "Comprehensive comparison of different OpenTelemetry configurations across Node.js, Python, and Rust runtimes" \
-  --screenshot dark
-```
-
-This release maintains full backward compatibility with existing workflows while providing new options for creating more professional and informative benchmark reports.
+No action required - this is a drop-in replacement for v0.4.0. All existing functionality remains unchanged.

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2025-06-21
+
+### Fixed
+- Fixed JavaScript file embedding issue that caused "Failed to copy default lib.js" error when using distributed binaries from GitHub releases. The JS file is now properly embedded at compile time using `include_str!()` instead of relying on `CARGO_MANIFEST_DIR`.
+
 ## [0.4.0] - 2025-06-21
 
 ### Added
