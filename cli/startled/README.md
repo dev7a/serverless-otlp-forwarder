@@ -251,6 +251,8 @@ Generates HTML reports from previously collected JSON benchmark results.
 **Key Options:**
 -   `--input-dir <PATH>` (`-d <PATH>`): (Required) Directory containing the JSON benchmark result files. `startled` expects a structure like `<input_dir>/{group_name}/{subgroup_name}/*.json` (e.g., `/tmp/startled_results/my-app/prod/1024mb/*.json`).
 -   `--output-dir <PATH>` (`-o <PATH>`): (Required) Directory where the HTML report files will be generated. An `index.html` file and associated assets will be created in this directory. The generated reports will now include charts for new platform metrics and display Standard Deviation.
+-   `--title <TITLE>`: (Optional) Custom title for the report landing page. If not specified, defaults to "Benchmark Reports".
+-   `--description <DESCRIPTION>`: (Optional) Descriptive text to display below the title on the report landing page. Useful for providing context about the benchmark results.
 -   `--screenshot <THEME>`: (Optional) Generates PNG screenshots of the charts. `<THEME>` can be `Light` or `Dark`. This requires the `screenshots` compile-time feature and a properly configured headless Chrome environment.
 -   `--readme <MARKDOWN_FILE>`: (Optional) Specifies a markdown file whose content will be rendered as HTML and included on the landing page of the report. This allows for adding custom documentation, explanations, or findings to the benchmark report.
 -   `--template-dir <PATH>`: (Optional) Specifies a custom directory containing templates for report generation. This allows for complete customization of the report appearance and behavior. The directory should contain HTML templates (`index.html`, `chart.html`, `_sidebar.html`), CSS (`css/style.css`), and a single JavaScript file (`js/lib.js`) that handles all chart rendering functionality.
@@ -262,6 +264,8 @@ Generates HTML reports from previously collected JSON benchmark results.
 startled report \
     --input-dir /tmp/startled_results/my-application-services \
     --output-dir /var/www/benchmarks/my-application-services \
+    --title "Lambda Performance Analysis" \
+    --description "Comprehensive comparison of different OpenTelemetry configurations across Node.js, Python, and Rust runtimes" \
     --screenshot dark \
     --readme benchmark-notes.md \
     --template-dir /path/to/custom-templates \

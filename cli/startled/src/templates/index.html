@@ -33,20 +33,6 @@
                  {% if description %}
                  <p class="description">{{ description }}</p>
                  {% endif %}
-                
-                <div class="items-grid">
-                    {% for group_name, subgroups in report_structure %}
-                        <div class="item-card">
-                             <h2 class="item-title">{{ group_name }}</h2>
-                             <ul class="landing-subgroup-list"> {# Simple list for subgroups #}
-                                 {% for subgroup_name in subgroups %}
-                                     {% set link_path = base_path ~ group_name ~ "/" ~ subgroup_name ~ "/cold-start-init/" ~ link_suffix %}
-                                     <li><a href="{{ link_path | safe }}" class="subgroup-link">{{ subgroup_name | replace(from="mb", to=" MB") }}</a></li>
-                                 {% endfor %}
-                             </ul>
-                        </div>
-                     {% endfor %}
-                 </div>
                  {% if has_readme %}
                  <div class="readme-content">
                     {{ readme_html | safe }}

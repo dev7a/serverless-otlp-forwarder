@@ -825,7 +825,6 @@ dependencies = [
  "opentelemetry-aws",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "reqwest",
  "serde_json",
  "tokio",
  "tracing",
@@ -2415,7 +2414,7 @@ dependencies = [
  "opentelemetry-aws",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.15.0",
  "pin-project",
  "rand 0.9.1",
  "reqwest",
@@ -2551,7 +2550,7 @@ checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "livetrace"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -2571,8 +2570,9 @@ dependencies = [
  "indexmap 2.9.0",
  "indicatif",
  "opentelemetry-proto",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "prost",
+ "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -2704,6 +2704,18 @@ dependencies = [
  "rand_distr",
  "simba",
  "typenum",
+]
+
+[[package]]
+name = "nix"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
@@ -2989,12 +3001,12 @@ dependencies = [
  "hex",
  "lambda-extension",
  "lambda-otel-lite",
- "nix",
+ "nix 0.30.1",
  "opentelemetry",
  "opentelemetry-proto",
  "opentelemetry-semantic-conventions 0.29.0",
  "opentelemetry_sdk",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.15.0",
  "prost",
  "rand 0.9.1",
  "serde",
@@ -3022,7 +3034,7 @@ dependencies = [
  "opentelemetry_sdk",
  "otlp-sigv4-client 0.11.0",
  "otlp-stdout-logs-processor",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.15.0",
  "prost",
  "reqwest",
  "serde_json",
@@ -3049,7 +3061,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "otlp-sigv4-client 0.11.0",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.15.0",
  "prost",
  "regex",
  "reqwest",
@@ -3071,7 +3083,7 @@ dependencies = [
  "doc-comment",
  "flate2",
  "log",
- "nix",
+ "nix 0.30.1",
  "opentelemetry",
  "opentelemetry-proto",
  "opentelemetry_sdk",
@@ -3079,6 +3091,28 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "tokio",
+]
+
+[[package]]
+name = "otlp-stdout-span-exporter"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e99400e5c5164f32408fb43dd15127951194aa29c3dd345984c807abf70cf23"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bon",
+ "doc-comment",
+ "flate2",
+ "log",
+ "nix 0.29.0",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -4186,19 +4220,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_yaml"
-version = "0.9.34+deprecated"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a8b1a1a2ebf674015cc02edccce75287f1a0130d394307b36743c2f5d504b47"
-dependencies = [
- "indexmap 2.9.0",
- "itoa",
- "ryu",
- "serde",
- "unsafe-libyaml",
-]
-
-[[package]]
 name = "serial_test"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4221,6 +4242,34 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.101",
+]
+
+[[package]]
+name = "serverless-otlp-forwarder-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "aws_lambda_events",
+ "base64 0.22.1",
+ "bytes",
+ "flate2",
+ "lambda-otel-lite",
+ "lambda_runtime",
+ "opentelemetry-proto",
+ "otlp-stdout-span-exporter 0.15.0",
+ "prost",
+ "reqwest",
+ "reqwest-middleware",
+ "reqwest-tracing",
+ "sealed_test",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tokio",
+ "tracing",
+ "url",
+ "wiremock",
 ]
 
 [[package]]
@@ -4348,7 +4397,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "startled"
-version = "0.1.1"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -4376,7 +4425,6 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "serde_yaml",
  "statrs",
  "tempfile",
  "tera",
@@ -5039,12 +5087,6 @@ name = "unicode-width"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
-
-[[package]]
-name = "unsafe-libyaml"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
 
 [[package]]
 name = "untrusted"
