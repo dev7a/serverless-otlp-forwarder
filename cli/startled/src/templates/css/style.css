@@ -3,7 +3,7 @@
     --secondary-bg: #16161e;
     --border-color: #292e42;
     --text-primary: #c0caf5;
-    --text-secondary: #565f89;
+    --text-secondary: #b1bfff;
     --accent-color: #7aa2f7;
     --env-bg: #1f2335;
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.25);
@@ -16,7 +16,7 @@
 @media (prefers-color-scheme: light) {
     :root {
         --primary-bg: #ffffff;
-        --secondary-bg: #f5f5f5;
+        --secondary-bg: #f7f7f7;
         --border-color: #d1d1d1;
         --text-primary: #111827;
         --text-secondary: #6b7280;
@@ -31,7 +31,7 @@
 /* Manual theme overrides (these take precedence over OS settings) */
 :root[data-theme="light"] {
     --primary-bg: #ffffff;
-    --secondary-bg: #f5f5f5;
+    --secondary-bg: #f7f7f7;
     --border-color: #d1d1d1;
     --text-primary: #111827;
     --text-secondary: #6b7280;
@@ -47,7 +47,7 @@
     --secondary-bg: #16161e;
     --border-color: #292e42;
     --text-primary: #c0caf5;
-    --text-secondary: #565f89;
+    --text-secondary: #b1bfff;
     --accent-color: #7aa2f7;
     --env-bg: #1f2335;
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.25);
@@ -344,13 +344,7 @@ a:hover {
 
 /* Readme Content Styling */
 .readme-content {
-    background: var(--primary-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin: 1.5rem 0;
-    box-shadow: var(--shadow);
-    line-height: 1.6;
+    font-size: 0.875rem;
 }
 
 .readme-content h1, 
@@ -482,6 +476,22 @@ a:hover {
     margin: 0;
     text-transform: uppercase;
     letter-spacing: 0.025em;
+}
+
+.metric-description {
+    margin: 0.75rem 0;
+    padding: 1rem;
+    background: var(--env-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.metric-description p {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
 }
 
 .chart-subtitle {

@@ -1,23 +1,84 @@
-# Release Notes - startled v0.4.1
+# Release Notes - startled v0.5.0
 
 **Release Date:** 2025-06-21
 
-This is a **critical bug fix release** that resolves an issue preventing distributed binaries from functioning properly.
+This release introduces **AWS-Documentation-Based Metric Descriptions**, a major enhancement that transforms the startled reports from raw performance data into comprehensive, educational Lambda performance analysis tools.
 
-## Bug Fix
+## 🎯 Major New Feature
 
-### JavaScript File Embedding Issue
-- **Fixed**: Resolved "Failed to copy default lib.js" error that occurred when using startled binaries downloaded from GitHub releases
-- **Root Cause**: The JavaScript file copying logic was using `env!("CARGO_MANIFEST_DIR")` which only exists during compilation, not in distributed binaries
-- **Solution**: Changed to use `include_str!()` to properly embed the JavaScript file at compile time, consistent with how CSS files are handled
+### AWS-Documentation-Based Metric Descriptions
 
-## Impact
+Every metric chart now includes detailed, expert-level descriptions that explain:
 
-This fix ensures that the `report` command works correctly in all deployment scenarios:
-- ✅ **Development**: Works when building from source
-- ✅ **CI/CD**: Works when downloaded from GitHub releases
-- ✅ **Distribution**: Works for all binary distribution methods
+- **What each metric represents** in AWS Lambda's execution model
+- **Official AWS CloudWatch metric equivalents** (Duration, PostRuntimeExtensionsDuration, MaxMemoryUsed)
+- **Platform-level metrics** from AWS's internal instrumentation (platform.runtimeDone)
+- **Performance implications** and optimization insights
+- **Measurement context** (cold starts vs warm starts, initialization phases)
 
-## Migration
+#### Coverage Includes:
 
-No action required - this is a drop-in replacement for v0.4.0. All existing functionality remains unchanged.
+**Cold Start Metrics:**
+- Init Duration, Server Duration, Extension Overhead
+- Total Cold Start Duration, Response Latency/Duration  
+- Runtime Overhead, Runtime Done Duration
+
+**Warm Start Metrics:**
+- Client Duration, Server Duration, Extension Overhead
+- Response Latency/Duration, Runtime Overhead, Runtime Done Duration
+
+**Resource Metrics:**
+- Memory Usage, Produced Bytes
+
+## 🎨 Visual Enhancements
+
+### Improved User Experience
+- **Dedicated metric description sections** with professional styling
+- **Enhanced color contrast** in dark theme for better readability  
+- **Improved background colors** in light theme
+- **Streamlined readme content styling**
+
+## 📚 Educational Value
+
+This release transforms startled from a charting tool into a **Lambda performance education platform**. Users now understand:
+
+- How AWS Lambda's execution environment lifecycle affects performance
+- The relationship between different timing metrics
+- Which metrics correspond to AWS CloudWatch billing and monitoring
+- How extensions impact Lambda performance across cold/warm starts
+- Platform-level insights from AWS's internal telemetry
+
+## 🔧 Implementation Details
+
+- **Research-based descriptions** derived from official AWS Lambda documentation
+- **Consistent styling** with dedicated CSS classes for metric descriptions
+- **Template integration** that automatically displays relevant descriptions
+- **Comprehensive test coverage** ensuring description accuracy
+
+## 🚀 Usage Example
+
+```bash
+startled report \
+    --dir=results \
+    --output=./reports \
+    --title "Lambda Performance Analysis" \
+    --description "Deep dive into runtime performance characteristics"
+```
+
+Each generated chart now includes contextualized explanations that help users:
+- Identify performance bottlenecks
+- Understand extension overhead impact  
+- Correlate metrics with AWS CloudWatch data
+- Make informed optimization decisions
+
+## 📈 Impact
+
+This enhancement addresses a key gap in Lambda performance tooling - transforming raw metrics into actionable insights through expert-level explanations based on official AWS documentation.
+
+---
+
+## Compatibility
+
+- ✅ **Backwards Compatible**: All existing functionality preserved
+- ✅ **No Breaking Changes**: Existing CLI usage remains unchanged  
+- ✅ **Template Compatibility**: Custom templates automatically benefit from new descriptions

@@ -29,14 +29,15 @@
                  </button>
 
                  
-                 <h1 class="title">{{ title }}</h1>
-                 {% if description %}
-                 <p class="description">{{ description }}</p>
-                 {% endif %}
                  {% if has_readme %}
                  <div class="readme-content">
                     {{ readme_html | safe }}
                  </div>
+                 {% else %}
+                 <h1 class="title">{{ title }}</h1>
+                 {% if description %}
+                 <p class="description">{{ description }}</p>
+                 {% endif %}
                  {% endif %}
              </div>
          </main>

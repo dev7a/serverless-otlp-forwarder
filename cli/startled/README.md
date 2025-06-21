@@ -52,6 +52,7 @@
     -   Set temporary **environment variables** for the Lambda function during the benchmark.
 -   **Comprehensive HTML Reports**:
     -   Generates detailed HTML reports featuring interactive charts (using Apache ECharts) for clear visualization of benchmark data.
+    -   **AWS-Documentation-Based Metric Descriptions**: Each chart includes expert-level explanations of what metrics represent, their AWS CloudWatch equivalents, and performance optimization insights based on official AWS Lambda documentation.
     -   Provides statistical summaries (Average, P50, P95, P99, and **Standard Deviation (StdDev)**) for key metrics across different functions and configurations.
     -   Includes new chart pages for all recently added platform metrics.
     -   Features an improved navigation layout with vertically stacked metric groups and wrapped links for better readability.
