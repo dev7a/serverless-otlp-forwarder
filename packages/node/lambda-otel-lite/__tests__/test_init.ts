@@ -9,7 +9,12 @@ import {
 } from '@opentelemetry/api';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SpanProcessor, IdGenerator } from '@opentelemetry/sdk-trace-base';
-import { initTelemetry, isColdStart, setColdStart, getLambdaResource } from '../src/internal/telemetry/init';
+import {
+  initTelemetry,
+  isColdStart,
+  setColdStart,
+  getLambdaResource,
+} from '../src/internal/telemetry/init';
 import { state } from '../src/internal/state';
 import { EnvVarManager } from './utils';
 
@@ -247,7 +252,7 @@ describe('telemetry/init', () => {
 
       expect(completionHandler).toBeDefined();
       expect(state.provider).toBeDefined();
-      
+
       // Test the resource creation directly with the same environment
       const resource = getLambdaResource();
       expect(resource.attributes['service.name']).toBe('env-service');
@@ -262,7 +267,7 @@ describe('telemetry/init', () => {
       const { completionHandler } = initTelemetry();
 
       expect(completionHandler).toBeDefined();
-      
+
       // Test the resource creation to verify Lambda function name is used as service name
       const resource = getLambdaResource();
       expect(resource.attributes['service.name']).toBe('lambda-function');
@@ -275,7 +280,7 @@ describe('telemetry/init', () => {
       const { completionHandler } = initTelemetry();
 
       expect(completionHandler).toBeDefined();
-      
+
       // Test the resource creation to verify default service name is used
       const resource = getLambdaResource();
       expect(resource.attributes['service.name']).toBe('unknown_service');
@@ -287,13 +292,13 @@ describe('telemetry/init', () => {
         'service.name': 'test-service',
         'custom.attribute': 'custom-value',
       });
-      
+
       const { completionHandler } = initTelemetry({
         resource: customResource,
       });
 
       expect(completionHandler).toBeDefined();
-      
+
       // Verify the custom resource attributes are preserved
       expect(customResource.attributes['service.name']).toBe('test-service');
       expect(customResource.attributes['custom.attribute']).toBe('custom-value');
@@ -311,7 +316,7 @@ describe('telemetry/init', () => {
       });
 
       expect(completionHandler).toBeDefined();
-      
+
       // Verify the custom resource attributes are preserved
       expect(customResource.attributes['custom.attribute']).toBe('custom-value');
       expect(customResource.attributes['service.name']).toBe('custom-service');

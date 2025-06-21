@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.3] - 2025-06-20
+
+### Fixed
+- **Performance**: Fixed severe performance regression introduced in v0.16.0 that caused:
+  - 33.2% increase in cold start duration (654ms vs 491ms baseline)
+  - 123% increase in warm start P50 latency (34.7ms vs 15.5ms baseline)
+  - 10.7% increase in memory usage during warm starts
+- Reverted Lambda extension HTTP client from `fetch` API back to native Node.js `http` module with connection pooling:
+  - Restored `http.Agent` with `keepAlive: true` for TCP connection reuse
+  - Configured `maxSockets: 1` optimized for Lambda's single-concurrent execution model
+  - Pre-configured agent created once at module load for maximum efficiency
+- **Performance improvements achieved**:
+  - Cold start duration reduced by 143ms (now 511ms, only 4.1% above v0.15.0 baseline)
+  - Warm start P50 latency reduced by 15.6ms (now 19.1ms, 23% above baseline vs 123% before fix)
+  - Memory usage improved to 2.4% better than v0.15.0 baseline
+  - Initialization time improved to 3.6% better than v0.15.0 baseline
+- Maintained all TypeScript improvements and error handling enhancements from v0.16.0
+
+### Changed
+- Lambda extension HTTP implementation now uses connection pooling for optimal performance
+- Enhanced error handling to distinguish between timeout and connection reset errors
+
 ## [0.16.2] - 2025-06-20
 
 ### Fixed
