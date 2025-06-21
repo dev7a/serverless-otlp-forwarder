@@ -44,6 +44,11 @@ This document outlines the steps to publish a new version of the `startled` CLI 
         cargo clippy --all-targets -- -D warnings 
         ```
         Address all warnings and errors.
+    *   **5.3. Check Code Formatting**:
+        ```bash
+        cargo fmt --check
+        ```
+        Ensure code follows consistent formatting. If this fails, run `cargo fmt` to fix formatting, then commit the changes.
 
 6.  **Update Documentation Files**:
     *   **6.1. Update `CHANGELOG.md`**:

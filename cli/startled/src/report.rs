@@ -47,7 +47,7 @@ struct BarChartRenderData {
     unit: String,                   // e.g., "ms"
     y_axis_categories: Vec<String>, // e.g., ["AVG", "P99", "P95", "P50"]
     series: Vec<SeriesRenderData>,
-    page_type: String, // e.g., "cold_init", for context in JS if needed
+    page_type: String,           // e.g., "cold_init", for context in JS if needed
     description: Option<String>, // AWS-documentation-based description of the metric
 }
 
@@ -1912,23 +1912,26 @@ mod tests {
         assert!(get_metric_description("cold_server").is_some());
         assert!(get_metric_description("extension_overhead").is_some());
         assert!(get_metric_description("memory").is_some());
-        
+
         // Test unknown metric type returns None
         assert!(get_metric_description("unknown_metric").is_none());
-        
+
         // Test that bar chart includes description for known metric types
         let function_names = vec!["test_func".to_string()];
         let stats = vec![(10.0, 15.0, 14.0, 12.0, 1.0)];
-        
+
         let bar_data = prepare_bar_chart_render_data(
-            &function_names, 
-            &stats, 
-            "Cold Start - Init Duration", 
-            "ms", 
-            "cold_init"
+            &function_names,
+            &stats,
+            "Cold Start - Init Duration",
+            "ms",
+            "cold_init",
         );
-        
+
         assert!(bar_data.description.is_some());
-        assert!(bar_data.description.unwrap().contains("AWS Lambda spends initializing"));
+        assert!(bar_data
+            .description
+            .unwrap()
+            .contains("AWS Lambda spends initializing"));
     }
 }
