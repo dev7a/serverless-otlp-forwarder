@@ -1,16 +1,24 @@
 import { ProcessorMode, resolveProcessorMode } from '../mode';
 import { state } from '../internal/state';
 import { createLogger } from '../internal/logger';
+import * as http from 'http';
 
 const logger = createLogger('extension');
 
 // Configuration constants
 const DEFAULT_HTTP_TIMEOUT_MS = 5000;
 
+// Create HTTP agent for connection pooling
+const httpAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 1, // Lambda extensions typically only need 1 connection
+  timeout: DEFAULT_HTTP_TIMEOUT_MS,
+});
+
 // Types for better type safety
 interface HttpResponse {
   status: number;
-  headers: Headers;
+  headers: http.IncomingHttpHeaders;
   body: string;
 }
 
@@ -30,63 +38,79 @@ interface ExtensionRegistrationRequest {
 }
 
 /**
- * Make an HTTP request using the fetch API with proper error handling
- * @param url The URL to request
- * @param options Fetch options
- * @param timeoutMs Optional timeout in milliseconds. If not provided, no timeout is applied.
+ * Parse Lambda Runtime API URL into host and port
  */
-async function syncHttpRequest(url: string, options: RequestInit = {}, timeoutMs?: number): Promise<HttpResponse> {
-  const controller = new AbortController();
-  let timeoutId: NodeJS.Timeout | undefined;
-  
-  // Only set timeout if explicitly provided
-  if (timeoutMs !== undefined) {
-    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  }
-
-  try {
-    const fetchOptions: RequestInit = {
-      signal: controller.signal,
-      ...options,
-    };
-
-    const response = await fetch(url, fetchOptions);
-    const body = await response.text();
-
-    return {
-      status: response.status,
-      headers: response.headers,
-      body: body,
-    };
-  } catch (error) {
-    if (error instanceof Error) {
-      if (error.name === 'AbortError') {
-        logger.error('[extension] HTTP request timeout');
-        throw new Error('HTTP request timeout');
-      }
-      logger.error('[extension] HTTP request failed:', error.message);
-    } else {
-      logger.error('[extension] HTTP request failed:', error);
-    }
-    throw error;
-  } finally {
-    // Clear the timeout if it was set
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId);
-    }
-  }
-}
-
-/**
- * Get Lambda Runtime API base URL
- */
-function getRuntimeApiBaseUrl(): string {
+function parseRuntimeApi(): { host: string; port: string } {
   const runtimeApi = process.env.AWS_LAMBDA_RUNTIME_API;
   if (!runtimeApi) {
     throw new Error('AWS_LAMBDA_RUNTIME_API environment variable is not set');
   }
 
-  return `http://${runtimeApi}`;
+  const [host, port] = runtimeApi.split(':');
+  return {
+    host: host || 'localhost',
+    port: port || '9001',
+  };
+}
+
+/**
+ * Make an HTTP request using the native http module with proper error handling
+ * @param options HTTP request options
+ * @param data Optional request body
+ * @param timeoutMs Optional timeout in milliseconds. If not provided, no additional timeout is applied.
+ */
+async function syncHttpRequest(
+  options: http.RequestOptions,
+  data?: string,
+  timeoutMs?: number
+): Promise<HttpResponse> {
+  return new Promise((resolve, reject) => {
+    // Use the pre-configured agent for connection pooling
+    const requestOptions: http.RequestOptions = {
+      ...options,
+      agent: httpAgent,
+    };
+
+    const req = http.request(requestOptions, (res) => {
+      let body = '';
+
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+
+      res.on('end', () => {
+        resolve({
+          status: res.statusCode || 500,
+          headers: res.headers,
+          body: body,
+        });
+      });
+    });
+
+    // Set custom timeout if provided
+    if (timeoutMs !== undefined) {
+      req.setTimeout(timeoutMs, () => {
+        req.destroy();
+        reject(new Error('HTTP request timeout'));
+      });
+    }
+
+    req.on('error', (error) => {
+      if (error.message === 'socket hang up' || error.message.includes('ECONNRESET')) {
+        logger.error('[extension] HTTP request timeout or connection reset');
+        reject(new Error('HTTP request timeout'));
+      } else {
+        logger.error('[extension] HTTP request failed:', error.message);
+        reject(error);
+      }
+    });
+
+    if (data) {
+      req.write(data);
+    }
+
+    req.end();
+  });
 }
 
 /**
@@ -96,11 +120,13 @@ function getRuntimeApiBaseUrl(): string {
 async function requestNextEvent(extensionId: string): Promise<void> {
   try {
     logger.debug('[extension] requesting next event');
-    const baseUrl = getRuntimeApiBaseUrl();
-    const url = `${baseUrl}/2020-01-01/extension/event/next`;
+    const { host, port } = parseRuntimeApi();
 
     // No timeout for long-polling - this request blocks until an event occurs
-    const response = await syncHttpRequest(url, {
+    const response = await syncHttpRequest({
+      host,
+      port,
+      path: '/2020-01-01/extension/event/next',
       method: 'GET',
       headers: {
         'Lambda-Extension-Identifier': extensionId,
@@ -167,21 +193,26 @@ async function shutdownTelemetry(): Promise<void> {
  * This is an admin operation that should complete quickly
  */
 async function registerExtension(events: string[]): Promise<string> {
-  const baseUrl = getRuntimeApiBaseUrl();
-  const url = `${baseUrl}/2020-01-01/extension/register`;
+  const { host, port } = parseRuntimeApi();
   const registrationData: ExtensionRegistrationRequest = { events };
 
   logger.debug(`[extension] registering extension with events: [${events.join(', ')}]`);
 
   // Use timeout for admin operations - they should complete quickly
-  const response = await syncHttpRequest(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Lambda-Extension-Name': 'lambda-otel-lite-internal',
+  const response = await syncHttpRequest(
+    {
+      host,
+      port,
+      path: '/2020-01-01/extension/register',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Lambda-Extension-Name': 'lambda-otel-lite-internal',
+      },
     },
-    body: JSON.stringify(registrationData),
-  }, DEFAULT_HTTP_TIMEOUT_MS);
+    JSON.stringify(registrationData),
+    DEFAULT_HTTP_TIMEOUT_MS
+  );
 
   if (response.status !== 200) {
     throw new Error(
@@ -189,7 +220,7 @@ async function registerExtension(events: string[]): Promise<string> {
     );
   }
 
-  const extensionId = response.headers.get('lambda-extension-identifier');
+  const extensionId = response.headers['lambda-extension-identifier'];
   if (!extensionId || typeof extensionId !== 'string') {
     throw new Error(`Missing or invalid extension ID in response. Extension ID: ${extensionId}`);
   }
