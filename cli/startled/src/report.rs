@@ -595,8 +595,8 @@ pub async fn generate_reports(
 
         println!("✓ lib.js copied (contains all chart generation code).");
     } else {
-        let js_lib_src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/templates/js/lib.js");
-        fs::copy(&js_lib_src, &js_lib_dst).context("Failed to copy default lib.js")?;
+        let js_lib_content = include_str!("templates/js/lib.js");
+        fs::write(&js_lib_dst, js_lib_content).context("Failed to write default lib.js")?;
         println!("✓ Default lib.js copied (contains all chart generation code).");
     }
     // -------------------------
