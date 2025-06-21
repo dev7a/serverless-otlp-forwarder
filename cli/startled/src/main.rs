@@ -157,6 +157,10 @@ enum Commands {
         #[arg(long = "description")]
         description: Option<String>,
 
+        /// File extension for generated files (default: html)
+        #[arg(long = "suffix", default_value = "html")]
+        suffix: String,
+
         /// Generate screenshots with specified theme
         #[arg(long, value_name = "THEME")]
         screenshot: Option<Theme>,
@@ -217,7 +221,11 @@ async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let tracer_provider = init_telemetry().await?;
+    // Initialize telemetry only for commands that need AWS access
+    let tracer_provider = match &args.command {
+        Commands::Function { .. } | Commands::Stack { .. } => Some(init_telemetry().await?),
+        Commands::Report { .. } | Commands::GenerateCompletions { .. } => None,
+    };
 
     match args.command {
         Commands::Function {
@@ -328,6 +336,7 @@ async fn run() -> Result<()> {
             output_dir,
             title,
             description,
+            suffix,
             screenshot,
             template_dir,
             readme_file,
@@ -343,6 +352,7 @@ async fn run() -> Result<()> {
                 &output_dir,
                 title.as_deref(),
                 description.as_deref(),
+                &suffix,
                 base_url.as_deref(),
                 screenshot_theme,
                 template_dir,
@@ -357,9 +367,12 @@ async fn run() -> Result<()> {
             );
         }
     }?;
-    // Ensure all spans are exported before exit
-    if let Err(e) = tracer_provider.force_flush() {
-        tracing::error!("Failed to flush spans: {}", e);
+
+    // Ensure all spans are exported before exit (only if telemetry was initialized)
+    if let Some(provider) = tracer_provider {
+        if let Err(e) = provider.force_flush() {
+            tracing::error!("Failed to flush spans: {}", e);
+        }
     }
 
     Ok(())
