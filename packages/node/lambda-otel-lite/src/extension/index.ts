@@ -12,7 +12,6 @@ const DEFAULT_HTTP_TIMEOUT_MS = 5000;
 const httpAgent = new http.Agent({
   keepAlive: true,
   maxSockets: 1, // Lambda extensions typically only need 1 connection
-  timeout: DEFAULT_HTTP_TIMEOUT_MS,
 });
 
 // Types for better type safety
@@ -40,7 +39,7 @@ interface ExtensionRegistrationRequest {
 /**
  * Parse Lambda Runtime API URL into host and port
  */
-function parseRuntimeApi(): { host: string; port: string } {
+function parseRuntimeApi(): { host: string; port: number } {
   const runtimeApi = process.env.AWS_LAMBDA_RUNTIME_API;
   if (!runtimeApi) {
     throw new Error('AWS_LAMBDA_RUNTIME_API environment variable is not set');
@@ -49,7 +48,7 @@ function parseRuntimeApi(): { host: string; port: string } {
   const [host, port] = runtimeApi.split(':');
   return {
     host: host || 'localhost',
-    port: port || '9001',
+    port: parseInt(port, 10) || 9001,
   };
 }
 
@@ -220,9 +219,14 @@ async function registerExtension(events: string[]): Promise<string> {
     );
   }
 
-  const extensionId = response.headers['lambda-extension-identifier'];
+  let extensionId = response.headers['lambda-extension-identifier'];
+  if (Array.isArray(extensionId)) {
+    extensionId = extensionId[0]; // Extract the first element if it's an array
+  }
   if (!extensionId || typeof extensionId !== 'string') {
-    throw new Error(`Missing or invalid extension ID in response. Extension ID: ${extensionId}`);
+    throw new Error(
+      `Missing or invalid extension ID in response. Extension ID: ${JSON.stringify(extensionId)}`
+    );
   }
 
   logger.debug(`[extension] successfully registered with ID: ${extensionId}`);
