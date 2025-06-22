@@ -1,3 +1,49 @@
+# Release Notes for startled v0.5.1
+
+## 🎯 New Features
+
+### Custom File Extensions for Reports
+
+The `report` command now supports a `--suffix` option that allows you to generate reports with custom file extensions. This enhancement enables generating reports in different formats when combined with custom templates:
+
+- **Default behavior unchanged**: Reports continue to generate as `.html` files by default
+- **Flexible output formats**: Generate `.md`, `.txt`, `.json`, or any other format
+- **Template integration**: Works seamlessly with the existing `--template-dir` feature
+
+### Usage Examples
+
+```bash
+# Generate standard HTML reports (default)
+startled report -d input/ -o output/
+
+# Generate Markdown reports with custom templates
+startled report -d input/ -o output/ --suffix md --template-dir ./markdown-templates
+
+# Generate plain text reports
+startled report -d input/ -o output/ --suffix txt --template-dir ./text-templates
+```
+
+This feature is particularly useful for:
+- Generating Markdown documentation from benchmark results
+- Creating plain text reports for CLI tools
+- Producing custom formats for integration with other systems
+
+## 📦 Installation
+
+```bash
+cargo install startled --version 0.5.1
+```
+
+## 📝 What's Changed
+
+- Added `--suffix` CLI option to the `report` command
+- Updated file generation logic to use `index.{suffix}` instead of hardcoded `index.html`
+- Enhanced documentation with examples of generating different file formats
+
+## 🙏 Acknowledgments
+
+Thank you to all contributors and users who provide feedback to make startled better!
+
 # Release Notes - startled v0.5.0
 
 **Release Date:** 2025-06-21

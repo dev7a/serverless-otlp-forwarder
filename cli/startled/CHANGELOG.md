@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2025-06-21
+
+### Added
+- `--suffix` option to `report` command for customizing the file extension of generated reports (default: html)
+  - Enables generating reports in different formats (Markdown, plain text, etc.) when combined with custom templates
+  - Applies to both landing pages and individual chart pages
+  - Fully backward compatible - defaults to `.html` for existing users
+
+### Changed
+- Updated README.md examples to demonstrate generating reports with different file formats
+
 ## [0.5.0] - 2025-06-21
 
 ### Added

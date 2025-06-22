@@ -251,9 +251,10 @@ Generates HTML reports from previously collected JSON benchmark results.
 
 **Key Options:**
 -   `--input-dir <PATH>` (`-d <PATH>`): (Required) Directory containing the JSON benchmark result files. `startled` expects a structure like `<input_dir>/{group_name}/{subgroup_name}/*.json` (e.g., `/tmp/startled_results/my-app/prod/1024mb/*.json`).
--   `--output-dir <PATH>` (`-o <PATH>`): (Required) Directory where the HTML report files will be generated. An `index.html` file and associated assets will be created in this directory. The generated reports will now include charts for new platform metrics and display Standard Deviation.
+-   `--output-dir <PATH>` (`-o <PATH>`): (Required) Directory where the report files will be generated. An `index.{suffix}` file and associated assets will be created in this directory. The generated reports will now include charts for new platform metrics and display Standard Deviation.
 -   `--title <TITLE>`: (Optional) Custom title for the report landing page. If not specified, defaults to "Benchmark Reports".
 -   `--description <DESCRIPTION>`: (Optional) Descriptive text to display below the title on the report landing page. Useful for providing context about the benchmark results.
+-   `--suffix <SUFFIX>`: (Optional) File extension for generated files (default: html). When using custom templates, this allows generating Markdown (.md), plain text (.txt), or any other file format.
 -   `--screenshot <THEME>`: (Optional) Generates PNG screenshots of the charts. `<THEME>` can be `Light` or `Dark`. This requires the `screenshots` compile-time feature and a properly configured headless Chrome environment.
 -   `--readme <MARKDOWN_FILE>`: (Optional) Specifies a markdown file whose content will be rendered as HTML and included on the landing page of the report. This allows for adding custom documentation, explanations, or findings to the benchmark report.
 -   `--template-dir <PATH>`: (Optional) Specifies a custom directory containing templates for report generation. This allows for complete customization of the report appearance and behavior. The directory should contain HTML templates (`index.html`, `chart.html`, `_sidebar.html`), CSS (`css/style.css`), and a single JavaScript file (`js/lib.js`) that handles all chart rendering functionality.
@@ -262,6 +263,7 @@ Generates HTML reports from previously collected JSON benchmark results.
 
 **Example:**
 ```bash
+# Generate standard HTML reports
 startled report \
     --input-dir /tmp/startled_results/my-application-services \
     --output-dir /var/www/benchmarks/my-application-services \
@@ -272,8 +274,16 @@ startled report \
     --template-dir /path/to/custom-templates \
     --base-url "/benchmarks/my-application-services" \
     --local-browsing
+
+# Generate Markdown reports with custom templates
+startled report \
+    --input-dir /tmp/startled_results/my-application-services \
+    --output-dir /tmp/markdown-reports \
+    --title "Lambda Performance Analysis" \
+    --suffix md \
+    --template-dir /path/to/markdown-templates
 ```
-The main HTML report will be accessible at `/var/www/benchmarks/my-application-services/index.html` and can be hosted at `http://example.com/benchmarks/my-application-services/`.
+The main HTML report will be accessible at `/var/www/benchmarks/my-application-services/index.html` and can be hosted at `http://example.com/benchmarks/my-application-services/`. The Markdown example would generate `index.md` files instead.
 
 ## How It Works
 

@@ -92,6 +92,7 @@ async fn generate_chart(
     name: &str,
     chart_render_data: &ChartRenderData,
     config: &BenchmarkConfig,
+    suffix: &str,
     screenshot_theme: Option<&str>,
     pb: &ProgressBar,
     report_structure: &ReportStructure,
@@ -182,8 +183,8 @@ async fn generate_chart(
         if local_browsing { "index.html" } else { "" },
     );
 
-    // Render the index.html file inside the chart directory
-    let html_path = chart_dir.join("index.html");
+    // Render the index file inside the chart directory
+    let html_path = chart_dir.join(format!("index.{}", suffix));
     pb.set_message(format!("Rendering {}...", html_path.display()));
     let html = tera_html.render("chart.html", &ctx)?;
     fs::write(&html_path, html)?;
@@ -297,13 +298,14 @@ fn scan_report_structure(base_input_dir: &str) -> Result<ReportStructure> {
     Ok(structure)
 }
 
-/// Generates the main landing page (index.html) for the reports.
+/// Generates the main landing page for the reports.
 #[allow(clippy::too_many_arguments)]
 async fn generate_landing_page(
     output_directory: &str,
     report_structure: &ReportStructure,
     custom_title: Option<&str>,
     description: Option<&str>,
+    suffix: &str,
     pb: &ProgressBar,
     template_dir: Option<&String>,
     readme_file: Option<&str>,
@@ -429,7 +431,7 @@ async fn generate_landing_page(
     }
     ctx.insert("items", &items);
 
-    let index_path = Path::new(output_directory).join("index.html");
+    let index_path = Path::new(output_directory).join(format!("index.{}", suffix));
     pb.set_message(format!("Generating landing page: {}", index_path.display()));
     let html = tera.render("index.html", &ctx)?;
     fs::write(&index_path, html)?;
@@ -442,6 +444,7 @@ pub async fn generate_reports(
     output_directory: &str,
     custom_title: Option<&str>,
     description: Option<&str>,
+    suffix: &str,
     base_url: Option<&str>,
     screenshot_theme: Option<&str>,
     template_dir: Option<String>,
@@ -507,6 +510,7 @@ pub async fn generate_reports(
                 current_input_dir.to_str().unwrap(),
                 current_output_dir.to_str().unwrap(),
                 custom_title,
+                suffix,
                 screenshot_theme,
                 &main_pb,
                 &report_structure, // Pass full structure for sidebar
@@ -537,6 +541,7 @@ pub async fn generate_reports(
         &report_structure,
         custom_title,
         description,
+        suffix,
         &landing_pb,
         template_dir.as_ref(),
         readme_file.as_deref(),
@@ -619,6 +624,7 @@ pub async fn generate_reports_for_directory(
     input_directory: &str,
     output_directory: &str,
     custom_title: Option<&str>,
+    suffix: &str,
     screenshot_theme: Option<&str>,
     pb: &ProgressBar,
     report_structure: &ReportStructure,
@@ -817,6 +823,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_init",
             &cold_init_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -844,6 +851,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_server",
             &cold_server_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -877,6 +885,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_extension_overhead",
             &cold_ext_overhead_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -910,6 +919,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_total_duration",
             &cold_total_duration_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -944,6 +954,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_response_latency",
             &cold_resp_latency_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -977,6 +988,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_response_duration",
             &cold_resp_duration_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1010,6 +1022,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_runtime_overhead",
             &cold_runtime_overhead_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1043,6 +1056,7 @@ pub async fn generate_reports_for_directory(
             "cold_start_runtime_done_duration",
             &cold_runtime_done_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1080,6 +1094,7 @@ pub async fn generate_reports_for_directory(
             "client_duration",
             &client_duration_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1110,6 +1125,7 @@ pub async fn generate_reports_for_directory(
             "server_duration",
             &server_duration_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1150,6 +1166,7 @@ pub async fn generate_reports_for_directory(
             "extension_overhead",
             &ext_overhead_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1183,6 +1200,7 @@ pub async fn generate_reports_for_directory(
             "memory_usage",
             &memory_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1217,6 +1235,7 @@ pub async fn generate_reports_for_directory(
             "warm_start_response_latency",
             &warm_resp_latency_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1250,6 +1269,7 @@ pub async fn generate_reports_for_directory(
             "warm_start_response_duration",
             &warm_resp_duration_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1283,6 +1303,7 @@ pub async fn generate_reports_for_directory(
             "warm_start_runtime_overhead",
             &warm_runtime_overhead_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1316,6 +1337,7 @@ pub async fn generate_reports_for_directory(
             "warm_start_runtime_done_duration",
             &warm_runtime_done_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
@@ -1349,6 +1371,7 @@ pub async fn generate_reports_for_directory(
             "produced_bytes",
             &produced_bytes_combined,
             &results[0].config,
+            suffix,
             screenshot_theme,
             pb,
             report_structure,
