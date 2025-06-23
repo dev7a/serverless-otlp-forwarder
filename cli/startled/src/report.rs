@@ -1,8 +1,8 @@
 use crate::screenshot::take_chart_screenshot;
 use crate::stats::{
     calculate_client_stats, calculate_cold_start_extension_overhead_stats,
-    calculate_cold_start_init_stats, calculate_cold_start_response_duration_stats,
-    calculate_cold_start_response_latency_stats,
+    calculate_cold_start_init_stats, calculate_cold_start_produced_bytes_stats,
+    calculate_cold_start_response_duration_stats, calculate_cold_start_response_latency_stats,
     calculate_cold_start_runtime_done_metrics_duration_stats,
     calculate_cold_start_runtime_overhead_stats, calculate_cold_start_server_stats,
     calculate_cold_start_total_duration_stats, calculate_memory_stats,
@@ -1068,18 +1068,112 @@ pub async fn generate_reports_for_directory(
         )
         .await?;
         // --- End New Cold Start Platform Metric Charts ---
+
+        // --- Add Missing Cold Start Resource Metric Charts ---
+        // Cold Start Memory Usage - Combined Chart
+        let cold_memory_stats: Vec<_> = results
+            .iter()
+            .map(|report| {
+                // Calculate memory stats for cold starts inline
+                if report.cold_starts.is_empty() {
+                    (0.0, 0.0, 0.0, 0.0, 0.0)
+                } else {
+                    let memory: Vec<f64> = report
+                        .cold_starts
+                        .iter()
+                        .map(|cs| cs.max_memory_used as f64)
+                        .collect();
+                    let stats = crate::stats::calculate_stats(&memory);
+                    (stats.mean, stats.p99, stats.p95, stats.p50, stats.std_dev)
+                }
+            })
+            .collect();
+        let cold_memory_combined = prepare_combined_chart_render_data(
+            &function_names,
+            &cold_memory_stats,
+            &results,
+            custom_title.unwrap_or("Cold Start - Memory Usage"),
+            "MB",
+            "cold_start_memory",
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .map(|cs| cs.max_memory_used as f64)
+                    .collect()
+            },
+        );
+        generate_chart(
+            &PathBuf::from(output_directory),
+            png_dir.as_deref(),
+            "cold_start_memory_usage",
+            &cold_memory_combined,
+            &results[0].config,
+            suffix,
+            screenshot_theme,
+            pb,
+            report_structure,
+            current_group,
+            current_subgroup,
+            template_dir,
+            base_url,
+            local_browsing,
+        )
+        .await?;
+
+        // Cold Start Produced Bytes - Combined Chart
+        let cold_produced_bytes_stats: Vec<_> = results
+            .iter()
+            .map(|report| {
+                calculate_cold_start_produced_bytes_stats(&report.cold_starts)
+                    .unwrap_or((0.0, 0.0, 0.0, 0.0, 0.0))
+            })
+            .collect();
+        let cold_produced_bytes_combined = prepare_combined_chart_render_data(
+            &function_names,
+            &cold_produced_bytes_stats,
+            &results,
+            custom_title.unwrap_or("Cold Start - Produced Bytes"),
+            "bytes",
+            "cold_start_produced_bytes",
+            |report| {
+                report
+                    .cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.produced_bytes.map(|b| b as f64))
+                    .collect()
+            },
+        );
+        generate_chart(
+            &PathBuf::from(output_directory),
+            png_dir.as_deref(),
+            "cold_start_produced_bytes",
+            &cold_produced_bytes_combined,
+            &results[0].config,
+            suffix,
+            screenshot_theme,
+            pb,
+            report_structure,
+            current_group,
+            current_subgroup,
+            template_dir,
+            base_url,
+            local_browsing,
+        )
+        .await?;
+        // --- End Missing Cold Start Resource Metric Charts ---
     }
 
     // Generate client duration chart if we have data
     if results.iter().any(|r| !r.client_measurements.is_empty()) {
-        // Client Duration - Combined Chart
+        // Warm Start Client Duration - Combined Chart (RENAMED for consistency)
         let client_duration_combined = prepare_combined_chart_render_data(
             &function_names,
             &client_stats,
             &results,
             custom_title.unwrap_or("Warm Start - Client Duration"),
             "ms",
-            "client",
+            "warm_start_client_duration", // CHANGED: was "client"
             |report| {
                 report
                     .client_measurements
@@ -1091,7 +1185,7 @@ pub async fn generate_reports_for_directory(
         generate_chart(
             &PathBuf::from(output_directory),
             png_dir.as_deref(),
-            "client_duration",
+            "warm_start_client_duration", // CHANGED: was "client_duration"
             &client_duration_combined,
             &results[0].config,
             suffix,
@@ -1109,20 +1203,20 @@ pub async fn generate_reports_for_directory(
 
     // Generate server duration chart if we have data
     if results.iter().any(|r| !r.warm_starts.is_empty()) {
-        // Server Duration - Combined Chart
+        // Warm Start Server Duration - Combined Chart (RENAMED for consistency)
         let server_duration_combined = prepare_combined_chart_render_data(
             &function_names,
             &server_stats,
             &results,
             custom_title.unwrap_or("Warm Start - Server Duration"),
             "ms",
-            "server",
+            "warm_start_server_duration", // CHANGED: was "server"
             |report| report.warm_starts.iter().map(|ws| ws.duration).collect(),
         );
         generate_chart(
             &PathBuf::from(output_directory),
             png_dir.as_deref(),
-            "server_duration",
+            "warm_start_server_duration", // CHANGED: was "server_duration"
             &server_duration_combined,
             &results[0].config,
             suffix,
@@ -1137,7 +1231,7 @@ pub async fn generate_reports_for_directory(
         )
         .await?;
 
-        // Warm Start Extension Overhead - Combined Chart
+        // Warm Start Extension Overhead - Combined Chart (RENAMED for consistency)
         let warm_extension_overhead_stats: Vec<_> = results
             .iter()
             .map(|report| {
@@ -1151,7 +1245,7 @@ pub async fn generate_reports_for_directory(
             &results,
             custom_title.unwrap_or("Warm Start - Extension Overhead"),
             "ms",
-            "extension_overhead",
+            "warm_start_extension_overhead", // CHANGED: was "extension_overhead"
             |report| {
                 report
                     .warm_starts
@@ -1163,7 +1257,7 @@ pub async fn generate_reports_for_directory(
         generate_chart(
             &PathBuf::from(output_directory),
             png_dir.as_deref(),
-            "extension_overhead",
+            "warm_start_extension_overhead", // CHANGED: was "extension_overhead"
             &ext_overhead_combined,
             &results[0].config,
             suffix,
@@ -1178,14 +1272,14 @@ pub async fn generate_reports_for_directory(
         )
         .await?;
 
-        // Memory Usage - Combined Chart
+        // Warm Start Memory Usage - Combined Chart (RENAMED for consistency)
         let memory_combined = prepare_combined_chart_render_data(
             &function_names,
             &memory_stats,
             &results,
-            custom_title.unwrap_or("Memory Usage"),
+            custom_title.unwrap_or("Warm Start - Memory Usage"), // CHANGED: was "Memory Usage"
             "MB",
-            "memory",
+            "warm_start_memory", // CHANGED: was "memory"
             |report| {
                 report
                     .warm_starts
@@ -1197,7 +1291,7 @@ pub async fn generate_reports_for_directory(
         generate_chart(
             &PathBuf::from(output_directory),
             png_dir.as_deref(),
-            "memory_usage",
+            "warm_start_memory_usage", // CHANGED: was "memory_usage"
             &memory_combined,
             &results[0].config,
             suffix,
@@ -1212,7 +1306,7 @@ pub async fn generate_reports_for_directory(
         )
         .await?;
 
-        // --- Generate New Warm Start Platform Metric Charts & Produced Bytes Chart (Now Combined) ---
+        // --- Generate Complete Set of Warm Start Platform Metric Charts ---
         // Warm Start Response Latency - Combined Chart
         let warm_resp_latency_combined = prepare_combined_chart_render_data(
             &function_names,
@@ -1349,14 +1443,14 @@ pub async fn generate_reports_for_directory(
         )
         .await?;
 
-        // Produced Bytes - Combined Chart
+        // Warm Start Produced Bytes - Combined Chart (RENAMED for consistency)
         let produced_bytes_combined = prepare_combined_chart_render_data(
             &function_names,
             &produced_bytes_stats,
             &results,
-            custom_title.unwrap_or("Resources - Produced Bytes"),
+            custom_title.unwrap_or("Warm Start - Produced Bytes"), // CHANGED: was "Resources - Produced Bytes"
             "bytes",
-            "produced_bytes",
+            "warm_start_produced_bytes", // CHANGED: was "produced_bytes"
             |report| {
                 report
                     .warm_starts
@@ -1368,7 +1462,7 @@ pub async fn generate_reports_for_directory(
         generate_chart(
             &PathBuf::from(output_directory),
             png_dir.as_deref(),
-            "produced_bytes",
+            "warm_start_produced_bytes", // CHANGED: was "produced_bytes"
             &produced_bytes_combined,
             &results[0].config,
             suffix,
@@ -1382,7 +1476,7 @@ pub async fn generate_reports_for_directory(
             local_browsing,
         )
         .await?;
-        // --- End New Warm Start Platform Metric Charts ---
+        // --- End Complete Set of Warm Start Platform Metric Charts ---
     }
 
     Ok(())
@@ -1607,17 +1701,17 @@ fn get_metric_description(page_type: &str) -> Option<&'static str> {
         ),
 
         // Warm Start Metrics  
-        "client" => Some(
+        "warm_start_client_duration" => Some(
             "The end-to-end response time measured from the client perspective during warm start invocations. This includes \
             network latency, Lambda service processing time, and function execution time. Warm starts reuse existing execution \
             environments, skipping the Init phase, resulting in significantly lower latency than cold starts. Measured in milliseconds."
         ),
-        "server" => Some(
+        "warm_start_server_duration" => Some(
             "The time your function code spends processing an event during warm start invocations. Since warm starts reuse \
             existing execution environments, this excludes initialization overhead and focuses purely on your application logic \
             performance. This corresponds to the AWS CloudWatch 'Duration' metric for warm invocations. Measured in milliseconds."
         ),
-        "extension_overhead" => Some(
+        "warm_start_extension_overhead" => Some(
             "The additional time consumed by Lambda extensions after your function code completes during warm starts. Even though \
             extensions are already initialized in warm starts, they may still perform post-invocation processing (e.g., sending \
             telemetry, cleanup). This is the AWS CloudWatch 'PostRuntimeExtensionsDuration' metric. Measured in milliseconds."
@@ -1644,15 +1738,25 @@ fn get_metric_description(page_type: &str) -> Option<&'static str> {
         ),
 
         // Resource Metrics
-        "memory" => Some(
-            "The maximum amount of memory used by your Lambda function during execution. This is reported by AWS CloudWatch \
-            as 'MaxMemoryUsed' and helps you understand actual memory consumption versus allocated memory. Optimizing memory \
-            allocation can improve both performance and cost-effectiveness. Memory impacts CPU allocation proportionally. Measured in megabytes (MB)."
+        "cold_start_memory" => Some(
+            "The maximum amount of memory used by your Lambda function during cold start execution. This is reported by AWS CloudWatch \
+            as 'MaxMemoryUsed' and helps you understand actual memory consumption versus allocated memory during initialization. \
+            Cold starts may use slightly more memory due to runtime loading. Measured in megabytes (MB)."
         ),
-        "produced_bytes" => Some(
-            "The number of bytes produced by your Lambda function during execution, typically representing the size of the \
+        "warm_start_memory" => Some(
+            "The maximum amount of memory used by your Lambda function during warm start execution. This is reported by AWS CloudWatch \
+            as 'MaxMemoryUsed' and helps you understand actual memory consumption versus allocated memory in steady-state operations. \
+            Optimizing memory allocation can improve both performance and cost-effectiveness. Memory impacts CPU allocation proportionally. Measured in megabytes (MB)."
+        ),
+        "cold_start_produced_bytes" => Some(
+            "The number of bytes produced by your Lambda function during cold start execution, typically representing the size of the \
+            response payload. This metric helps track data transfer during initialization scenarios and can indicate response \
+            serialization efficiency during cold starts. Part of the platform.runtimeDone metrics. Measured in bytes."
+        ),
+        "warm_start_produced_bytes" => Some(
+            "The number of bytes produced by your Lambda function during warm start execution, typically representing the size of the \
             response payload. This metric helps track data transfer and can indicate the efficiency of your response \
-            serialization. Large responses may impact performance and incur additional data transfer costs. Part of the \
+            serialization in steady-state operations. Large responses may impact performance and incur additional data transfer costs. Part of the \
             platform.runtimeDone metrics. Measured in bytes."
         ),
 
@@ -1930,11 +2034,18 @@ mod tests {
 
     #[test]
     fn test_metric_descriptions() {
-        // Test known metric types have descriptions
+        // Test known cold start metric types have descriptions
         assert!(get_metric_description("cold_init").is_some());
         assert!(get_metric_description("cold_server").is_some());
-        assert!(get_metric_description("extension_overhead").is_some());
-        assert!(get_metric_description("memory").is_some());
+        assert!(get_metric_description("cold_start_memory").is_some());
+        assert!(get_metric_description("cold_start_produced_bytes").is_some());
+
+        // Test known warm start metric types have descriptions
+        assert!(get_metric_description("warm_start_client_duration").is_some());
+        assert!(get_metric_description("warm_start_server_duration").is_some());
+        assert!(get_metric_description("warm_start_extension_overhead").is_some());
+        assert!(get_metric_description("warm_start_memory").is_some());
+        assert!(get_metric_description("warm_start_produced_bytes").is_some());
 
         // Test unknown metric type returns None
         assert!(get_metric_description("unknown_metric").is_none());
