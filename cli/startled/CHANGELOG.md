@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-06-23
+
+### Added
+- **Cold Start Resource Metrics**: Added cold start variants for memory usage and produced bytes charts, providing visibility into resource consumption during Lambda initialization
+- **Complete Set of Warm Start Platform Metrics**: Added remaining warm start platform metrics including response latency, response duration, runtime overhead, and runtime done duration for comprehensive performance analysis
+- **Enhanced Metric Descriptions**: Updated and expanded AWS-documentation-based descriptions for all new metrics, including cold/warm start distinctions for resource metrics
+
+### Changed
+- **Consistent Directory Naming**: All warm start charts now use the `warm-start-` prefix for consistent external interface naming:
+  - `client-duration/` → `warm-start-client-duration/`
+  - `server-duration/` → `warm-start-server-duration/`
+  - `extension-overhead/` → `warm-start-extension-overhead/`
+  - `memory-usage/` → `warm-start-memory-usage/`
+  - `produced-bytes/` → `warm-start-produced-bytes/`
+- **Reorganized Navigation Layout**: Eliminated redundant "Resources" section, integrating memory and produced bytes metrics directly into their respective cold start and warm start sections for improved logical organization
+- **Optimized CSS Layout**: Updated navigation styling to accommodate additional metrics with a clean 2-row desktop layout (width: `calc(100% / 14)`, min-width: `5.5rem`)
+- **Improved Cold Start Ordering**: Moved "Total Cold Start Duration" to the end of the cold start navigation section for better logical flow
+
+### Fixed
+- **Complete Data Coverage**: Fixed missing cold start data for memory usage and produced bytes - these metrics are now available for both cold and warm start scenarios
+- Updated test cases to reflect new consistent metric naming conventions
+
 ## [0.5.1] - 2025-06-21
 
 ### Added

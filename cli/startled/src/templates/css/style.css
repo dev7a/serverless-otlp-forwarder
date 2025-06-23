@@ -622,8 +622,8 @@ a:hover {
     font-weight: 400;
     padding: 0.25rem 0.5rem;
     border: 1px solid var(--border-color);
-    width: calc(100% / 11);
-    min-width: 6rem;
+    width: calc(100% / 14);
+    min-width: 5.5rem;
     height: 4rem;
     text-align: left;
     background: var(--env-bg);
