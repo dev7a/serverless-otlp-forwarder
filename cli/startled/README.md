@@ -52,10 +52,11 @@
     -   Set temporary **environment variables** for the Lambda function during the benchmark.
 -   **Comprehensive HTML Reports**:
     -   Generates detailed HTML reports featuring interactive charts (using Apache ECharts) for clear visualization of benchmark data.
+    -   **Summary Pages**: Provides comprehensive overview pages accessible via memory size navigation, displaying key performance metrics across all functions in a single view for quick comparative analysis.
     -   **AWS-Documentation-Based Metric Descriptions**: Each chart includes expert-level explanations of what metrics represent, their AWS CloudWatch equivalents, and performance optimization insights based on official AWS Lambda documentation.
     -   Provides statistical summaries (Average, P50, P95, P99, and **Standard Deviation (StdDev)**) for key metrics across different functions and configurations.
     -   Includes new chart pages for all recently added platform metrics.
-    -   Features an improved navigation layout with vertically stacked metric groups and wrapped links for better readability.
+    -   **Enhanced Navigation**: Features a dual-section navigation with separate SUMMARY and DETAIL sections for each runtime, allowing users to quickly access overview pages or jump directly to specific metrics.
     -   Includes scatter plots to visualize client duration over time for warm starts, helping to identify trends or outliers.
     -   Saves raw benchmark data in **JSON format** for custom analysis or integration with other tools.
     -   Supports custom templates, allowing users to completely customize the report appearance and behavior.
@@ -347,11 +348,12 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
     -   Utilizes the Tera templating engine for generating HTML pages.
     -   Embeds interactive charts created with Apache ECharts for data visualization.
     -   Produces a variety of charts, including:
+        -   **Summary pages** with multiple overview charts showing key metrics (cold start total duration, init duration, server duration, response latency, warm start metrics, and memory usage) for quick comparative analysis across all functions.
         -   Bar charts comparing AVG/P50/P95/P99/StdDev statistics for cold start metrics (init duration, server duration, total cold start duration, extension overhead, response latency, response duration, runtime overhead, runtime done duration).
         -   Bar charts for warm start metrics (server duration, client duration, extension overhead, response latency, response duration, runtime overhead, runtime done duration).
         -   Bar charts for memory usage and produced bytes.
         -   Scatter plots illustrating client duration for each warm invocation over time, useful for identifying trends and outliers.
-    -   Generates an `index.html` file as a central navigation point for the report, with a sidebar for navigating between different charts and configurations. The navigation layout has been improved for clarity with more metrics.
+    -   Generates an `index.html` file as a central navigation point for the report, with an enhanced dual-section sidebar (SUMMARY/DETAIL) for intuitive navigation between overview pages and specific metric details.
 6.  **SEO-Friendly URL Structure**:
     -   The report uses a clean URL structure with directories instead of file extensions for better SEO and readability.
     -   Chart URLs follow the format: `/group_name/subgroup_name/chart-type/` with an index.html inside each directory.

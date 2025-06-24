@@ -69,9 +69,7 @@ function setTheme(theme, savePreference = false) {
         lineChart.dispose();
     }
     
-    if (SummaryCharts) {
-        SummaryCharts.cleanup();
-    }
+    SummaryCharts.cleanup();
     
     // Initialize charts based on data type
     initializeCharts(theme);

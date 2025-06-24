@@ -263,6 +263,21 @@ a:hover {
     letter-spacing: 0.05em;
 }
 
+.sidebar-subsection {
+    margin-bottom: 1rem;
+}
+
+.sidebar-subsection-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 0.5rem 0.5rem;
+    padding-bottom: 0.25rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.8;
+}
+
 .sidebar-subgroup-list {
     list-style: none;
     padding: 0;
@@ -785,6 +800,14 @@ a:hover {
 }
 
 /* Summary Page Styles */
+/* Description styles for individual metric pages */
+.description {
+    color: var(--text-secondary);
+    margin: 0.5rem 0 1rem 0;
+    font-style: italic;
+    line-height: 1.4;
+}
+
 .summary-description {
     margin-bottom: 2rem;
     padding: 1rem;

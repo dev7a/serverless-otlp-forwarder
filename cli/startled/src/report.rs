@@ -188,8 +188,8 @@ async fn generate_chart(
             (bar.title.as_str(), bar.page_type.as_str(), &bar.description)
         }
         ChartRenderData::Summary(summary) => {
-            (summary.title.as_str(), summary.page_type.as_str(), &None)
-        } // Summary doesn't have per-chart descriptions
+            (summary.title.as_str(), summary.page_type.as_str(), &Some(summary.description.clone()))
+        }
     };
 
     ctx.insert("title", title);
@@ -1852,6 +1852,17 @@ fn prepare_summary_chart_render_data(
             "ms",
             collect_avg_values(results, |r| {
                 r.cold_starts.iter().map(|cs| cs.duration).collect()
+            }),
+        ),
+        (
+            "cold-start-response-latency",
+            "Cold Start Response Latency",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.response_latency_ms)
+                    .collect()
             }),
         ),
         // Key Warm Start Metrics
