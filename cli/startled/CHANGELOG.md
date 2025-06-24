@@ -1,11 +1,30 @@
-# Changelog for startled
+# Changelog
 
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.6.0] - 2025-06-23
+## [0.7.0] - 2025-06-23
+
+### Added
+- **Summary Page Implementation**: New comprehensive summary page accessible via memory size links in navigation
+- **Response Latency Metric**: Added to all reports and prominently featured in summary pages
+- **Enhanced Navigation**: Summary pages now accessible via clicking memory size links (e.g., "128MB", "512MB")
+- **Improved Layout**: Single-column layout with better spacing, color-coded charts with legends for improved readability
+
+### Fixed
+- **Chart Title Bug**: Individual metric pages now correctly display metric-specific titles instead of custom report titles
+- **Theme Switching**: Resolved JavaScript errors when switching between light/dark themes on summary pages
+- **Naming Consistency**: All warm start metrics now use consistent `warm-start-` prefix in directory structure
+- **Data Completeness**: Added missing cold start variants for memory usage and produced bytes metrics
+
+### Changed
+- **Enhanced Metric Descriptions**: Improved AWS-documentation-based descriptions with clear cold/warm start distinctions
+- **Code Quality**: Improved enum memory efficiency by boxing large variant fields to resolve clippy warnings
+- **Navigation Organization**: Streamlined navigation by removing redundant "Resources" category
+
+## [0.6.0] - 2024-06-10
 
 ### Added
 - **Cold Start Resource Metrics**: Added cold start variants for memory usage and produced bytes charts, providing visibility into resource consumption during Lambda initialization

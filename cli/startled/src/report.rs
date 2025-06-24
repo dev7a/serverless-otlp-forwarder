@@ -76,12 +76,38 @@ struct LineChartRenderData {
     description: Option<String>, // AWS-documentation-based description of the metric
 }
 
+/// Data structure for individual metrics in the summary
+#[derive(Debug, Serialize)]
+struct SummaryMetricData {
+    id: String,                   // e.g., "cold-total-duration"
+    title: String,                // e.g., "Cold Start Total Duration"
+    unit: String,                 // e.g., "ms"
+    link: String,                 // e.g., "../cold-start-total-duration/"
+    data: Vec<SummarySeriesData>, // Function performance data
+}
+
+#[derive(Debug, Serialize)]
+struct SummarySeriesData {
+    name: String, // Function name
+    value: f64,   // Average value for this metric
+}
+
+/// Data structure for the complete summary page
+#[derive(Debug, Serialize)]
+struct SummaryChartRenderData {
+    title: String,
+    description: String,
+    metrics: Vec<SummaryMetricData>,
+    page_type: String,
+}
+
 #[derive(Serialize)]
 enum ChartRenderData {
     Combined {
-        bar: BarChartRenderData,
-        line: LineChartRenderData,
+        bar: Box<BarChartRenderData>,
+        line: Box<LineChartRenderData>,
     },
+    Summary(SummaryChartRenderData),
 }
 
 /// Generate a chart with the given options
@@ -156,17 +182,24 @@ async fn generate_chart(
 
     // Create context FOR HTML PAGE (chart.html)
     let mut ctx = TeraContext::new();
-    // Extract title and page_type from the enum variant
-    let ChartRenderData::Combined { bar, line: _ } = chart_render_data;
-    let title = bar.title.as_str();
-    let page_type = bar.page_type.as_str();
+    // Extract title, page_type, and description from the enum variant
+    let (title, page_type, description) = match chart_render_data {
+        ChartRenderData::Combined { bar, line: _ } => {
+            (bar.title.as_str(), bar.page_type.as_str(), &bar.description)
+        }
+        ChartRenderData::Summary(summary) => (
+            summary.title.as_str(),
+            summary.page_type.as_str(),
+            &Some(summary.description.clone()),
+        ),
+    };
 
     ctx.insert("title", title);
     ctx.insert("config", config);
     ctx.insert("chart_id", "chart");
     ctx.insert("page_type", page_type);
     ctx.insert("chart_data_js", data_js_filename);
-    ctx.insert("description", &bar.description);
+    ctx.insert("description", description);
 
     // Add sidebar context
     ctx.insert("report_structure", report_structure);
@@ -422,8 +455,8 @@ async fn generate_landing_page(
     let mut items = Vec::new();
     for (group_name, subgroups) in report_structure {
         let first_subgroup_name = subgroups.first().map(|s| s.as_str()).unwrap_or("");
-        // Link to the first subgroup's default chart - use kebab-case with trailing slash
-        let link_path = format!("{}/{}/cold-start-init/", group_name, first_subgroup_name);
+        // Link to the first subgroup's summary page - use kebab-case with trailing slash
+        let link_path = format!("{}/{}/summary/", group_name, first_subgroup_name);
         items.push(
             IndexItem::new(group_name, link_path)
                 .with_subtitle(format!("{} configurations", subgroups.len())),
@@ -806,7 +839,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_init_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Init Duration"),
+            "Cold Start - Init Duration",
             "ms",
             "cold_init",
             |report| {
@@ -840,7 +873,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_server_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Server Duration"),
+            "Cold Start - Server Duration",
             "ms",
             "cold_server",
             |report| report.cold_starts.iter().map(|cs| cs.duration).collect(),
@@ -868,7 +901,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_extension_overhead_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Extension Overhead"),
+            "Cold Start - Extension Overhead",
             "ms",
             "cold_extension_overhead",
             |report| {
@@ -902,7 +935,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_total_duration_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Total Cold Start Duration"),
+            "Cold Start - Total Cold Start Duration",
             "ms",
             "cold_total_duration",
             |report| {
@@ -937,7 +970,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_response_latency_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Response Latency"),
+            "Cold Start - Response Latency",
             "ms",
             "cold_start_response_latency",
             |report| {
@@ -971,7 +1004,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_response_duration_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Response Duration"),
+            "Cold Start - Response Duration",
             "ms",
             "cold_start_response_duration",
             |report| {
@@ -1005,7 +1038,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_runtime_overhead_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Runtime Overhead"),
+            "Cold Start - Runtime Overhead",
             "ms",
             "cold_start_runtime_overhead",
             |report| {
@@ -1039,7 +1072,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_runtime_done_duration_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Runtime Done Duration"),
+            "Cold Start - Runtime Done Duration",
             "ms",
             "cold_start_runtime_done_duration",
             |report| {
@@ -1092,7 +1125,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_memory_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Memory Usage"),
+            "Cold Start - Memory Usage",
             "MB",
             "cold_start_memory",
             |report| {
@@ -1133,7 +1166,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &cold_produced_bytes_stats,
             &results,
-            custom_title.unwrap_or("Cold Start - Produced Bytes"),
+            "Cold Start - Produced Bytes",
             "bytes",
             "cold_start_produced_bytes",
             |report| {
@@ -1171,7 +1204,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &client_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Client Duration"),
+            "Warm Start - Client Duration",
             "ms",
             "warm_start_client_duration", // CHANGED: was "client"
             |report| {
@@ -1208,7 +1241,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &server_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Server Duration"),
+            "Warm Start - Server Duration",
             "ms",
             "warm_start_server_duration", // CHANGED: was "server"
             |report| report.warm_starts.iter().map(|ws| ws.duration).collect(),
@@ -1243,7 +1276,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &warm_extension_overhead_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Extension Overhead"),
+            "Warm Start - Extension Overhead",
             "ms",
             "warm_start_extension_overhead", // CHANGED: was "extension_overhead"
             |report| {
@@ -1277,7 +1310,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &memory_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Memory Usage"), // CHANGED: was "Memory Usage"
+            "Warm Start - Memory Usage",
             "MB",
             "warm_start_memory", // CHANGED: was "memory"
             |report| {
@@ -1312,7 +1345,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &warm_response_latency_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Response Latency"),
+            "Warm Start - Response Latency",
             "ms",
             "warm_start_response_latency",
             |report| {
@@ -1346,7 +1379,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &warm_response_duration_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Response Duration"),
+            "Warm Start - Response Duration",
             "ms",
             "warm_start_response_duration",
             |report| {
@@ -1380,7 +1413,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &warm_runtime_overhead_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Runtime Overhead"),
+            "Warm Start - Runtime Overhead",
             "ms",
             "warm_start_runtime_overhead",
             |report| {
@@ -1414,7 +1447,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &warm_runtime_done_duration_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Runtime Done Duration"),
+            "Warm Start - Runtime Done Duration",
             "ms",
             "warm_start_runtime_done_duration",
             |report| {
@@ -1448,7 +1481,7 @@ pub async fn generate_reports_for_directory(
             &function_names,
             &produced_bytes_stats,
             &results,
-            custom_title.unwrap_or("Warm Start - Produced Bytes"), // CHANGED: was "Resources - Produced Bytes"
+            "Warm Start - Produced Bytes",
             "bytes",
             "warm_start_produced_bytes", // CHANGED: was "produced_bytes"
             |report| {
@@ -1478,6 +1511,30 @@ pub async fn generate_reports_for_directory(
         .await?;
         // --- End Complete Set of Warm Start Platform Metric Charts ---
     }
+
+    // Generate Summary Page
+    let summary_combined = prepare_summary_chart_render_data(
+        &function_names,
+        &results,
+        custom_title.unwrap_or("Performance Summary"),
+    );
+    generate_chart(
+        &PathBuf::from(output_directory),
+        png_dir.as_deref(),
+        "summary",
+        &summary_combined,
+        &results[0].config,
+        suffix,
+        screenshot_theme,
+        pb,
+        report_structure,
+        current_group,
+        current_subgroup,
+        template_dir,
+        base_url,
+        local_browsing,
+    )
+    .await?;
 
     Ok(())
 }
@@ -1567,8 +1624,8 @@ fn prepare_combined_chart_render_data(
     );
 
     ChartRenderData::Combined {
-        bar: bar_data,
-        line: line_data,
+        bar: Box::new(bar_data),
+        line: Box::new(line_data),
     }
 }
 
@@ -1762,6 +1819,154 @@ fn get_metric_description(page_type: &str) -> Option<&'static str> {
 
         _ => None,
     }
+}
+
+/// Prepares summary chart data containing avg values for selected key metrics
+fn prepare_summary_chart_render_data(
+    function_names: &[String],
+    results: &[BenchmarkReport],
+    title: &str,
+) -> ChartRenderData {
+    let metrics = vec![
+        // Key Cold Start Metrics
+        (
+            "cold-start-total-duration",
+            "Cold Start Total Duration",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.total_cold_start_duration)
+                    .collect()
+            }),
+        ),
+        (
+            "cold-start-init",
+            "Cold Start Init Duration",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.cold_starts.iter().map(|cs| cs.init_duration).collect()
+            }),
+        ),
+        (
+            "cold-start-server",
+            "Cold Start Server Duration",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.cold_starts.iter().map(|cs| cs.duration).collect()
+            }),
+        ),
+        (
+            "cold-start-response-latency",
+            "Cold Start Response Latency",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.cold_starts
+                    .iter()
+                    .filter_map(|cs| cs.response_latency_ms)
+                    .collect()
+            }),
+        ),
+        // Key Warm Start Metrics
+        (
+            "warm-start-client-duration",
+            "Warm Start Client Duration",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.client_measurements
+                    .iter()
+                    .map(|cm| cm.client_duration)
+                    .collect()
+            }),
+        ),
+        (
+            "warm-start-server-duration",
+            "Warm Start Server Duration",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.warm_starts.iter().map(|ws| ws.duration).collect()
+            }),
+        ),
+        (
+            "warm-start-response-latency",
+            "Warm Start Response Latency",
+            "ms",
+            collect_avg_values(results, |r| {
+                r.warm_starts
+                    .iter()
+                    .filter_map(|ws| ws.response_latency_ms)
+                    .collect()
+            }),
+        ),
+        // Resource Metrics
+        (
+            "warm-start-memory-usage",
+            "Warm Start Memory Usage",
+            "MB",
+            collect_avg_values(results, |r| {
+                r.warm_starts
+                    .iter()
+                    .map(|ws| ws.max_memory_used as f64)
+                    .collect()
+            }),
+        ),
+    ];
+
+    let summary_metrics: Vec<SummaryMetricData> = metrics
+        .into_iter()
+        .map(|(id, title, unit, avg_values)| {
+            let data: Vec<SummarySeriesData> = function_names
+                .iter()
+                .zip(avg_values.iter())
+                .map(|(name, &value)| SummarySeriesData {
+                    name: name.clone(),
+                    value,
+                })
+                .collect();
+
+            SummaryMetricData {
+                id: id.to_string(),
+                title: title.to_string(),
+                unit: unit.to_string(),
+                link: format!("../{}/", id),
+                data,
+            }
+        })
+        .collect();
+
+    let summary_data = SummaryChartRenderData {
+        title: title.to_string(),
+        description: "Overview of key performance metrics across all functions".to_string(),
+        metrics: summary_metrics,
+        page_type: "summary".to_string(),
+    };
+
+    ChartRenderData::Summary(summary_data)
+}
+
+/// Helper function to collect average values for a metric across all results
+fn collect_avg_values(
+    results: &[BenchmarkReport],
+    value_extractor: impl Fn(&BenchmarkReport) -> Vec<f64>,
+) -> Vec<f64> {
+    results
+        .iter()
+        .map(|report| {
+            let values = value_extractor(report);
+            if values.is_empty() {
+                0.0
+            } else {
+                let sum: f64 = values.iter().sum();
+                let avg = sum / values.len() as f64;
+                // Round to 3 decimal places using Decimal
+                Decimal::from_f64(avg)
+                    .unwrap_or_default()
+                    .round_dp(3)
+                    .to_f64()
+                    .unwrap_or(0.0)
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
