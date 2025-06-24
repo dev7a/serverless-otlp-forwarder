@@ -69,6 +69,10 @@ function setTheme(theme, savePreference = false) {
         lineChart.dispose();
     }
     
+    if (SummaryCharts) {
+        SummaryCharts.cleanup();
+    }
+    
     // Initialize charts based on data type
     initializeCharts(theme);
 }
@@ -83,17 +87,22 @@ function initializeCharts(theme) {
         return;
     }
 
-    // Get DOM elements for charts
-    const barChartDom = document.getElementById('chart_bar');
+    // Get DOM elements for charts - handle summary page transformation
+    let barChartDom = document.getElementById('chart_bar');
     const lineChartDom = document.getElementById('chart_time');
+    const summaryGridDom = document.getElementById('summary-charts-grid');
     
-    if (!barChartDom) {
+    // If chart_bar doesn't exist but summary-charts-grid does, we're on summary page
+    if (!barChartDom && summaryGridDom) {
+        // For summary page, we don't need the bar chart DOM
+        // Summary charts are handled separately
+    } else if (!barChartDom) {
         console.error("Bar chart DOM element with id 'chart_bar' not found.");
         return;
     }
 
     // Handle different chart data types
-    if (window.currentChartSpecificData.Combined) {
+    if (window.currentChartSpecificData.Combined && barChartDom) {
         // Combined charts - initialize both bar and line charts
         const combinedData = window.currentChartSpecificData.Combined;
         
@@ -114,7 +123,7 @@ function initializeCharts(theme) {
             }
             lineChart.setOption(lineOptions);
         }
-    } else if (window.currentChartSpecificData.Bar) {
+    } else if (window.currentChartSpecificData.Bar && barChartDom) {
         // Bar chart only
         barChart = echarts.init(barChartDom, theme);
         let options = BarCharts.generateOptions(window.currentChartSpecificData);
@@ -122,7 +131,7 @@ function initializeCharts(theme) {
             options.color = window.DEFAULT_COLOR_PALETTE;
         }
         barChart.setOption(options);
-    } else if (window.currentChartSpecificData.Line) {
+    } else if (window.currentChartSpecificData.Line && lineChartDom) {
         // Line chart only
         lineChart = echarts.init(lineChartDom, theme);
         let options = LineCharts.generateOptions(window.currentChartSpecificData);
@@ -130,6 +139,21 @@ function initializeCharts(theme) {
             options.color = window.DEFAULT_COLOR_PALETTE;
         }
         lineChart.setOption(options);
+    } else if (window.currentChartSpecificData.Summary) {
+        // Summary page - multiple charts (legacy format)
+        SummaryCharts.initialize(window.currentChartSpecificData.Summary, theme);
+    } else if (window.chartType === "summary" && window.currentChartSpecificData.metrics) {
+        // Summary page with metrics data format
+        // Dispose existing charts
+        SummaryCharts.cleanup();
+        
+        // Transform layout
+        SummaryCharts.createSummaryLayout();
+        
+        // Create individual charts
+        window.currentChartSpecificData.metrics.forEach((metric, index) => {
+            SummaryCharts.createMetricChart(metric, index, theme);
+        });
     } else {
         console.error('Unknown chart data format:', window.currentChartSpecificData);
     }
@@ -202,6 +226,7 @@ const BarCharts = {
         }));
 
         const options = {
+            backgroundColor: "transparent",
             title: {
                 text: data.title.toUpperCase(),
                 top: "5",
@@ -363,6 +388,7 @@ const LineCharts = {
 
 
         const options = {
+            backgroundColor: "transparent",
             title: {
                 text: data.title.toUpperCase(),
                 top: "5",
@@ -451,6 +477,177 @@ const LineCharts = {
     }
 };
 
+// =============================
+// Summary Chart Generator Module
+// =============================
+
+/**
+ * Module for generating summary page with multiple bar charts
+ * Used for overview of key metrics across all functions
+ */
+const SummaryCharts = {
+    charts: [], // Track all charts for cleanup and resize
+
+    /**
+     * Initializes summary page with multiple bar charts
+     * @param {Object} summaryData - The summary data from the server
+     * @param {string} theme - The theme to use ('light' or 'dark')
+     */
+    initialize: function(summaryData, theme) {
+        // Dispose existing charts
+        this.cleanup();
+
+        // Replace the chart containers with summary layout
+        this.createSummaryLayout();
+
+        // Create a bar chart for each metric
+        summaryData.metrics.forEach((metric, index) => {
+            this.createMetricChart(metric, index, theme);
+        });
+    },
+
+    /**
+     * Creates the HTML layout for summary charts
+     */
+    createSummaryLayout: function() {
+        const barChartDom = document.getElementById('chart_bar');
+        const lineChartDom = document.getElementById('chart_time');
+        
+        if (!barChartDom) return;
+
+        // Transform the existing bar chart container to summary layout
+        barChartDom.className = 'summary-charts-grid';
+        barChartDom.id = 'summary-charts-grid';
+        barChartDom.innerHTML = `
+        `;
+
+        // Hide the line chart container
+        if (lineChartDom) {
+            lineChartDom.style.display = 'none';
+        }
+    },
+
+    /**
+     * Creates an individual metric chart
+     * @param {Object} metric - Metric data
+     * @param {number} index - Chart index for unique IDs
+     * @param {string} theme - Theme to use
+     */
+    createMetricChart: function(metric, index, theme) {
+        const grid = document.getElementById('summary-charts-grid');
+        if (!grid) return;
+
+        // Create chart container
+        const chartContainer = document.createElement('div');
+        chartContainer.className = 'summary-chart-item';
+        chartContainer.innerHTML = `
+            <div class="summary-chart" id="summary-chart-${index}"></div>
+            <div class="summary-chart-footer">
+                <a href="${metric.link}index.html" class="summary-chart-link">View Details &gt;</a>
+            </div>
+        `;
+        grid.appendChild(chartContainer);
+
+        // Initialize chart
+        const chartDom = document.getElementById(`summary-chart-${index}`);
+        const chart = echarts.init(chartDom, theme);
+
+        // Create individual series for each function to enable proper coloring and legend
+        const series = metric.data.map((dataPoint, index) => ({
+            name: dataPoint.name,
+            type: 'bar',
+            data: [dataPoint.value],
+            itemStyle: {
+                color: window.DEFAULT_COLOR_PALETTE && index < window.DEFAULT_COLOR_PALETTE.length 
+                    ? window.DEFAULT_COLOR_PALETTE[index] 
+                    : '#3fb1e3'
+            },
+            label: {
+                show: true,
+                position: 'right',
+                formatter: `{c} ${metric.unit}`
+            }
+        }));
+
+        // Create ECharts options directly instead of using BarCharts module
+        const options = {
+            backgroundColor: "transparent",
+            title: {
+                text: metric.title.toUpperCase(),
+                top: "5",
+                left: "center",
+                textStyle: { fontWeight: "light", color: "#666" }
+            },
+            tooltip: { 
+                trigger: "axis", 
+                axisPointer: { type: "shadow" } 
+            },
+            legend: {
+                orient: "horizontal",
+                bottom: 5,
+                type: "scroll",
+                show: true
+            },
+            grid: {
+                left: "5%", 
+                top: "10%", 
+                right: "5%", 
+                bottom: "20%",
+                containLabel: true
+            },
+            xAxis: {
+                type: "value",
+                name: `${metric.unit === "MB" ? "Memory" : "Duration"} (${metric.unit})`,
+                nameLocation: "middle",
+                nameGap: 30,
+                axisLabel: { formatter: `{value} ${metric.unit}` },
+                minInterval: 1
+            },
+            yAxis: {
+                type: "category",
+                data: ['Average'],  // Single category since we're showing averages
+                inverse: false
+            },
+            toolbox: {
+                feature: { restore: {}, saveAsImage: {} },
+                right: "20px"
+            },
+            series: series
+        };
+
+        // Apply color palette
+        if (window.DEFAULT_COLOR_PALETTE) {
+            options.color = window.DEFAULT_COLOR_PALETTE;
+        }
+
+        chart.setOption(options);
+        this.charts.push(chart);
+    },
+
+    /**
+     * Cleans up existing charts
+     */
+    cleanup: function() {
+        this.charts.forEach(chart => {
+            if (chart && !chart.isDisposed()) {
+                chart.dispose();
+            }
+        });
+        this.charts = [];
+    },
+
+    /**
+     * Resizes all summary charts
+     */
+    resize: function() {
+        this.charts.forEach(chart => {
+            if (chart && !chart.isDisposed()) {
+                chart.resize();
+            }
+        });
+    }
+};
+
 // ======================
 // Initialization on Load
 // ======================
@@ -497,6 +694,9 @@ window.addEventListener('DOMContentLoaded', () => {
         if (lineChart) {
             lineChart.resize();
         }
+        if (SummaryCharts && SummaryCharts.charts.length > 0) {
+            SummaryCharts.resize();
+        }
     });
 
     // Navigation handler (if needed)
@@ -505,8 +705,8 @@ window.addEventListener('DOMContentLoaded', () => {
         const linkElement = event.currentTarget;
         const targetGroup = linkElement.dataset.group;
         const targetSubgroup = linkElement.dataset.subgroup;
-        // Get the current chart type or default to cold-start-init
-        const currentChartType = window.currentChartType || 'cold-start-init';
+        // Get the current chart type or default to summary
+        const currentChartType = window.currentChartType || 'summary';
         // Use basePath if available, otherwise fallback to root
         const basePath = window.basePath || '/';
         // Get link_suffix from window global (set in template)
