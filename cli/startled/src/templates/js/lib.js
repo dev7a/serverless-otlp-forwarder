@@ -516,8 +516,7 @@ const SummaryCharts = {
         // Transform the existing bar chart container to summary layout
         barChartDom.className = 'summary-charts-grid';
         barChartDom.id = 'summary-charts-grid';
-        barChartDom.innerHTML = `
-        `;
+        barChartDom.innerHTML = "";
 
         // Hide the line chart container
         if (lineChartDom) {

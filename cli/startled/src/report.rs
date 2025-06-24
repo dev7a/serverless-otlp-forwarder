@@ -187,9 +187,11 @@ async fn generate_chart(
         ChartRenderData::Combined { bar, line: _ } => {
             (bar.title.as_str(), bar.page_type.as_str(), &bar.description)
         }
-        ChartRenderData::Summary(summary) => {
-            (summary.title.as_str(), summary.page_type.as_str(), &Some(summary.description.clone()))
-        }
+        ChartRenderData::Summary(summary) => (
+            summary.title.as_str(),
+            summary.page_type.as_str(),
+            &Some(summary.description.clone()),
+        ),
     };
 
     ctx.insert("title", title);
