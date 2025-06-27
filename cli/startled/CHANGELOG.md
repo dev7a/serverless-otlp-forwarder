@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2025-06-27
+
+### Added
+- **Memory Scaling Analysis**: New comprehensive memory scaling summary pages showing performance metrics across different memory configurations (128mb, 256mb, 512mb, 1024mb)
+  - Accessible via `/all/summary/` endpoints for each runtime group (node, python)
+  - Includes cold start duration, init duration, warm start costs, extension overhead, and resource consumption analysis
+  - Interactive line charts with cross-configuration performance comparisons
+- **Enhanced Screenshot Functionality**: Completely overhauled screenshot system with robust error handling and dynamic sizing
+  - Dynamic height detection automatically resizes browser viewport based on page content
+  - Theme-based background colors (`#000000` for dark theme, `#ffffff` for light theme)
+  - Improved timing logic replacing brittle element detection with reliable time-based waits
+  - Support for all chart types including multi-chart summary pages
+- **Centralized Chart Management**: New `ChartManager` system for robust chart lifecycle management
+  - Registry pattern for tracking all chart instances
+  - Unified chart disposal, registration, and resizing
+  - Eliminates chart duplication and memory leaks during theme switching
+- **Basic Tracing Support**: Added `init_tracing()` function for report command debugging
+  - Lightweight tracing without AWS dependencies
+  - Controlled via `TRACING_STDOUT` environment variable
+
+### Enhanced
+- **Chart Architecture Refactoring**: Complete overhaul of JavaScript chart generation
+  - Renamed `LineCharts` to `ScatterCharts` for clarity
+  - Enhanced `BarCharts` and `SummaryCharts` modules with better theming and tooltips
+  - New `MemoryScalingCharts` module for multi-configuration visualizations
+  - Improved chart type handlers registry supporting Combined, Bar, Line, MemoryScaling, and Summary formats
+- **Improved User Experience**: Enhanced chart interactions and visual feedback
+  - Better tooltip formatting with series highlighting
+  - Enhanced emphasis/blur effects for chart focus
+  - Improved responsive design across all chart types
+  - DOM restoration system for proper theme switching without corruption
+
+### Fixed
+- **Screenshot Timing Issue**: Fixed root cause where CSS/JS files weren't available during screenshot generation by moving file copying before chart generation
+- **Theme Switching Stability**: Resolved chart disappearance and duplication issues when switching between light/dark themes
+- **Memory Scaling Screenshots**: Added proper PNG directory creation for memory scaling summary pages
+- **Production Code Quality**: Removed all debug prints and temporary code for clean production deployment
+
+### Changed
+- **Landing Page Navigation**: Updated main landing page to link to memory scaling summaries instead of individual subgroup pages
+- **Chart Background Handling**: All charts now use proper theme-based backgrounds instead of transparent backgrounds
+- **Error Handling**: Implemented silent error handling for production use while maintaining debugging capabilities
+
 ## [0.7.0] - 2025-06-23
 
 ### Added

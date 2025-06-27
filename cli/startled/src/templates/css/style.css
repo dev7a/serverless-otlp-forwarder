@@ -263,6 +263,23 @@ a:hover {
     letter-spacing: 0.05em;
 }
 
+.sidebar-group-title-link {
+    color: inherit;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: color 0.15s ease-in-out;
+}
+
+.sidebar-group-title-link:hover {
+    color: var(--accent-color);
+}
+
+.sidebar-group-title-link.active {
+    color: var(--accent-color);
+}
+
 .sidebar-subsection {
     margin-bottom: 1rem;
 }
@@ -868,7 +885,7 @@ a:hover {
 }
 
 .summary-chart {
-    height: 400px;
+    height: 600px;
     width: 100%;
 }
 
@@ -884,6 +901,6 @@ a:hover {
     }
     
     .summary-chart {
-        height: 350px;
+        height: 400px;
     }
 }

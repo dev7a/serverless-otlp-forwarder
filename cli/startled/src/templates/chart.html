@@ -56,6 +56,7 @@
                              </div>{% endif %}
                          </div>
                      </div>
+                     {% if current_subgroup != "all" %}
                      <nav class="nav">
                          <div class="nav-group">
                              <div class="nav-group-label">Cold Start</div>
@@ -88,6 +89,7 @@
                          </div>
 
                      </nav>
+                     {% endif %}
                  </div>
                  <div class="chart-container" id="chart_bar"></div>
                  <div class="chart-container" id="chart_time"></div>

@@ -1,7 +1,7 @@
 use startled::{
     benchmark::{run_function_benchmark, run_stack_benchmark},
     report::generate_reports,
-    telemetry::init_telemetry,
+    telemetry::{init_telemetry, init_tracing},
     types::{EnvVar, StackBenchmarkConfig},
     utils::validate_fs_safe_name,
 };
@@ -221,10 +221,14 @@ async fn run() -> Result<()> {
         return Ok(());
     }
 
-    // Initialize telemetry only for commands that need AWS access
+    // Initialize telemetry/tracing based on command type
     let tracer_provider = match &args.command {
         Commands::Function { .. } | Commands::Stack { .. } => Some(init_telemetry().await?),
-        Commands::Report { .. } | Commands::GenerateCompletions { .. } => None,
+        Commands::Report { .. } => {
+            init_tracing(); // Initialize basic tracing for report command
+            None
+        }
+        Commands::GenerateCompletions { .. } => None,
     };
 
     match args.command {

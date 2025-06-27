@@ -1,210 +1,23 @@
 # Release Notes for startled v0.6.0
 
-## 🎯 Major Enhancements
+This release introduces version `0.8.0` of the `startled` CLI tool, adding significant new features, enhancements, and fixes to improve benchmarking, reporting, and visualization capabilities. The most notable changes include the addition of memory scaling analysis, enhanced screenshot functionality, centralized chart management, basic tracing support, and multiple refinements to user experience and error handling.
 
-### Consistent Directory Naming & Navigation Overhaul
+### New Features:
+* **Memory Scaling Analysis**: Introduced comprehensive summary pages (`/all/summary/`) that provide performance metrics across various memory configurations (128mb, 256mb, 512mb, 1024mb), with interactive line charts for cross-configuration comparisons. [[1]](diffhunk://#diff-bd0cb949bb67fcfa38060059b5016cdb217ed459714094210b87496f0714b453R8-R50) [[2]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573R55) [[3]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573L255-R263) [[4]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573R355) [[5]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573L369-R374)
+* **Enhanced Screenshot Functionality**: Overhauled screenshot system with dynamic height detection, theme-based backgrounds, improved timing logic, and support for all chart types, ensuring robust and high-quality PNG generation. [[1]](diffhunk://#diff-fe149fe84e623fbe578902b2a7b1de940feba1824d841deab416cd165b7e6752L17-R17) [[2]](diffhunk://#diff-fe149fe84e623fbe578902b2a7b1de940feba1824d841deab416cd165b7e6752L30-R112) [[3]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573L67-R73)
+* **Centralized Chart Management**: Added a `ChartManager` system to handle chart lifecycle management, eliminating duplication and memory leaks during theme switching.
+* **Basic Tracing Support**: Implemented the `init_tracing()` function for lightweight debugging of the report command, controlled by the `TRACING_STDOUT` environment variable. [[1]](diffhunk://#diff-5fb52f72c3daaba5adfbdfaddaf0e2bc6b28ebbb5e4d9e8a4082eaf66b5d8886L224-R231) [[2]](diffhunk://#diff-03e2f68cbacf7c23a9129ff280a4f594c2e81ee146958c27319eddca01a43135R14-R34)
 
-This release introduces a **comprehensive reorganization** of the report interface for improved consistency and usability. All warm start metrics now follow a unified `warm-start-` naming convention, and the navigation has been streamlined for better logical organization.
+### Enhancements:
+* **Chart Architecture Refactoring**: Improved JavaScript chart generation with better theming, tooltips, and a new `MemoryScalingCharts` module for multi-configuration visualizations.
+* **Improved User Experience**: Enhanced chart interactions, responsive design, and DOM restoration for seamless theme switching.
+* **Error Handling**: Added silent error handling for production use while maintaining debugging capabilities.
 
-#### Directory Naming Consistency
-All warm start charts now use consistent `warm-start-` prefixes:
-- `client-duration/` → `warm-start-client-duration/`
-- `server-duration/` → `warm-start-server-duration/`
-- `extension-overhead/` → `warm-start-extension-overhead/`
-- `memory-usage/` → `warm-start-memory-usage/`
-- `produced-bytes/` → `warm-start-produced-bytes/`
+### Fixes:
+* **Screenshot Timing Issue**: Resolved issues with unavailable CSS/JS files during screenshot generation by adjusting file copying order.
+* **Theme Switching Stability**: Fixed chart disappearance and duplication problems during light/dark theme transitions.
 
-### Complete Cold Start Resource Coverage
-
-Added **missing cold start variants** for resource metrics:
-- **Cold Start Memory Usage**: Track memory consumption during Lambda initialization
-- **Cold Start Produced Bytes**: Monitor response payload sizes during cold starts
-
-These metrics were previously only available for warm starts, creating an incomplete picture of resource usage patterns.
-
-### Reorganized Navigation Layout
-
-**Eliminated the redundant "Resources" section** and logically integrated memory and produced bytes metrics directly into their respective execution contexts:
-
-- **Cold Start Section**: Now includes memory usage and produced bytes alongside platform metrics
-- **Warm Start Section**: Similarly organized with all relevant metrics in one place
-- **Improved Logical Flow**: "Total Cold Start Duration" moved to the end for better ordering
-
-### Optimized CSS Layout
-
-**Enhanced navigation styling** to accommodate the complete metric set:
-- **2-Row Desktop Layout**: Clean organization supporting 14+ navigation buttons
-- **Responsive Design**: Optimized button sizing (`calc(100% / 14)`, `min-width: 5.5rem`)
-- **Better Space Utilization**: Efficient use of horizontal space
-
-## 🔧 Complete Platform Metrics Coverage
-
-Added the **remaining warm start platform metrics** for comprehensive performance analysis:
-- **Response Latency**: Platform-level response timing
-- **Response Duration**: Response transmission time  
-- **Runtime Overhead**: Lambda runtime processing overhead
-- **Runtime Done Duration**: Complete runtime cycle measurement
-
-## 📚 Enhanced Metric Descriptions
-
-**Updated and expanded** AWS-documentation-based descriptions to reflect cold/warm start distinctions for all resource metrics, providing clearer guidance on:
-- When and why memory usage differs between cold and warm starts
-- How response payload sizes impact performance in different execution contexts
-- The relationship between resource consumption and execution phases
-
-## 🎨 User Experience Improvements
-
-### Navigation Clarity
-- **Logical Grouping**: Metrics organized by execution context (cold start vs warm start)
-- **Consistent Naming**: All external directory names follow kebab-case conventions
-- **Better Flow**: Metrics ordered logically within each section
-
-### Complete Data Coverage
-- **No Missing Data**: Both cold and warm start scenarios now have complete resource metric coverage
-- **Balanced Analysis**: Users can now compare resource usage patterns across all execution types
-
-## 💻 Usage Examples
-
-```bash
-# Generate reports with the new improved navigation
-startled report \
-    --dir=benchmark-results \
-    --output=./enhanced-reports \
-    --title "Comprehensive Lambda Performance Analysis" \
-    --description "Complete cold/warm start performance comparison with resource metrics"
-```
-
-Reports now provide:
-- **Comprehensive Cold Start Analysis**: Including resource consumption during initialization
-- **Complete Warm Start Coverage**: Full platform and resource metrics
-- **Improved Navigation**: Intuitive organization by execution context
-- **Consistent Interface**: Uniform naming and layout across all charts
-
-## 🔄 Migration Notes
-
-### Breaking Changes
-- **Directory Structure**: Warm start chart directories have new names (affects bookmarks/links)
-- **Navigation Layout**: "Resources" section removed - metrics moved to appropriate execution contexts
-
-### Backward Compatibility
-- **CLI Interface**: No changes to command-line usage
-- **Data Format**: JSON output format unchanged
-- **Template System**: Custom templates may need updates for new navigation structure
-
-## 🏆 Impact
-
-This release transforms startled into a more **professional and intuitive** Lambda performance analysis tool:
-
-- **Consistency**: Unified naming conventions across all interfaces
-- **Completeness**: No missing data for any execution scenario  
-- **Usability**: Logical organization that matches how developers think about Lambda performance
-- **Scalability**: Navigation design that accommodates future metric additions
-
-The reorganized interface makes it significantly easier to:
-- Compare cold vs warm start resource usage
-- Navigate between related metrics
-- Understand the complete performance picture
-- Generate professional reports for stakeholders
-
----
-
-## 📦 Installation
-
-```bash
-cargo install startled --version 0.6.0
-```
-
-## 📝 What's Changed
-
-- Added `--suffix` CLI option to the `report` command
-- Updated file generation logic to use `index.{suffix}` instead of hardcoded `index.html`
-- Enhanced documentation with examples of generating different file formats
-
-## 🙏 Acknowledgments
-
-Thank you to all contributors and users who provide feedback to make startled better!
-
-# Release Notes - startled v0.5.0
-
-**Release Date:** 2025-06-21
-
-This release introduces **AWS-Documentation-Based Metric Descriptions**, a major enhancement that transforms the startled reports from raw performance data into comprehensive, educational Lambda performance analysis tools.
-
-## 🎯 Major New Feature
-
-### AWS-Documentation-Based Metric Descriptions
-
-Every metric chart now includes detailed, expert-level descriptions that explain:
-
-- **What each metric represents** in AWS Lambda's execution model
-- **Official AWS CloudWatch metric equivalents** (Duration, PostRuntimeExtensionsDuration, MaxMemoryUsed)
-- **Platform-level metrics** from AWS's internal instrumentation (platform.runtimeDone)
-- **Performance implications** and optimization insights
-- **Measurement context** (cold starts vs warm starts, initialization phases)
-
-#### Coverage Includes:
-
-**Cold Start Metrics:**
-- Init Duration, Server Duration, Extension Overhead
-- Total Cold Start Duration, Response Latency/Duration  
-- Runtime Overhead, Runtime Done Duration
-
-**Warm Start Metrics:**
-- Client Duration, Server Duration, Extension Overhead
-- Response Latency/Duration, Runtime Overhead, Runtime Done Duration
-
-**Resource Metrics:**
-- Memory Usage, Produced Bytes
-
-## 🎨 Visual Enhancements
-
-### Improved User Experience
-- **Dedicated metric description sections** with professional styling
-- **Enhanced color contrast** in dark theme for better readability  
-- **Improved background colors** in light theme
-- **Streamlined readme content styling**
-
-## 📚 Educational Value
-
-This release transforms startled from a charting tool into a **Lambda performance education platform**. Users now understand:
-
-- How AWS Lambda's execution environment lifecycle affects performance
-- The relationship between different timing metrics
-- Which metrics correspond to AWS CloudWatch billing and monitoring
-- How extensions impact Lambda performance across cold/warm starts
-- Platform-level insights from AWS's internal telemetry
-
-## 🔧 Implementation Details
-
-- **Research-based descriptions** derived from official AWS Lambda documentation
-- **Consistent styling** with dedicated CSS classes for metric descriptions
-- **Template integration** that automatically displays relevant descriptions
-- **Comprehensive test coverage** ensuring description accuracy
-
-## 🚀 Usage Example
-
-```bash
-startled report \
-    --dir=results \
-    --output=./reports \
-    --title "Lambda Performance Analysis" \
-    --description "Deep dive into runtime performance characteristics"
-```
-
-Each generated chart now includes contextualized explanations that help users:
-- Identify performance bottlenecks
-- Understand extension overhead impact  
-- Correlate metrics with AWS CloudWatch data
-- Make informed optimization decisions
-
-## 📈 Impact
-
-This enhancement addresses a key gap in Lambda performance tooling - transforming raw metrics into actionable insights through expert-level explanations based on official AWS documentation.
-
----
-
-## Compatibility
-
-- ✅ **Backwards Compatible**: All existing functionality preserved
-- ✅ **No Breaking Changes**: Existing CLI usage remains unchanged  
-- ✅ **Template Compatibility**: Custom templates automatically benefit from new descriptions
+### Miscellaneous:
+* **Pricing Script**: Added a Python script (`pricing.py`) to fetch AWS Lambda compute pricing based on region and architecture.
+* **Version Update**: Updated the package version from `0.7.0` to `0.8.0` in `Cargo.toml`.
+* **Sidebar Update**: Modified sidebar structure in `_sidebar.html` to include links to memory scaling analysis pages.

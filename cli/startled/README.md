@@ -52,6 +52,7 @@
     -   Set temporary **environment variables** for the Lambda function during the benchmark.
 -   **Comprehensive HTML Reports**:
     -   Generates detailed HTML reports featuring interactive charts (using Apache ECharts) for clear visualization of benchmark data.
+    -   **Memory Scaling Analysis**: New comprehensive memory scaling summary pages (`/all/summary/`) showing performance metrics across different memory configurations (128mb, 256mb, 512mb, 1024mb) with interactive line charts for cross-configuration performance comparisons.
     -   **Summary Pages**: Provides comprehensive overview pages accessible via memory size navigation, displaying key performance metrics across all functions in a single view for quick comparative analysis.
     -   **AWS-Documentation-Based Metric Descriptions**: Each chart includes expert-level explanations of what metrics represent, their AWS CloudWatch equivalents, and performance optimization insights based on official AWS Lambda documentation.
     -   Provides statistical summaries (Average, P50, P95, P99, and **Standard Deviation (StdDev)**) for key metrics across different functions and configurations.
@@ -64,9 +65,12 @@
     -   Automatically injects **OpenTelemetry and AWS X-Ray trace context headers** into the Lambda payload, facilitating distributed tracing across the CLI and the benchmarked functions.
 -   **Safe and Reversible Operation**:
     -   Captures a Lambda function's original configuration (memory, environment variables) before applying temporary changes for a benchmark.
-    -   **Restores the original configuration** after the benchmark concludes or if interrupted.
--   **Optional Chart Screenshots**:
-    -   Can generate PNG screenshots of the report charts (requires the `screenshots` compile-time feature and a headless Chrome environment).
+-   **Enhanced Chart Screenshots**:
+    -   Generates high-quality PNG screenshots of all chart types with dynamic height detection and theme-based backgrounds.
+    -   **Dynamic Sizing**: Automatically detects content height and resizes browser viewport for complete chart capture, especially useful for multi-chart summary pages.
+    -   **Theme Support**: Proper dark (`#000000`) and light (`#ffffff`) theme backgrounds for professional presentation.
+    -   Robust timing logic and error handling for reliable screenshot generation across all page types.
+    -   (Requires the `screenshots` compile-time feature and a headless Chrome environment).
 
 ![scatter plot for client duration](https://github.com/user-attachments/assets/29314c03-46e6-41de-b695-6aced7690f17)
 
@@ -252,11 +256,11 @@ Generates HTML reports from previously collected JSON benchmark results.
 
 **Key Options:**
 -   `--input-dir <PATH>` (`-d <PATH>`): (Required) Directory containing the JSON benchmark result files. `startled` expects a structure like `<input_dir>/{group_name}/{subgroup_name}/*.json` (e.g., `/tmp/startled_results/my-app/prod/1024mb/*.json`).
--   `--output-dir <PATH>` (`-o <PATH>`): (Required) Directory where the report files will be generated. An `index.{suffix}` file and associated assets will be created in this directory. The generated reports will now include charts for new platform metrics and display Standard Deviation.
+-   `--output-dir <PATH>` (`-o <PATH>`): (Required) Directory where the report files will be generated. An `index.{suffix}` file and associated assets will be created in this directory. The generated reports include charts for platform metrics, Standard Deviation, and comprehensive memory scaling analysis pages.
 -   `--title <TITLE>`: (Optional) Custom title for the report landing page. If not specified, defaults to "Benchmark Reports".
 -   `--description <DESCRIPTION>`: (Optional) Descriptive text to display below the title on the report landing page. Useful for providing context about the benchmark results.
 -   `--suffix <SUFFIX>`: (Optional) File extension for generated files (default: html). When using custom templates, this allows generating Markdown (.md), plain text (.txt), or any other file format.
--   `--screenshot <THEME>`: (Optional) Generates PNG screenshots of the charts. `<THEME>` can be `Light` or `Dark`. This requires the `screenshots` compile-time feature and a properly configured headless Chrome environment.
+-   `--screenshot <THEME>`: (Optional) Generates high-quality PNG screenshots of all charts with dynamic height detection. `<THEME>` can be `Light` or `Dark`. Features automatic content sizing and theme-appropriate backgrounds. This requires the `screenshots` compile-time feature and a properly configured headless Chrome environment.
 -   `--readme <MARKDOWN_FILE>`: (Optional) Specifies a markdown file whose content will be rendered as HTML and included on the landing page of the report. This allows for adding custom documentation, explanations, or findings to the benchmark report.
 -   `--template-dir <PATH>`: (Optional) Specifies a custom directory containing templates for report generation. This allows for complete customization of the report appearance and behavior. The directory should contain HTML templates (`index.html`, `chart.html`, `_sidebar.html`), CSS (`css/style.css`), and a single JavaScript file (`js/lib.js`) that handles all chart rendering functionality.
 -   `--base-url <URL_PATH>`: (Optional) Specifies a base URL path for all generated links in the report. This is useful when hosting the report in a subdirectory of a website (e.g., `--base-url "/reports/"` for a site hosted at `http://example.com/reports/`). When specified, all internal links will be prefixed with this path, ensuring proper navigation even when the report is not hosted at the root of a domain.
@@ -348,6 +352,7 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
     -   Utilizes the Tera templating engine for generating HTML pages.
     -   Embeds interactive charts created with Apache ECharts for data visualization.
     -   Produces a variety of charts, including:
+        -   **Memory Scaling Analysis Pages** (`/all/summary/`): Comprehensive analysis showing how each function performs across different memory configurations with interactive line charts revealing performance trends and cost optimization opportunities.
         -   **Summary pages** with multiple overview charts showing key metrics (cold start total duration, init duration, server duration, response latency, warm start metrics, and memory usage) for quick comparative analysis across all functions.
         -   Bar charts comparing AVG/P50/P95/P99/StdDev statistics for cold start metrics (init duration, server duration, total cold start duration, extension overhead, response latency, response duration, runtime overhead, runtime done duration).
         -   Bar charts for warm start metrics (server duration, client duration, extension overhead, response latency, response duration, runtime overhead, runtime done duration).
@@ -366,7 +371,7 @@ The main HTML report will be accessible at `/var/www/benchmarks/my-application-s
     -   For `function` command: If `--output-dir` is specified, results are saved under `<YOUR_OUTPUT_DIR>/function/{memory_setting}/{function_name}.json` (e.g., `/tmp/results/function/128mb/my-lambda.json`). If `--output-dir` is omitted, no results are saved.
     -   For `stack` command: If `--output-dir` is specified, results are saved to `your_output_dir/{select_name_or_pattern}/{memory_setting}/{function_name}.json` (or `your_output_dir/{select_name_or_pattern}/default/{function_name}.json` if memory is not set). If `--output-dir` is omitted, no results are saved.
 -   **HTML Reports**: The `report` command generates a structured set of HTML files within its specified `--output-dir`. The input directory for the report command should point to the level containing the `{select_name_or_pattern}` or `{memory_setting}` (for function command) directories.
-    -   Example: `/srv/benchmarks/run1/index.html`, with sub-pages such as `/srv/benchmarks/run1/api-tests/512mb/cold_start_init.html`.
+    -   Example: `/srv/benchmarks/run1/index.html`, with sub-pages such as `/srv/benchmarks/run1/api-tests/512mb/cold_start_init.html` and memory scaling analysis at `/srv/benchmarks/run1/api-tests/all/summary/index.html`.
     -   Associated CSS and JavaScript files are also copied to this directory.
 
 ## The `benchmark/testbed/` Environment
