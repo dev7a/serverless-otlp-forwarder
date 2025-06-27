@@ -11,6 +11,27 @@ use otlp_sigv4_client::SigV4ClientBuilder;
 use tracing_opentelemetry::OpenTelemetryLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+/// Initialize basic tracing for commands that don't need OpenTelemetry
+///
+/// This is useful for the report command to enable debug logging without AWS dependencies
+pub fn init_tracing() {
+    let show_console = std::env::var("TRACING_STDOUT")
+        .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    if show_console {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::Layer::default())
+            .init();
+    } else {
+        tracing_subscriber::registry().with(env_filter).init();
+    }
+}
+
 /// Initialize OpenTelemetry with configuration from environment variables
 ///
 /// Environment variables:

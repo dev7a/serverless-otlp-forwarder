@@ -11,7 +11,7 @@ use crate::stats::{
     calculate_warm_start_runtime_done_metrics_duration_stats,
     calculate_warm_start_runtime_overhead_stats, calculate_warm_start_stats,
 };
-use crate::types::{BenchmarkConfig, BenchmarkReport};
+use crate::types::{BenchmarkConfig, BenchmarkReport, ColdStartMetrics, WarmStartMetrics};
 use anyhow::{Context, Result};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use pulldown_cmark::{html, Options, Parser};
@@ -76,6 +76,31 @@ struct LineChartRenderData {
     description: Option<String>, // AWS-documentation-based description of the metric
 }
 
+/// Data structure for memory scaling charts
+#[derive(Debug, Serialize)]
+struct MemoryScalingPoint {
+    memory_mb: i32,
+    value: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct MemoryScalingSeriesData {
+    name: String, // Function name
+    points: Vec<MemoryScalingPoint>,
+}
+
+#[derive(Debug, Serialize)]
+struct MemoryScalingChartRenderData {
+    title: String,
+    subtitle: String,
+    x_axis_label: String,
+    y_axis_label: String,
+    unit: String,
+    series: Vec<MemoryScalingSeriesData>,
+    page_type: String,
+    description: Option<String>,
+}
+
 /// Data structure for individual metrics in the summary
 #[derive(Debug, Serialize)]
 struct SummaryMetricData {
@@ -101,6 +126,15 @@ struct SummaryChartRenderData {
     page_type: String,
 }
 
+/// Data structure for memory scaling summary with multiple charts
+#[derive(Debug, Serialize)]
+struct MemoryScalingSummaryData {
+    title: String,
+    description: String,
+    charts: Vec<MemoryScalingChartRenderData>,
+    page_type: String,
+}
+
 #[derive(Serialize)]
 enum ChartRenderData {
     Combined {
@@ -108,6 +142,7 @@ enum ChartRenderData {
         line: Box<LineChartRenderData>,
     },
     Summary(SummaryChartRenderData),
+    MemoryScalingSummary(MemoryScalingSummaryData),
 }
 
 /// Generate a chart with the given options
@@ -191,6 +226,11 @@ async fn generate_chart(
             summary.title.as_str(),
             summary.page_type.as_str(),
             &Some(summary.description.clone()),
+        ),
+        ChartRenderData::MemoryScalingSummary(memory_summary) => (
+            memory_summary.title.as_str(),
+            memory_summary.page_type.as_str(),
+            &Some(memory_summary.description.clone()),
         ),
     };
 
@@ -454,12 +494,11 @@ async fn generate_landing_page(
     // Create items for the landing page grid
     let mut items = Vec::new();
     for (group_name, subgroups) in report_structure {
-        let first_subgroup_name = subgroups.first().map(|s| s.as_str()).unwrap_or("");
-        // Link to the first subgroup's summary page - use kebab-case with trailing slash
-        let link_path = format!("{}/{}/summary/", group_name, first_subgroup_name);
+        // Link to the group's memory scaling summary page
+        let link_path = format!("{}/all/summary/", group_name);
         items.push(
             IndexItem::new(group_name, link_path)
-                .with_subtitle(format!("{} configurations", subgroups.len())),
+                .with_subtitle(format!("{} memory configurations", subgroups.len())),
         );
     }
     ctx.insert("items", &items);
@@ -486,6 +525,56 @@ pub async fn generate_reports(
 ) -> Result<()> {
     // Create output directory if it doesn't exist
     fs::create_dir_all(output_directory)?;
+
+    // --- Copy CSS and JS files first (before chart generation for screenshots) ---
+    let css_dir = Path::new(output_directory).join("css");
+    fs::create_dir_all(&css_dir).context("Failed to create css output directory")?;
+    let css_path = css_dir.join("style.css");
+
+    if let Some(custom_template_dir_str) = &template_dir {
+        let css_src_path = PathBuf::from(custom_template_dir_str)
+            .join("css")
+            .join("style.css");
+        if !css_src_path.exists() {
+            anyhow::bail!(
+                "style.css not found in custom template directory: {}",
+                css_src_path.display()
+            );
+        }
+        fs::copy(&css_src_path, &css_path).context(format!(
+            "Failed to copy style.css from custom template directory: {}",
+            css_src_path.display()
+        ))?;
+    } else {
+        let css_content = include_str!("templates/css/style.css");
+        fs::write(&css_path, css_content).context("Failed to write style.css")?;
+    }
+
+    let js_dir = Path::new(output_directory).join("js");
+    fs::create_dir_all(&js_dir).context("Failed to create js output directory")?;
+    let js_lib_dst = js_dir.join("lib.js");
+
+    if let Some(custom_template_dir_str) = &template_dir {
+        let js_lib_src_path = PathBuf::from(custom_template_dir_str)
+            .join("js")
+            .join("lib.js");
+
+        if !js_lib_src_path.exists() {
+            anyhow::bail!(
+                "lib.js not found in custom template directory: {}",
+                js_lib_src_path.display()
+            );
+        }
+
+        fs::copy(&js_lib_src_path, &js_lib_dst).context(format!(
+            "Failed to copy lib.js from custom template directory: {}",
+            js_lib_src_path.display()
+        ))?;
+    } else {
+        let js_lib_content = include_str!("templates/js/lib.js");
+        fs::write(&js_lib_dst, js_lib_content).context("Failed to write default lib.js")?;
+    }
+    // -------------------------
 
     // Early check if readme file exists
     if let Some(readme_path) = &readme_file {
@@ -560,6 +649,30 @@ pub async fn generate_reports(
             ))?;
             main_pb.inc(1);
         }
+
+        // Generate group-level memory scaling summary
+        main_pb.set_message(format!(
+            "Generating memory scaling summary for {}...",
+            group_name
+        ));
+        generate_group_memory_scaling_summary(
+            group_name,
+            subgroups,
+            input_directory,
+            output_directory,
+            suffix,
+            screenshot_theme,
+            &main_pb,
+            &report_structure,
+            template_dir.as_ref(),
+            base_url,
+            local_browsing,
+        )
+        .await
+        .context(format!(
+            "Failed generating memory scaling summary for {}",
+            group_name
+        ))?;
     }
     main_pb.finish_with_message("✓ Charts generated.");
 
@@ -586,62 +699,6 @@ pub async fn generate_reports(
 
     m.clear()?;
 
-    // --- Add CSS Copy Step ---
-    let css_dir = Path::new(output_directory).join("css");
-    fs::create_dir_all(&css_dir).context("Failed to create css output directory")?;
-    let css_path = css_dir.join("style.css");
-
-    if let Some(custom_template_dir_str) = &template_dir {
-        let css_src_path = PathBuf::from(custom_template_dir_str)
-            .join("css")
-            .join("style.css");
-        if !css_src_path.exists() {
-            anyhow::bail!(
-                "style.css not found in custom template directory: {}",
-                css_src_path.display()
-            );
-        }
-        fs::copy(&css_src_path, &css_path).context(format!(
-            "Failed to copy style.css from custom template directory: {}",
-            css_src_path.display()
-        ))?;
-    } else {
-        let css_content = include_str!("templates/css/style.css");
-        fs::write(&css_path, css_content).context("Failed to write style.css")?;
-    }
-    println!("✓ CSS file copied.");
-    // -------------------------
-
-    // --- Add JS Copy Step ---
-    let js_dir = Path::new(output_directory).join("js");
-    fs::create_dir_all(&js_dir).context("Failed to create js output directory")?;
-    let js_lib_dst = js_dir.join("lib.js");
-
-    if let Some(custom_template_dir_str) = &template_dir {
-        let js_lib_src_path = PathBuf::from(custom_template_dir_str)
-            .join("js")
-            .join("lib.js");
-
-        if !js_lib_src_path.exists() {
-            anyhow::bail!(
-                "lib.js not found in custom template directory: {}",
-                js_lib_src_path.display()
-            );
-        }
-
-        fs::copy(&js_lib_src_path, &js_lib_dst).context(format!(
-            "Failed to copy lib.js from custom template directory: {}",
-            js_lib_src_path.display()
-        ))?;
-
-        println!("✓ lib.js copied (contains all chart generation code).");
-    } else {
-        let js_lib_content = include_str!("templates/js/lib.js");
-        fs::write(&js_lib_dst, js_lib_content).context("Failed to write default lib.js")?;
-        println!("✓ Default lib.js copied (contains all chart generation code).");
-    }
-    // -------------------------
-
     // Print path to the main index.html
     let index_path = PathBuf::from(output_directory).join("index.html");
     if index_path.exists() {
@@ -650,6 +707,268 @@ pub async fn generate_reports(
     }
 
     Ok(())
+}
+
+/// Generate group-level memory scaling summary showing how each function performs across memory sizes
+#[allow(clippy::too_many_arguments)]
+async fn generate_group_memory_scaling_summary(
+    group_name: &str,
+    subgroups: &[String],
+    input_directory: &str,
+    output_directory: &str,
+    suffix: &str,
+    screenshot_theme: Option<&str>,
+    pb: &ProgressBar,
+    report_structure: &ReportStructure,
+    template_dir: Option<&String>,
+    base_url: Option<&str>,
+    local_browsing: bool,
+) -> Result<()> {
+    // Create group/all directory for memory scaling summary
+    let all_dir = Path::new(output_directory).join(group_name).join("all");
+    fs::create_dir_all(&all_dir)?;
+
+    // Create output directory for PNG files if screenshots are enabled
+    let png_dir = if screenshot_theme.is_some() {
+        let dir = all_dir.join("png");
+        fs::create_dir_all(&dir)?;
+        Some(dir)
+    } else {
+        None
+    };
+
+    // Collect data across all memory sizes
+    let mut function_memory_data: BTreeMap<String, BTreeMap<i32, BenchmarkReport>> =
+        BTreeMap::new();
+
+    for subgroup_name in subgroups {
+        // Parse memory size from subgroup name (e.g., "128mb" -> 128)
+        let memory_mb = subgroup_name
+            .trim_end_matches("mb")
+            .parse::<i32>()
+            .unwrap_or(0);
+
+        if memory_mb == 0 {
+            continue; // Skip non-memory subgroups
+        }
+
+        let subgroup_dir = Path::new(input_directory)
+            .join(group_name)
+            .join(subgroup_name);
+
+        // Read all JSON files in this subgroup
+        for entry in fs::read_dir(&subgroup_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                let content = fs::read_to_string(&path)?;
+                let report: BenchmarkReport = serde_json::from_str(&content)?;
+                let function_name = report.config.function_name.clone();
+
+                function_memory_data
+                    .entry(function_name)
+                    .or_default()
+                    .insert(memory_mb, report);
+            }
+        }
+    }
+
+    if function_memory_data.is_empty() {
+        return Ok(()); // No data to process
+    }
+
+    // Prepare all metrics for the consolidated summary page
+    type MetricExtractor = Box<dyn Fn(&BenchmarkReport) -> Option<f64>>;
+    let metrics: Vec<(&str, &str, &str, MetricExtractor)> = vec![
+        (
+            "cold_start_total_duration",
+            "Cold Start Total Duration",
+            "ms",
+            Box::new(|r: &BenchmarkReport| {
+                calculate_avg_from_cold_starts(&r.cold_starts, |cs| cs.total_cold_start_duration)
+            }),
+        ),
+        (
+            "cold_start_init_duration",
+            "Cold Start Init Duration",
+            "ms",
+            Box::new(|r: &BenchmarkReport| {
+                calculate_avg_from_cold_starts(&r.cold_starts, |cs| Some(cs.init_duration))
+            }),
+        ),
+        (
+            "warm_start_billed_duration",
+            "Warm Start Billed Duration",
+            "ms",
+            Box::new(|r: &BenchmarkReport| {
+                calculate_avg_from_warm_starts(&r.warm_starts, |ws| Some(ws.billed_duration as f64))
+            }),
+        ),
+        (
+            "warm_start_extension_overhead",
+            "Warm Start Extension Overhead",
+            "ms",
+            Box::new(|r: &BenchmarkReport| {
+                calculate_avg_from_warm_starts(&r.warm_starts, |ws| Some(ws.extension_overhead))
+            }),
+        ),
+        (
+            "resource_consumption",
+            "Cost per Million Invocations",
+            "GB-seconds per Million",
+            Box::new(|r: &BenchmarkReport| {
+                calculate_gb_seconds_per_million(&r.warm_starts, r.config.memory_size)
+            }),
+        ),
+    ];
+
+    // Collect all chart data for the single summary page
+    let mut all_charts = Vec::new();
+
+    for (metric_id, title, unit, extractor) in metrics {
+        let chart_data = prepare_memory_scaling_chart_data(
+            &function_memory_data,
+            title,
+            unit,
+            metric_id,
+            extractor,
+        );
+        all_charts.push(chart_data);
+    }
+
+    // Generate the consolidated summary page
+    let summary_data = MemoryScalingSummaryData {
+        title: format!("{} Memory Scaling Analysis", group_name),
+        description: "Performance metrics across different memory configurations".to_string(),
+        charts: all_charts,
+        page_type: "memory_scaling_summary".to_string(),
+    };
+
+    generate_chart(
+        &all_dir,
+        png_dir.as_deref(),
+        "summary",
+        &ChartRenderData::MemoryScalingSummary(summary_data),
+        &function_memory_data
+            .values()
+            .next()
+            .unwrap()
+            .values()
+            .next()
+            .unwrap()
+            .config,
+        suffix,
+        screenshot_theme,
+        pb,
+        report_structure,
+        group_name,
+        "all",
+        template_dir,
+        base_url,
+        local_browsing,
+    )
+    .await?;
+
+    Ok(())
+}
+
+// Helper functions for metric calculations
+fn calculate_avg_from_cold_starts<F>(cold_starts: &[ColdStartMetrics], extractor: F) -> Option<f64>
+where
+    F: Fn(&ColdStartMetrics) -> Option<f64>,
+{
+    let values: Vec<f64> = cold_starts.iter().filter_map(extractor).collect();
+
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
+}
+
+fn calculate_avg_from_warm_starts<F>(warm_starts: &[WarmStartMetrics], extractor: F) -> Option<f64>
+where
+    F: Fn(&WarmStartMetrics) -> Option<f64>,
+{
+    let values: Vec<f64> = warm_starts.iter().filter_map(extractor).collect();
+
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.iter().sum::<f64>() / values.len() as f64)
+    }
+}
+
+fn calculate_gb_seconds_per_million(
+    warm_starts: &[WarmStartMetrics],
+    memory_mb: i32,
+) -> Option<f64> {
+    let avg_billed =
+        calculate_avg_from_warm_starts(warm_starts, |ws| Some(ws.billed_duration as f64))?;
+    let gb = memory_mb as f64 / 1024.0;
+    let seconds = avg_billed / 1000.0;
+    Some(gb * seconds * 1_000_000.0)
+}
+
+fn prepare_memory_scaling_chart_data<F>(
+    function_memory_data: &BTreeMap<String, BTreeMap<i32, BenchmarkReport>>,
+    title: &str,
+    unit: &str,
+    page_type: &str,
+    value_extractor: F,
+) -> MemoryScalingChartRenderData
+where
+    F: Fn(&BenchmarkReport) -> Option<f64>,
+{
+    let mut series = Vec::new();
+
+    for (function_name, memory_reports) in function_memory_data {
+        let mut points = Vec::new();
+
+        for (memory_mb, report) in memory_reports {
+            if let Some(value) = value_extractor(report) {
+                points.push(MemoryScalingPoint {
+                    memory_mb: *memory_mb,
+                    value,
+                });
+            }
+        }
+
+        // Sort points by memory size
+        points.sort_by_key(|p| p.memory_mb);
+
+        if !points.is_empty() {
+            series.push(MemoryScalingSeriesData {
+                name: function_name.clone(),
+                points,
+            });
+        }
+    }
+
+    // Sort series by function name for consistency
+    series.sort_by(|a, b| a.name.cmp(&b.name));
+
+    MemoryScalingChartRenderData {
+        title: title.to_string(),
+        subtitle: "Performance across memory configurations".to_string(),
+        x_axis_label: "Memory Configuration".to_string(),
+        y_axis_label: format!("{} ({})", title, unit),
+        unit: unit.to_string(),
+        series,
+        page_type: page_type.to_string(),
+        description: Some(get_memory_scaling_description(page_type).to_string()),
+    }
+}
+
+fn get_memory_scaling_description(page_type: &str) -> &'static str {
+    match page_type {
+        "cold_start_total_duration" => "Shows how cold start times scale with memory allocation. Lower values indicate better cold start performance. The curve shape reveals whether additional memory provides diminishing returns.",
+        "cold_start_init_duration" => "Initialization time for the Lambda runtime and dependencies. This metric helps identify if your initialization is CPU-bound (improves with memory) or I/O-bound (plateaus early).",
+        "warm_start_billed_duration" => "The duration AWS bills for warm invocations. This directly impacts cost and helps find the optimal memory configuration for your workload.",
+        "warm_start_extension_overhead" => "Performance impact of Lambda Extensions (e.g., observability agents). Shows how extension overhead scales with available resources.",
+        "resource_consumption" => "Cost efficiency measured in GB-seconds per million invocations. Lower values mean more cost-efficient execution. Helps balance performance vs. cost when choosing memory allocation.",
+        _ => "Performance metric across different memory configurations.",
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

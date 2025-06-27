@@ -10,7 +10,15 @@
         {# The rest of the sidebar structure #}
         {% for group_name, subgroups in report_structure %}
             <div class="sidebar-group">
-                <h3 class="sidebar-group-title">{{ group_name }}</h3>
+                {# Group title now links to memory scaling analysis #}
+                {% set memory_scaling_link = base_path ~ group_name ~ "/all/summary/" ~ link_suffix %}
+                {% set is_group_summary = (group_name == current_group and current_subgroup == "all") %}
+                <h3 class="sidebar-group-title">
+                    <a href="{{ memory_scaling_link | safe }}" 
+                       class="sidebar-group-title-link {% if is_group_summary %}active{% endif %}">
+                        {{ group_name }}
+                    </a>
+                </h3>
                 
                 {# SUMMARY Section - Always visible #}
                 <div class="sidebar-subsection">
