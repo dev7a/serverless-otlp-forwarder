@@ -28,11 +28,7 @@ pub async fn take_chart_screenshot(
     // Navigate to the page
     tab.navigate_to(&url)?;
 
-    // Wait for page navigation and DOM/scripts to load completely
-    // std::thread::sleep(std::time::Duration::from_secs(5));
-    // tab.wait_until_navigated()?;
     // Wait for prepareScreenshot function to be available (similar to wait_for_element pattern)
-    // Try multiple times with different checks to diagnose the issue
     let mut waited = 0;
     let max_wait = 15000;
     let step = 300;
