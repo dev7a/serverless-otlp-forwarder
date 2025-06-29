@@ -282,9 +282,8 @@ impl Output for NamedPipeOutput {
             .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open pipe: {e}")))?;
 
         // Write line with newline
-        writeln!(file, "{line}").map_err(|e| {
-            OTelSdkError::InternalFailure(format!("Failed to write to pipe: {e}"))
-        })?;
+        writeln!(file, "{line}")
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to write to pipe: {e}")))?;
 
         Ok(())
     }
@@ -356,9 +355,7 @@ fn create_output(use_pipe: bool) -> Arc<dyn Output> {
         match NamedPipeOutput::new() {
             Ok(output) => Arc::new(output),
             Err(e) => {
-                log::warn!(
-                    "Failed to create named pipe output: {e}, falling back to stdout"
-                );
+                log::warn!("Failed to create named pipe output: {e}, falling back to stdout");
                 Arc::new(StdOutput)
             }
         }
