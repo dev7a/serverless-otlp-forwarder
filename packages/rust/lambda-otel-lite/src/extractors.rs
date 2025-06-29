@@ -258,7 +258,7 @@ pub fn set_response_attributes(span: &Span, response: &JsonValue) {
 
         // Set span status based on status code
         if status_code >= 500 {
-            span.set_status(Status::error(format!("HTTP {} response", status_code)));
+            span.set_status(Status::error(format!("HTTP {status_code} response")));
         } else {
             span.set_status(Status::Ok);
         }
@@ -290,17 +290,6 @@ pub fn set_common_attributes(span: &Span, context: &Context, is_cold_start: bool
     if let Some(region) = context.invoked_function_arn.split(':').nth(3) {
         span.set_attribute("cloud.region", region.to_string());
     }
-
-    // Set function name and version
-    // TODO: these are already set in the resource, we can remove them
-    span.set_attribute(
-        "faas.name",
-        std::env::var("AWS_LAMBDA_FUNCTION_NAME").unwrap_or_default(),
-    );
-    span.set_attribute(
-        "faas.version",
-        std::env::var("AWS_LAMBDA_FUNCTION_VERSION").unwrap_or_default(),
-    );
 }
 
 /// Trait for types that can provide span attributes.
@@ -491,7 +480,7 @@ impl SpanAttributesExtractor for ApiGatewayV2httpRequest {
         SpanAttributes::builder()
             .attributes(attributes)
             .carrier(carrier)
-            .span_name(format!("{} {}", method, path))
+            .span_name(format!("{method} {path}"))
             .trigger(TriggerType::Http.to_string())
             .build()
     }
@@ -612,7 +601,7 @@ impl SpanAttributesExtractor for ApiGatewayProxyRequest {
         SpanAttributes::builder()
             .attributes(attributes)
             .carrier(carrier)
-            .span_name(format!("{} {}", method, route))
+            .span_name(format!("{method} {route}"))
             .trigger(TriggerType::Http.to_string())
             .build()
     }
@@ -733,7 +722,7 @@ impl SpanAttributesExtractor for AlbTargetGroupRequest {
         SpanAttributes::builder()
             .attributes(attributes)
             .carrier(carrier)
-            .span_name(format!("{} {}", method, route))
+            .span_name(format!("{method} {route}"))
             .trigger(TriggerType::Http.to_string())
             .build()
     }

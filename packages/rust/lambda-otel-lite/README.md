@@ -31,6 +31,14 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
   - [Built-in Extractors](#built-in-extractors)
   - [Custom Extractors](#custom-extractors)
   - [Handling Standard AWS Lambda Events](#handling-standard-aws-lambda-events)
+- [Events](#events)
+  - [Event Features](#event-features)
+  - [Basic Usage](#basic-usage)
+  - [Builder API](#builder-api)
+  - [Event Levels](#event-levels)
+  - [Level Configuration](#level-configuration)
+  - [Complete Example](#complete-example)
+  - [Integration with Observability](#integration-with-observability)
 - [Environment Variables](#environment-variables)
   - [Processing Configuration](#processing-configuration)
   - [Resource Configuration](#resource-configuration)
@@ -52,6 +60,7 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
 - **Lambda Extension Integration**: Built-in extension for efficient telemetry export
 - **Efficient Memory Usage**: Fixed-size queue to prevent memory growth
 - **AWS Event Support**: Automatic extraction of attributes from common AWS event types
+- **Structured Event Logging**: Bridge traditional logging and OpenTelemetry with structured span events
 - **Flexible Context Propagation**: Support for W3C Trace Context, AWS X-Ray, and custom propagators
 
 ## Architecture and Modules
@@ -677,6 +686,241 @@ This pattern can be applied to any event type from the `aws-lambda-events` crate
 - And more
 
 By creating a newtype wrapper, you can add custom span attributes specific to each event type while maintaining type safety and satisfying Rust's orphan rule.
+
+## Events
+
+The crate provides a structured event logging system that bridges traditional logging and OpenTelemetry span events. Events are emitted as OpenTelemetry span events on the current span, providing structured, queryable data that integrates seamlessly with your distributed tracing.
+
+### Event Features
+
+- **Structured Events**: Events are emitted as OpenTelemetry span events with structured attributes
+- **Log Level Filtering**: Events respect the configured log level (via `AWS_LAMBDA_LOG_LEVEL` or `LOG_LEVEL`)
+- **Generic Attribute Values**: Support for strings, integers, booleans, and other types without manual conversion
+- **Dual API**: Both function-based and builder-based APIs for different use cases
+- **Current Span Integration**: Events are automatically attached to the current active span
+
+### Basic Usage
+
+The simplest way to record an event is using the function-based API:
+
+```rust
+use lambda_otel_lite::{events::{record_event, EventLevel}, init_telemetry, TelemetryConfig};
+use opentelemetry::KeyValue;
+
+// Record a simple event
+record_event(
+    EventLevel::Info,
+    "User action completed",
+    vec![
+        KeyValue::new("user_id", "12345"),
+        KeyValue::new("action", "login"),
+        KeyValue::new("duration_ms", 150),
+    ],
+    None, // Use current timestamp
+);
+```
+
+### Builder API
+
+For more ergonomic usage, especially when adding attributes individually:
+
+```rust,no_run
+use lambda_otel_lite::events::{event, EventLevel};
+use opentelemetry::KeyValue;
+
+// Builder with individual attributes
+event()
+    .level(EventLevel::Info)
+    .message("User performed action")
+    .attribute("user_id", "12345")
+    .attribute("action", "purchase")
+    .attribute("amount", 99.99)
+    .attribute("currency", "USD")
+    .attribute("items_count", 3)
+    .call();
+
+// Builder with batch attributes
+event()
+    .level(EventLevel::Warn)
+    .message("Rate limit approaching")
+    .add_attributes(vec![
+        KeyValue::new("user_id", "12345"),
+        KeyValue::new("requests_count", 95),
+        KeyValue::new("limit", 100),
+    ])
+    .call();
+
+// Mixed usage - individual and batch attributes
+event()
+    .level(EventLevel::Error)
+    .message("Payment processing failed")
+    .attribute("user_id", "12345")
+    .attribute("payment_id", "pay_12345")
+    .add_attributes(vec![
+        KeyValue::new("error_code", "INSUFFICIENT_FUNDS"),
+        KeyValue::new("retry_count", 3),
+    ])
+    .call();
+```
+
+### Event Levels
+
+Events support standard logging levels that determine whether an event should be recorded:
+
+```rust,no_run
+use lambda_otel_lite::events::EventLevel;
+
+// Available levels (in order of precedence)
+let _trace = EventLevel::Trace;   // Most verbose
+let _debug = EventLevel::Debug;
+let _info = EventLevel::Info;     // Default level
+let _warn = EventLevel::Warn;
+let _error = EventLevel::Error;   // Least verbose, always recorded
+```
+
+Event filtering follows standard logging conventions:
+- `Error` level: Only error events are recorded
+- `Warn` level: Warning and error events are recorded
+- `Info` level: Info, warning, and error events are recorded
+- `Debug` level: Debug, info, warning, and error events are recorded
+- `Trace` level: All events are recorded
+
+### Level Configuration
+
+The event level is controlled by the same environment variables used for internal logging:
+
+1. `AWS_LAMBDA_LOG_LEVEL` (primary, Lambda standard)
+2. `LOG_LEVEL` (fallback)
+
+```bash
+# Set event level to debug
+export AWS_LAMBDA_LOG_LEVEL=debug
+
+# Or use the fallback
+export LOG_LEVEL=info
+```
+
+Supported values (case-insensitive): `trace`, `debug`, `info`, `warn`, `error`
+
+### Complete Example
+
+Here's a comprehensive example showing events in a Lambda function:
+
+```rust,no_run
+use aws_lambda_events::apigw::{ApiGatewayV2httpRequest, ApiGatewayV2httpResponse};
+use lambda_otel_lite::{
+    create_traced_handler, init_telemetry, TelemetryConfig,
+    events::{event, record_event, EventLevel}
+};
+use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
+use opentelemetry::KeyValue;
+use serde_json::json;
+
+async fn handler(lambda_event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<ApiGatewayV2httpResponse, Error> {
+    let request = lambda_event.payload;
+    
+    // Record request received event using function API
+    record_event(
+        EventLevel::Info,
+        "Request received",
+        vec![
+            KeyValue::new("http.method", request.request_context.http.method.to_string()),
+            KeyValue::new("http.path", request.raw_path.clone().unwrap_or_default()),
+        ],
+        None,
+    );
+    
+    // Extract user ID from headers
+    let user_id = request.headers.get("user-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "anonymous".to_string());
+    
+    // Record user context using builder API
+    event()
+        .level(EventLevel::Debug)
+        .message("Processing request for user")
+        .attribute("user_id", user_id.clone())
+        .attribute("is_authenticated", user_id != "anonymous")
+        .call();
+    
+    // Simulate some business logic
+    match process_business_logic(&user_id).await {
+        Ok(result) => {
+            // Record success event
+            event()
+                .level(EventLevel::Info)
+                .message("Request processed successfully")
+                .attribute("user_id", user_id.clone())
+                .attribute("processing_time_ms", result.duration_ms)
+                .attribute("result_size", result.data.len() as i64)
+                .call();
+            
+            Ok(ApiGatewayV2httpResponse {
+                status_code: 200,
+                body: Some(json!({"success": true, "data": result.data}).to_string().into()),
+                ..Default::default()
+            })
+        }
+        Err(e) => {
+            // Record error event with multiple attributes
+            event()
+                .level(EventLevel::Error)
+                .message("Request processing failed")
+                .attribute("user_id", user_id.clone())
+                .attribute("error_type", "BusinessLogicError")
+                .add_attributes(vec![
+                    KeyValue::new("error_message", e.to_string()),
+                    KeyValue::new("retry_recommended", true),
+                ])
+                .call();
+            
+            Ok(ApiGatewayV2httpResponse {
+                status_code: 500,
+                body: Some(json!({"success": false, "error": "Internal server error"}).to_string().into()),
+                ..Default::default()
+            })
+        }
+    }
+}
+
+struct ProcessingResult {
+    data: Vec<String>,
+    duration_ms: i64,
+}
+
+async fn process_business_logic(user_id: &str) -> Result<ProcessingResult, Box<dyn std::error::Error>> {
+    // Simulate processing...
+    Ok(ProcessingResult {
+        data: vec!["item1".to_string(), "item2".to_string()],
+        duration_ms: 45,
+    })
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let (_, completion_handler) = init_telemetry(TelemetryConfig::default()).await?;
+    
+    let handler = create_traced_handler(
+        "api-handler",
+        completion_handler,
+        handler,
+    );
+    
+    Runtime::new(service_fn(handler)).run().await
+}
+```
+
+### Integration with Observability
+
+Events appear as span events in your OpenTelemetry traces, making them queryable alongside your distributed tracing data. This enables powerful observability scenarios:
+
+- **Structured Logging**: Events provide structured, searchable logs within trace context
+- **Business Metrics**: Track business events with custom attributes for analysis
+- **Error Correlation**: Link errors to specific business contexts and user actions
+- **Performance Insights**: Record timing and performance metrics as part of traces
+
+Events are particularly valuable in Lambda functions where traditional logging can be expensive and hard to correlate across distributed systems.
 
 ## Environment Variables
 

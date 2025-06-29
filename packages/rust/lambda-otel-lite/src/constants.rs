@@ -48,6 +48,9 @@ pub mod defaults {
 
     /// Default value for enabling fmt layer from environment.
     pub const ENABLE_FMT_LAYER: bool = false;
+
+    /// Default minimum event level.
+    pub const EVENT_LEVEL: &str = "info";
 }
 
 /// Resource attribute keys used in the Lambda resource.

@@ -359,8 +359,7 @@ where
                 // Log error if export failed
                 if let Err(ref err) = result {
                     LOGGER.debug(format!(
-                        "LambdaSpanProcessor.force_flush export error: {:?}",
-                        err
+                        "LambdaSpanProcessor.force_flush export error: {err:?}"
                     ));
                 }
 
@@ -386,6 +385,19 @@ where
         } else {
             Err(OTelSdkError::InternalFailure(
                 "Failed to acquire exporter lock in shutdown".to_string(),
+            ))
+        }
+    }
+
+    fn shutdown_with_timeout(&self, timeout: std::time::Duration) -> OTelSdkResult {
+        self.is_shutdown.store(true, Ordering::Relaxed);
+        // Flush any remaining spans
+        self.force_flush()?;
+        if let Ok(mut exporter) = self.exporter.lock() {
+            exporter.shutdown_with_timeout(timeout)
+        } else {
+            Err(OTelSdkError::InternalFailure(
+                "Failed to acquire exporter lock in shutdown_with_timeout".to_string(),
             ))
         }
     }
@@ -530,7 +542,7 @@ mod tests {
 
         // Add 5 spans
         for i in 0..5 {
-            buffer.push(create_test_span(&format!("span{}", i)));
+            buffer.push(create_test_span(&format!("span{i}")));
         }
 
         assert_eq!(buffer.take_batch(2).len(), 2);
@@ -612,7 +624,7 @@ mod tests {
             let processor = processor.clone();
             handles.push(tokio::spawn(async move {
                 for j in 0..10 {
-                    processor.on_end(create_test_span(&format!("span_{}_{}", i, j)));
+                    processor.on_end(create_test_span(&format!("span_{i}_{j}")));
                 }
             }));
         }

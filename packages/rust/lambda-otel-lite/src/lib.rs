@@ -6,6 +6,7 @@
 //!
 //! # Features
 //!
+//! - **Structured Events**: Record queryable events within spans for business logic and audit trails
 //! - **Flexible Processing Modes**: Support for synchronous, asynchronous, and custom export strategies
 //! - **Automatic Resource Detection**: Automatic extraction of Lambda environment attributes
 //! - **Lambda Extension Integration**: Built-in extension for efficient telemetry export
@@ -41,6 +42,12 @@
 //!   - Built-in support for API Gateway and ALB events
 //!   - Extensible trait system for custom events
 //!   - W3C Trace Context propagation
+//!
+//! - [`events`]: Structured event recording
+//!   - Record queryable events within spans
+//!   - Dual API: function-based and builder-based
+//!   - Level-based filtering for performance
+//!   - Business logic and audit trail markers
 //!
 //! The crate provides two integration patterns:
 //!
@@ -154,6 +161,7 @@
 pub use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
 
 pub mod constants;
+pub mod events;
 pub mod extension;
 pub mod extractors;
 pub mod handler;
@@ -165,6 +173,7 @@ pub mod propagation;
 pub mod resource;
 pub mod telemetry;
 
+pub use events::{event, record_event, EventLevel};
 pub use extension::OtelInternalExtension;
 pub use extractors::{SpanAttributes, SpanAttributesExtractor, TriggerType};
 pub use handler::create_traced_handler;

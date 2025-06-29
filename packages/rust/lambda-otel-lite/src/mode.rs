@@ -105,8 +105,7 @@ impl ProcessorMode {
             Ok("finalize") => ProcessorMode::Finalize,
             Ok(value) => {
                 LOGGER.warn(format!(
-                    "ProcessorMode.resolve: invalid processor mode in env: {}, using config or default",
-                    value
+                    "ProcessorMode.resolve: invalid processor mode in env: {value}, using config or default"
                 ));
                 config_mode.unwrap_or(ProcessorMode::Sync)
             }
@@ -118,8 +117,7 @@ impl ProcessorMode {
 
         // Log the resolved mode
         LOGGER.debug(format!(
-            "ProcessorMode.resolve: using {} processor mode",
-            result
+            "ProcessorMode.resolve: using {result} processor mode"
         ));
 
         result
@@ -158,7 +156,7 @@ mod tests {
         for (env_value, expected_mode) in test_cases {
             set_processor_mode(Some(env_value));
             let result = ProcessorMode::resolve(None);
-            assert_eq!(result, expected_mode, "Failed for env value: {}", env_value);
+            assert_eq!(result, expected_mode, "Failed for env value: {env_value}");
         }
     }
 
@@ -192,8 +190,7 @@ mod tests {
             let result = ProcessorMode::resolve(config_mode.clone());
             assert_eq!(
                 result, expected,
-                "Failed for env: {:?}, config: {:?}",
-                env_value, config_mode
+                "Failed for env: {env_value:?}, config: {config_mode:?}"
             );
         }
     }
