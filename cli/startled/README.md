@@ -27,7 +27,7 @@
   - [Report Generation Process](#report-generation-process)
   - [Output File Structure](#output-file-structure)
 - [The `benchmark/testbed/` Environment](#the-benchmarktestbed-environment)
-- [Proxy Function Contract](#proxy-function-contract)
+- [Proxy Function Implementation Details](#proxy-function-implementation-details)
 - [Development and Code Structure](#development-and-code-structure)
 
 ## Key Features
@@ -175,7 +175,7 @@ startled function my-lambda-function \
     --number 100
 ```
 
-The proxy function provides more accurate client-side duration measurements by eliminating variable internet latency between your local machine and AWS.
+The proxy function provides more accurate client-side duration measurements by eliminating variable internet latency between your local machine and AWS. By executing the timing logic within a proxy Lambda located in the same AWS network as the target function, you get more representative measurements of invocation latency.
 
 ## Shell Completions
 
@@ -458,49 +458,13 @@ This testbed contains:
 
 Consult `benchmark/testbed/README.md` for comprehensive instructions on deploying and utilizing this testbed.
 
-## Proxy Function Contract
+## Proxy Function Implementation Details
 
-For more accurate client-side duration measurements that minimize the influence of network latency from the CLI host, `startled` supports the use of a proxy Lambda function.
+> **Note**: Most users should use the [startled-proxy SAR application](https://serverlessrepo.aws.amazon.com/applications/us-east-1/961341555982/startled-proxy) as documented in the "Proxy Function Setup" section above. This section is primarily for developers who need to implement custom proxy functions.
 
-**Mechanism:**
-1.  A designated proxy Lambda function is deployed in the same AWS region as the target functions.
-2.  When `startled` is run with the `--proxy <PROXY_FUNCTION_NAME>` option, it invokes this proxy function.
-3.  The payload sent by `startled` to the proxy function follows this structure:
-    ```json
-    {
-        "target": "arn:aws:lambda:region:account-id:function:your-target-function-arn",
-        "payload": { // Original payload intended for the target function
-            "your_data_key": "your_data_value",
-            // Tracing headers are automatically injected by startled
-            "headers": {
-                "traceparent": "...",
-                "tracestate": "..."
-            }
-        }
-    }
-    ```
-4.  The proxy function must be implemented to:
-    a.  Receive and parse this payload.
-    b.  Extract the `target` function ARN/name and its `payload`.
-    c.  Record a timestamp before invoking the target (start_time).
-    d.  Invoke the `target` function with its designated `payload`.
-    e.  Record a timestamp after the target invocation completes (end_time).
-    f.  Calculate the duration: `invocation_time_ms = (end_time - start_time)` in milliseconds.
-    g.  Return a JSON response to `startled` in the following format:
-        ```json
-        {
-            "invocation_time_ms": 123.45, // The measured duration of the target's invocation
-            "response": { // The complete, unaltered response from the target function
-                "statusCode": 200,
-                "body": "Response from target function."
-            }
-        }
-        ```
+For developers implementing custom proxy functions, the contract is straightforward: the proxy receives a JSON payload with `target` (function ARN) and `payload` (data for the target), invokes the target function while measuring duration, and returns both the `invocation_time_ms` and the target's `response`.
 
-The `benchmark/testbed/` includes a Rust-based proxy function (`ProxyFunction` in its `template.yaml`) that adheres to this contract and can serve as a reference. For production use, consider deploying the [startled-proxy SAR application](https://serverlessrepo.aws.amazon.com/applications/us-east-1/961341555982/startled-proxy) which provides the same functionality with enhanced security features.
-
-**Rationale for using a proxy:**
-Executing the timing logic within a proxy Lambda located in the same AWS network as the target function provides a more representative measurement of invocation latency, as opposed to measurements taken from a local machine which would include variable internet latency to AWS API endpoints.
+The `cli/startled/testbed/` directory includes a reference implementation (`ProxyFunction` in `template.yaml`) that demonstrates this contract.
 
 ## Development and Code Structure
 
