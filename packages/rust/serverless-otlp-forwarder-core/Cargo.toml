@@ -1,0 +1,55 @@
+[package]
+name = "serverless-otlp-forwarder-core"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Core library for Serverless OTLP Forwarders on AWS Lambda"
+repository = "https://github.com/dev7a/serverless-otlp-forwarder/packages/rust/serverless-otlp-forwarder-core"
+homepage = "https://github.com/dev7a/serverless-otlp-forwarder"
+readme = "README.md"
+documentation = "https://docs.rs/serverless-otlp-forwarder-core"
+keywords = ["aws", "lambda", "opentelemetry", "tracing", "telemetry"]
+categories = ["network-programming", "web-programming", "development-tools::debugging"]
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+reqwest = { workspace = true, features = ["json", "blocking"] }
+tracing = { workspace = true }
+url = { workspace = true }
+
+# OTLP and Protobuf related
+opentelemetry-proto = { workspace = true, features = ["trace"] }
+prost = { workspace = true }
+
+# Encoding/Decoding/Compression
+base64 = { workspace = true }
+flate2 = { workspace = true }
+bytes = "1.0"
+
+# OTLP Exporter needs to be pinned to 0.16.0 for publishing to crates.io
+otlp-stdout-span-exporter = { version = "0.16.0" }
+
+async-trait = "0.1"
+
+# Optional dependencies for instrumented client
+reqwest-middleware = { workspace = true, optional = true }
+reqwest-tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }
+sealed_test = { workspace = true }
+serial_test = { workspace = true }
+
+# for doctests
+aws_lambda_events = { workspace = true, features = ["cloudwatch_logs"] }
+lambda-otel-lite = { workspace = true }
+lambda_runtime = { workspace = true }
+
+[features]
+default = []
+instrumented-client = ["reqwest-middleware", "reqwest-tracing"]
