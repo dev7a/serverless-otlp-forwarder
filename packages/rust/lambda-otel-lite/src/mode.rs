@@ -105,8 +105,7 @@ impl ProcessorMode {
             Ok("finalize") => ProcessorMode::Finalize,
             Ok(value) => {
                 LOGGER.warn(format!(
-                    "ProcessorMode.resolve: invalid processor mode in env: {}, using config or default",
-                    value
+                    "ProcessorMode.resolve: invalid processor mode in env: {value}, using config or default"
                 ));
                 config_mode.unwrap_or(ProcessorMode::Sync)
             }
@@ -118,8 +117,7 @@ impl ProcessorMode {
 
         // Log the resolved mode
         LOGGER.debug(format!(
-            "ProcessorMode.resolve: using {} processor mode",
-            result
+            "ProcessorMode.resolve: using {result} processor mode"
         ));
 
         result

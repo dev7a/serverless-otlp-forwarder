@@ -74,7 +74,7 @@ impl TextMapPropagator for LambdaXrayPropagator {
         // If we didn't get a valid context from the carrier, try the environment variable
         if !has_carrier_context {
             if let Ok(trace_id_value) = env::var(AWS_XRAY_TRACE_ENV_VAR) {
-                LOGGER.debug(format!("Found _X_AMZN_TRACE_ID: {}", trace_id_value));
+                LOGGER.debug(format!("Found _X_AMZN_TRACE_ID: {trace_id_value}"));
 
                 // If Sampled=0, skip extraction entirely so the sampler treats this as a root span.
                 // This avoids suppressing spans when X-Ray is disabled but Lambda still injects the env var.

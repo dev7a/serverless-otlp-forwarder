@@ -179,15 +179,14 @@ impl TelemetryCompletionHandler {
         match self.mode {
             ProcessorMode::Sync => {
                 if let Err(e) = self.provider.force_flush() {
-                    LOGGER.warn(format!("Error flushing telemetry: {:?}", e));
+                    LOGGER.warn(format!("Error flushing telemetry: {e:?}"));
                 }
             }
             ProcessorMode::Async => {
                 if let Some(sender) = &self.sender {
                     if let Err(e) = sender.send(()) {
                         LOGGER.warn(format!(
-                            "Failed to send completion signal to extension: {:?}",
-                            e
+                            "Failed to send completion signal to extension: {e:?}"
                         ));
                     }
                 }
@@ -389,8 +388,7 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
             "none" => self.with_propagator(NoopPropagator::new()),
             _ => {
                 LOGGER.warn(format!(
-                    "Unknown propagator: {}, using default propagators",
-                    name
+                    "Unknown propagator: {name}, using default propagators"
                 ));
                 self
             }
@@ -558,8 +556,7 @@ pub async fn init_telemetry(
                     .push(Box::new(LambdaXrayPropagator::new())),
                 "none" => config.propagators.push(Box::new(NoopPropagator::new())),
                 _ => LOGGER.warn(format!(
-                    "Unknown propagator: {}, using default propagators",
-                    propagator
+                    "Unknown propagator: {propagator}, using default propagators"
                 )),
             }
         }

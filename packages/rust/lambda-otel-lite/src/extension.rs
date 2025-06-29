@@ -168,8 +168,7 @@ impl OtelInternalExtension {
             // Force flush all spans and handle any errors
             if let Err(err) = self.tracer_provider.force_flush() {
                 LOGGER.error(format!(
-                    "OtelInternalExtension.invoke.Error: Error flushing tracer provider: {:?}",
-                    err
+                    "OtelInternalExtension.invoke.Error: Error flushing tracer provider: {err:?}"
                 ));
             }
         }
@@ -236,8 +235,7 @@ pub(crate) async fn register_extension(
     tokio::spawn(async move {
         if let Err(err) = registered_extension.run().await {
             LOGGER.error(format!(
-                "OtelInternalExtension.run.Error: Error running extension: {:?}",
-                err
+                "OtelInternalExtension.run.Error: Error running extension: {err:?}"
             ));
         }
     });
@@ -251,8 +249,7 @@ pub(crate) async fn register_extension(
             // Direct synchronous flush
             if let Err(err) = tracer_provider.force_flush() {
                 LOGGER.error(format!(
-                    "OtelInternalExtension.SIGTERM.Error: Error during shutdown: {:?}",
-                    err
+                    "OtelInternalExtension.SIGTERM.Error: Error during shutdown: {err:?}"
                 ));
             }
             LOGGER.debug("OtelInternalExtension.SIGTERM: Shutdown complete");

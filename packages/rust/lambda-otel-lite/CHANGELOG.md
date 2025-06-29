@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2025-06-29
+
+### Added
+- **New `events` module**: Structured event recording system for OpenTelemetry spans
+  - Dual API: function-based (`record_event`) and builder-based (`event()`) interfaces
+  - Level-based filtering (Trace, Debug, Info, Warn, Error) for performance optimization
+  - Individual attribute support: `.attribute("key", value)` for ergonomic usage
+  - Batch attribute support: `.add_attributes(vec![...])` for bulk operations
+  - Automatic integration with current span context
+  - Environment-based configuration via `AWS_LAMBDA_LOG_LEVEL` and `LOG_LEVEL`
+  - Business logic markers, audit trails, and debugging context support
+
+### Changed
+- **Breaking**: Upgraded to OpenTelemetry 0.30.0 from 0.29.0
+  - Updated all OpenTelemetry dependencies to latest versions
+  - Enhanced compatibility with newer OpenTelemetry ecosystem
+- Added `events` module to crate architecture documentation
+- Updated feature list to include "Structured Event Logging"
+
+### Dependencies
+- Updated `opentelemetry` to 0.30.0
+- Updated `opentelemetry_sdk` to 0.30.0
+- Updated `tracing-opentelemetry` to 0.30.0
+- Added `bon` crate for ergonomic builder pattern implementation
+
+### Documentation
+- Added comprehensive events documentation to README with practical examples
+- Enhanced module-level documentation for the events system
+- Added Table of Contents entry for Events section
+- Included real-world Lambda function examples showcasing both APIs
+- Documented integration with observability systems and use cases
+
 ## [0.15.0] - 2025-04-30
 
 ### Changed
