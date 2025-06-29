@@ -30,9 +30,10 @@ lambda-lw-http-router-macro = { path = "packages/rust/lambda-lw-http-router/rout
 otlp-stdout-span-exporter = { path = "packages/rust/otlp-stdout-span-exporter" }
 lambda-otel-lite = { path = "packages/rust/lambda-otel-lite" }
 otlp-stdout-logs-processor = { path = "forwarders/otlp-stdout-logs-processor/processor" }
+serverless-otlp-forwarder-core = { path = "packages/rust/serverless-otlp-forwarder-core" }
 
 # Runtime and async
-tokio = { version = "1.45.0", features = ["full"] }
+tokio = { version = "1.45.1", features = ["full"] }
 async-trait = "0.1.82"
 futures = "0.3.31"
 futures-util = "0.3.31"
@@ -40,38 +41,38 @@ futures-executor = "0.3.31"
 tokio-test = "0.4.4"
 
 # OpenTelemetry and tracing
-opentelemetry = { version = "0.29.1", features = ["trace"] }
-opentelemetry-http = { version = "0.29.0" }
-opentelemetry_sdk = { version = "0.29.0", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.29.0" }
-opentelemetry-proto = { version = "0.29.0", features = ["gen-tonic", "trace"] }
-opentelemetry-semantic-conventions = { version = "0.29.0" }
-opentelemetry-aws = { version = "0.17.0", features = ["detector-aws-lambda"] }
+log = "0.4"
 tracing = { version = "0.1", features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tracing-opentelemetry = "0.30.0"
-log = "0.4"
-reqwest-tracing = { version = "0.5.7", features = ["opentelemetry_0_29"] }
+opentelemetry = { version = "0.30.0", features = ["trace"] }
+opentelemetry-http = { version = "0.30.0" }
+opentelemetry_sdk = { version = "0.30.0", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.30.0" }
+opentelemetry-proto = { version = "0.30.0", features = ["gen-tonic", "trace"] }
+opentelemetry-semantic-conventions = { version = "0.30.0" }
+opentelemetry-aws = { version = "0.18.0", features = ["detector-aws-lambda"] }
+tracing-opentelemetry = "0.31.0"
+reqwest-tracing = { version = "0.5.8", features = ["opentelemetry_0_30"] }
 
 # AWS related
-aws-config = { version = "1.6.2", features = ["behavior-version-latest"] }
-aws-sdk-sts = { version = "1.67.0", features = ["behavior-version-latest"] }
+aws-config = { version = "1.8.0", features = ["behavior-version-latest"] }
+aws-sdk-sts = { version = "1.75.0", features = ["behavior-version-latest"] }
 aws-smithy-runtime-api = { version = "1.8.0", features = ["http-1x"] }
 aws-credential-types = "1.2.3"
-aws-sdk-secretsmanager = { version = "1.69.0", features = ["behavior-version-latest"] }
+aws-sdk-secretsmanager = { version = "1.77.0", features = ["behavior-version-latest"] }
 aws-sigv4 = "1.3.1"
-aws-sdk-lambda = "1.77.0"
-aws-sdk-cloudformation = "1.73.0"
-aws-sdk-dynamodb = "1.73.0"
-aws-sdk-kinesis = { version = "1.69.0", default-features = false, features = ["rt-tokio"] }
-aws-sdk-cloudwatchlogs = { version = "1.78.0", features = ["behavior-version-latest"] }
-lambda_runtime = { version = "0.13.0", features = ["anyhow", "tracing", "opentelemetry"] }
-lambda-extension = "0.11.0"
-aws_lambda_events = { version = "0.16.0", default-features = false, features = ["apigw", "alb", "sqs"] }
+aws-sdk-lambda = "1.85.0"
+aws-sdk-cloudformation = "1.81.0"
+aws-sdk-dynamodb = "1.80.0"
+aws-sdk-kinesis = { version = "1.77.0", default-features = false, features = ["rt-tokio"] }
+aws-sdk-cloudwatchlogs = { version = "1.89.0", features = ["behavior-version-latest"] }
+lambda_runtime = { version = "0.14.2", features = ["anyhow", "tracing", "opentelemetry"] }
+lambda-extension = "0.12.1"
+aws_lambda_events = { version = "0.16.1", default-features = false, features = ["apigw", "alb", "sqs"] }
 serde_dynamo = { version = "4.2.14", features = ["aws-sdk-dynamodb+1"] }
 
 # HTTP and networking
-reqwest = { version = "0.12.7", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12.20", default-features = false, features = ["json", "rustls-tls"] }
 http = "1.3.1"
 reqwest-middleware = "0.4.1"
 tower = "0.5.2"
@@ -89,27 +90,27 @@ anyhow = "1.0"
 
 # Utilities and helpers
 base64 = "0.22.1"
-flate2 = "1.0"
+flate2 = "1.1.2"
 regex = "1.11.1"
 pin-project = "1.1"
 bytes = "1.7"
 chrono = "0.4.41"
-uuid = { version = "1.0", features = ["v4"] }
+uuid = { version = "1.17.0", features = ["v4"] }
 urlencoding = "2.1"
-bon = "3.5"
+bon = "3.6.4"
 lazy_static = "1.5.0"
-libc = "0.2"
+libc = "0.2.174"
 sha2 = "0.10.9"
 tera = "1.20.0"
 statrs = "0.18.0"
-clap = { version = "4.4.8", features = ["derive", "cargo"] }
-clap_complete = { version = "4.5.50" }
+clap = { version = "4.5.40", features = ["derive", "cargo"] }
+clap_complete = { version = "4.5.54" }
 indicatif = { version = "0.17.8", features = ["improved_unicode"] }
 headless_chrome = "1.0.17"
-toml = "0.8.22"
+toml = "0.8.23"
 globset = "0.4"
 once_cell = "1.21.3"
-indexmap = "2.9.0"
+indexmap = "2.10.0"
 
 # Macros and code generation
 proc-macro2 = "1.0"

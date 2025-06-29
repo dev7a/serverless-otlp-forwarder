@@ -39,7 +39,7 @@ prost = { workspace = true }
 opentelemetry-proto = { workspace = true } # Inherit version and features
 
 # Local Workspace Crates (Path dependencies are fine)
-otlp-stdout-span-exporter = { version = "0.15.0" }
+otlp-stdout-span-exporter = { workspace = true }
 
 # CLI Arguments (Inherit from workspace)
 clap = { workspace = true, features = ["derive", "env", "cargo"] } # Add required features

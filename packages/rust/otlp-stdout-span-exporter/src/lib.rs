@@ -114,7 +114,6 @@
 //! }
 //! ```
 
-use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine};
 use bon::bon;
 use flate2::{write::GzEncoder, Compression};
@@ -181,7 +180,7 @@ impl FromStr for LogLevel {
             "info" => Ok(LogLevel::Info),
             "warn" | "warning" => Ok(LogLevel::Warn),
             "error" => Ok(LogLevel::Error),
-            _ => Err(format!("Invalid log level: {}", s)),
+            _ => Err(format!("Invalid log level: {s}")),
         }
     }
 }
@@ -246,7 +245,7 @@ impl Output for StdOutput {
         let mut handle = stdout.lock();
 
         // Write the line and a newline in one operation
-        writeln!(handle, "{}", line).map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
+        writeln!(handle, "{line}").map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
 
         Ok(())
     }
@@ -280,12 +279,11 @@ impl Output for NamedPipeOutput {
         let mut file = OpenOptions::new()
             .write(true)
             .open(&self.path)
-            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open pipe: {}", e)))?;
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open pipe: {e}")))?;
 
         // Write line with newline
-        writeln!(file, "{}", line).map_err(|e| {
-            OTelSdkError::InternalFailure(format!("Failed to write to pipe: {}", e))
-        })?;
+        writeln!(file, "{line}")
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to write to pipe: {e}")))?;
 
         Ok(())
     }
@@ -299,7 +297,7 @@ impl Output for NamedPipeOutput {
         let _file = OpenOptions::new()
             .write(true)
             .open(&self.path)
-            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to touch pipe: {}", e)))?;
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to touch pipe: {e}")))?;
         Ok(())
     }
 }
@@ -320,8 +318,7 @@ impl BufferOutput {
     pub fn take_lines(&self) -> Result<Vec<String>, OTelSdkError> {
         let mut guard = self.buffer.lock().map_err(|e| {
             OTelSdkError::InternalFailure(format!(
-                "Failed to lock buffer mutex for take_lines: {}",
-                e
+                "Failed to lock buffer mutex for take_lines: {e}"
             ))
         })?;
         Ok(std::mem::take(&mut *guard)) // Efficiently swaps the Vec with an empty one and wraps in Ok
@@ -332,8 +329,7 @@ impl Output for BufferOutput {
     fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
         let mut guard = self.buffer.lock().map_err(|e| {
             OTelSdkError::InternalFailure(format!(
-                "Failed to lock buffer mutex for write_line: {}",
-                e
+                "Failed to lock buffer mutex for write_line: {e}"
             ))
         })?;
         guard.push(line.to_string());
@@ -359,10 +355,7 @@ fn create_output(use_pipe: bool) -> Arc<dyn Output> {
         match NamedPipeOutput::new() {
             Ok(output) => Arc::new(output),
             Err(e) => {
-                log::warn!(
-                    "Failed to create named pipe output: {}, falling back to stdout",
-                    e
-                );
+                log::warn!("Failed to create named pipe output: {e}, falling back to stdout");
                 Arc::new(StdOutput)
             }
         }
@@ -649,7 +642,6 @@ impl OtlpStdoutSpanExporter {
     }
 }
 
-#[async_trait]
 impl SpanExporter for OtlpStdoutSpanExporter {
     /// Export spans to stdout in OTLP format
     ///
@@ -732,14 +724,15 @@ impl SpanExporter for OtlpStdoutSpanExporter {
         Box::pin(std::future::ready(result))
     }
 
-    /// Shuts down the exporter
+    /// Shuts down the exporter with a timeout
     ///
     /// This is a no-op for stdout export as no cleanup is needed.
+    /// The timeout parameter is ignored since there's nothing to flush.
     ///
     /// # Returns
     ///
     /// Returns `Ok(())` as there is nothing to clean up.
-    fn shutdown(&mut self) -> Result<(), OTelSdkError> {
+    fn shutdown_with_timeout(&mut self, _timeout: std::time::Duration) -> Result<(), OTelSdkError> {
         Ok(())
     }
 
