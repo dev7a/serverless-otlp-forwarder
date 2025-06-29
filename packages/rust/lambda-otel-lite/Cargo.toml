@@ -15,7 +15,7 @@ exclude = ["examples/"]
 
 [dependencies]
 # needs to be changed to the current version if publishing
-otlp-stdout-span-exporter = { version = "0.15.0", path = "../otlp-stdout-span-exporter" }
+otlp-stdout-span-exporter = { workspace = true }
 
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true

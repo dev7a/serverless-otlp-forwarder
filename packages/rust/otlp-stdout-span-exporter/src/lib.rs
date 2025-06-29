@@ -114,7 +114,6 @@
 //! }
 //! ```
 
-use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as base64_engine, Engine};
 use bon::bon;
 use flate2::{write::GzEncoder, Compression};
@@ -649,7 +648,6 @@ impl OtlpStdoutSpanExporter {
     }
 }
 
-#[async_trait]
 impl SpanExporter for OtlpStdoutSpanExporter {
     /// Export spans to stdout in OTLP format
     ///
@@ -732,14 +730,15 @@ impl SpanExporter for OtlpStdoutSpanExporter {
         Box::pin(std::future::ready(result))
     }
 
-    /// Shuts down the exporter
+    /// Shuts down the exporter with a timeout
     ///
     /// This is a no-op for stdout export as no cleanup is needed.
+    /// The timeout parameter is ignored since there's nothing to flush.
     ///
     /// # Returns
     ///
     /// Returns `Ok(())` as there is nothing to clean up.
-    fn shutdown(&mut self) -> Result<(), OTelSdkError> {
+    fn shutdown_with_timeout(&mut self, _timeout: std::time::Duration) -> Result<(), OTelSdkError> {
         Ok(())
     }
 

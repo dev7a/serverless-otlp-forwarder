@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2025-01-25
+
+### Changed
+- Upgraded OpenTelemetry dependencies to 0.30.0
+- Updated API implementation to match OpenTelemetry SDK 0.30.0 changes
+- Improved dependency resolution by aligning `prost` version with OpenTelemetry ecosystem
+- Fixed workspace dependency references for better consistency
+
+### Fixed
+- Resolved `prost` version conflicts when using with other OpenTelemetry crates
+- Improved compatibility with the latest OpenTelemetry ecosystem
+
 ## [0.15.0] - 2025-04-30
 
 ### Fixed
