@@ -60,7 +60,7 @@ fn parse_otlp_headers(headers_str: &str) -> Result<HeaderMap> {
 }
 
 /// Resolves OTLP headers from environment variables.
-/// Priotity: OTEL_EXPORTER_OTLP_TRACES_HEADERS, then OTEL_EXPORTER_OTLP_HEADERS.
+/// Priority: OTEL_EXPORTER_OTLP_TRACES_HEADERS, then OTEL_EXPORTER_OTLP_HEADERS.
 fn resolve_otlp_headers() -> Result<HeaderMap> {
     let traces_headers_var = env::var("OTEL_EXPORTER_OTLP_TRACES_HEADERS");
     let generic_headers_var = env::var("OTEL_EXPORTER_OTLP_HEADERS");

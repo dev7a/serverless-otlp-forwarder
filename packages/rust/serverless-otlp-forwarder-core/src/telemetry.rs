@@ -124,6 +124,7 @@ impl TelemetryData {
         if self.content_encoding != Some("gzip".to_string()) {
             tracing::debug!("Compressing payload with level {}", compression_level);
 
+            let original_size = self.payload.len();
             let mut encoder = GzEncoder::new(Vec::new(), Compression::new(compression_level));
             encoder
                 .write_all(&self.payload)
@@ -135,7 +136,7 @@ impl TelemetryData {
 
             tracing::debug!(
                 "Compressed payload from {} to {} bytes",
-                self.payload.len(), // This was a slight bug, should be original length if we want to show reduction
+                original_size,
                 self.payload.len()
             );
         }

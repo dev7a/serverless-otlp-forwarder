@@ -34,8 +34,6 @@ pub enum CompressionPreference {
 /// Configuration for span compaction
 #[derive(Debug, Clone)]
 pub struct SpanCompactionConfig {
-    /// Maximum size of a structurally compacted payload in bytes (before final compression)
-    pub max_payload_size: usize, // This check is not yet implemented, placeholder
     /// Compression preference for the final payload
     pub compression: CompressionPreference,
     /// GZIP compression level (0-9) if Gzip compression is used
@@ -86,7 +84,6 @@ impl Default for SpanCompactionConfig {
             .unwrap_or(default_compression_level);
 
         Self {
-            max_payload_size: 5_000_000, // 5MB
             compression: compression_preference,
             gzip_compression_level, // Use the determined level
         }
@@ -383,7 +380,6 @@ mod tests {
         let telemetry = create_test_telemetry_uncompressed(1, "s1");
         let config = SpanCompactionConfig {
             compression: CompressionPreference::Gzip,
-            max_payload_size: 5_000_000,
             gzip_compression_level: 9,
         };
         let result = compact_telemetry_payloads(vec![telemetry.clone()], &config).unwrap();
@@ -395,7 +391,6 @@ mod tests {
         let telemetry = create_test_telemetry_uncompressed(1, "s1");
         let config = SpanCompactionConfig {
             compression: CompressionPreference::None,
-            max_payload_size: 5_000_000,
             gzip_compression_level: 9,
         };
         let result = compact_telemetry_payloads(vec![telemetry.clone()], &config).unwrap();
@@ -409,7 +404,6 @@ mod tests {
         let telemetry2 = create_test_telemetry_uncompressed(3, "s2");
         let config = SpanCompactionConfig {
             compression: CompressionPreference::Gzip,
-            max_payload_size: 5_000_000,
             gzip_compression_level: 9,
         };
         let result = compact_telemetry_payloads(vec![telemetry1, telemetry2], &config).unwrap();
@@ -431,7 +425,6 @@ mod tests {
         let telemetry2 = create_test_telemetry_uncompressed(3, "s2");
         let config = SpanCompactionConfig {
             compression: CompressionPreference::None,
-            max_payload_size: 5_000_000,
             gzip_compression_level: 9,
         };
         let result = compact_telemetry_payloads(vec![telemetry1, telemetry2], &config).unwrap();
@@ -460,7 +453,6 @@ mod tests {
         };
         let config = SpanCompactionConfig {
             compression: CompressionPreference::None,
-            max_payload_size: 5_000_000,
             gzip_compression_level: 9,
         };
         let result =
