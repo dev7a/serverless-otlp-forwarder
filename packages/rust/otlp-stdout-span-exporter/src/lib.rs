@@ -180,7 +180,7 @@ impl FromStr for LogLevel {
             "info" => Ok(LogLevel::Info),
             "warn" | "warning" => Ok(LogLevel::Warn),
             "error" => Ok(LogLevel::Error),
-            _ => Err(format!("Invalid log level: {}", s)),
+            _ => Err(format!("Invalid log level: {s}")),
         }
     }
 }
@@ -245,7 +245,7 @@ impl Output for StdOutput {
         let mut handle = stdout.lock();
 
         // Write the line and a newline in one operation
-        writeln!(handle, "{}", line).map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
+        writeln!(handle, "{line}").map_err(|e| OTelSdkError::InternalFailure(e.to_string()))?;
 
         Ok(())
     }
@@ -279,11 +279,11 @@ impl Output for NamedPipeOutput {
         let mut file = OpenOptions::new()
             .write(true)
             .open(&self.path)
-            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open pipe: {}", e)))?;
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to open pipe: {e}")))?;
 
         // Write line with newline
-        writeln!(file, "{}", line).map_err(|e| {
-            OTelSdkError::InternalFailure(format!("Failed to write to pipe: {}", e))
+        writeln!(file, "{line}").map_err(|e| {
+            OTelSdkError::InternalFailure(format!("Failed to write to pipe: {e}"))
         })?;
 
         Ok(())
@@ -298,7 +298,7 @@ impl Output for NamedPipeOutput {
         let _file = OpenOptions::new()
             .write(true)
             .open(&self.path)
-            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to touch pipe: {}", e)))?;
+            .map_err(|e| OTelSdkError::InternalFailure(format!("Failed to touch pipe: {e}")))?;
         Ok(())
     }
 }
@@ -319,8 +319,7 @@ impl BufferOutput {
     pub fn take_lines(&self) -> Result<Vec<String>, OTelSdkError> {
         let mut guard = self.buffer.lock().map_err(|e| {
             OTelSdkError::InternalFailure(format!(
-                "Failed to lock buffer mutex for take_lines: {}",
-                e
+                "Failed to lock buffer mutex for take_lines: {e}"
             ))
         })?;
         Ok(std::mem::take(&mut *guard)) // Efficiently swaps the Vec with an empty one and wraps in Ok
@@ -331,8 +330,7 @@ impl Output for BufferOutput {
     fn write_line(&self, line: &str) -> Result<(), OTelSdkError> {
         let mut guard = self.buffer.lock().map_err(|e| {
             OTelSdkError::InternalFailure(format!(
-                "Failed to lock buffer mutex for write_line: {}",
-                e
+                "Failed to lock buffer mutex for write_line: {e}"
             ))
         })?;
         guard.push(line.to_string());
@@ -359,8 +357,7 @@ fn create_output(use_pipe: bool) -> Arc<dyn Output> {
             Ok(output) => Arc::new(output),
             Err(e) => {
                 log::warn!(
-                    "Failed to create named pipe output: {}, falling back to stdout",
-                    e
+                    "Failed to create named pipe output: {e}, falling back to stdout"
                 );
                 Arc::new(StdOutput)
             }
