@@ -78,6 +78,7 @@
 
 -   **Rust and Cargo**: Necessary for building and installing `startled` from source. ([Install Rust](https://www.rust-lang.org/tools/install))
 -   **AWS CLI**: Must be configured with appropriate credentials and permissions for AWS Lambda and CloudFormation interactions. ([Configure AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-quickstart.html))
+-   **AWS SAM CLI** (Optional): Required only if you want to deploy the proxy function for enhanced client-side duration measurements. ([Install SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html))
 
 ## Installation
 
@@ -104,6 +105,77 @@ If you want to build from the latest source code or contribute to development:
     cargo install --path cli/startled
     ```
     This will compile the `startled` crate and place the binary in your Cargo bin directory (e.g., `~/.cargo/bin/startled`). Ensure this directory is in your system's `PATH`.
+
+## Proxy Function Setup (Optional)
+
+For enhanced client-side duration measurements that minimize network latency from your local machine, `startled` supports using a proxy Lambda function deployed in the same AWS region as your target functions.
+
+### Installing the Proxy Function from AWS Serverless Application Repository (SAR)
+
+The easiest way to deploy the proxy function is through the AWS Serverless Application Repository:
+
+1. **Deploy via AWS Console:**
+   - Visit the [startled-proxy SAR application](https://serverlessrepo.aws.amazon.com/applications/us-east-1/961341555982/startled-proxy)
+   - Click "Deploy" and follow the deployment wizard
+   - Configure the security parameters as needed (see Security Configuration below)
+
+2. **Deploy via AWS CLI:**
+   ```bash
+   # Create the application
+   aws serverlessrepo create-cloud-formation-template \
+       --application-id arn:aws:serverlessrepo:us-east-1:961341555982:applications/startled-proxy \
+       --semantic-version 0.1.1
+
+   # Deploy using the returned template URL
+   aws cloudformation create-stack \
+       --stack-name startled-proxy \
+       --template-url "<TEMPLATE_URL_FROM_PREVIOUS_COMMAND>" \
+       --capabilities CAPABILITY_IAM \
+       --parameters ParameterKey=FunctionName,ParameterValue=startled-proxy
+   ```
+
+3. **Deploy via SAM CLI:**
+   ```bash
+   # Create a minimal template file
+   cat > proxy-template.yaml << 'EOF'
+   AWSTemplateFormatVersion: '2010-09-09'
+   Transform: AWS::Serverless-2016-10-31
+
+   Resources:
+     StartledProxyApp:
+       Type: AWS::Serverless::Application
+       Properties:
+         ApplicationId: arn:aws:serverlessrepo:us-east-1:961341555982:applications/startled-proxy
+         SemanticVersion: 0.1.1
+         Parameters:
+           FunctionName: startled-proxy
+   EOF
+
+   # Deploy with SAM
+   sam deploy --template-file proxy-template.yaml --stack-name startled-proxy --capabilities CAPABILITY_IAM
+   ```
+
+### Security Configuration
+
+The proxy function includes several security parameters you can configure during deployment:
+
+- **`FunctionName`**: The name for the proxy function (default: `startled-proxy`)
+- **`TargetFunctionResource`**: Controls which functions the proxy can invoke (default: `*` for all functions)
+- **`PrincipalOrgID`**: Restricts function access to specific AWS Organization members (optional)
+
+### Using the Proxy Function
+
+Once deployed, use the proxy function with `startled` by specifying the `--proxy` option:
+
+```bash
+startled function my-lambda-function \
+    --memory 512 \
+    --proxy startled-proxy \
+    --concurrent 10 \
+    --number 100
+```
+
+The proxy function provides more accurate client-side duration measurements by eliminating variable internet latency between your local machine and AWS.
 
 ## Shell Completions
 
@@ -425,7 +497,7 @@ For more accurate client-side duration measurements that minimize the influence 
         }
         ```
 
-The `benchmark/testbed/` includes a Rust-based proxy function (`ProxyFunction` in its `template.yaml`) that adheres to this contract and can serve as a reference.
+The `benchmark/testbed/` includes a Rust-based proxy function (`ProxyFunction` in its `template.yaml`) that adheres to this contract and can serve as a reference. For production use, consider deploying the [startled-proxy SAR application](https://serverlessrepo.aws.amazon.com/applications/us-east-1/961341555982/startled-proxy) which provides the same functionality with enhanced security features.
 
 **Rationale for using a proxy:**
 Executing the timing logic within a proxy Lambda located in the same AWS network as the target function provides a more representative measurement of invocation latency, as opposed to measurements taken from a local machine which would include variable internet latency to AWS API endpoints.

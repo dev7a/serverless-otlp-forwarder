@@ -1,0 +1,21 @@
+[package]
+name = "proxy"
+version = "0.1.0"
+edition = "2021"
+authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
+license = "MIT"
+description = "Startled Proxy"
+repository = "https://github.com/dev7a/serverless-otlp-forwarder/cli/startled/proxy"
+
+[workspace]
+[dependencies]
+lambda_runtime = "0.14.2"
+serde = "1.0.214"
+serde_json = "1.0.134"
+tokio = "1.45.1"
+aws-config = "1.8.0"
+aws-sdk-lambda = "1.85.0"
+
+[[bin]]
+name = "proxy"
+path = "src/main.rs"

@@ -441,33 +441,7 @@ Resources:
     Metadata:
       BuildMethod: makefile
 
-  # Efficient Rust proxy function used to determine client side duration
-  ProxyFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: rust-cargolambda
-    Properties:
-      FunctionName: proxy
-      Description: 'Generic Rust proxy function used to determine client side duration'
-      CodeUri: ./proxy
-      Handler: bootstrap
-      Runtime: provided.al2023
-      MemorySize: 512
-      Tracing: Active
-      Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - 'lambda:InvokeFunction'
-              Resource: '*'
-
-
 Outputs:
-  ProxyFunctionArn:
-    Description: Proxy Function ARN
-    Value: !GetAtt ProxyFunction.Arn
-
   # Rust
   RustStdout:
     Description: Rust OTLP Stdout Function ARN

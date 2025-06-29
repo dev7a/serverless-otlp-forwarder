@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: Standalone proxy function for the 'startled' benchmarking tool.
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: startled-proxy
+    Description: Generic Rust proxy function used by the startled CLI to determine client-side duration of Lambda invocations.
+    Author: Alessandro Bologna
+    SpdxLicenseId: MIT
+    LicenseUrl: ./LICENSE
+    ReadmeUrl: ./README.md
+    Capabilities: [CAPABILITY_IAM]
+    Labels: ['startled', 'proxy', 'benchmark', 'performance', 'lambda', 'otel', 'opentelemetry']
+    HomePageUrl: https://github.com/dev7a/serverless-otlp-forwarder
+    SemanticVersion: 0.1.1
+    SourceCodeUrl: https://github.com/dev7a/serverless-otlp-forwarder/tree/main/cli/startled/proxy
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: startled-proxy
+    Description: The name to give the proxy Lambda function.
+  TargetFunctionResource:
+    Type: String
+    Default: '*'
+    Description: The ARN or ARN pattern for the target functions this proxy is allowed to invoke. Defaults to '*' for maximum flexibility, but can be restricted for security. To restrict to specific versions or aliases, include them in the ARN (e.g., 'arn:aws:lambda:region:account:function:my-function:prod').
+  PrincipalOrgID:
+    Type: String
+    Default: ''
+    Description: (Optional) The AWS Organization ID to restrict invocations to. If provided, the proxy can only invoke functions in accounts within this organization.
+
+Conditions:
+  HasPrincipalOrgID: !Not [!Equals [!Ref PrincipalOrgID, '']]
+
+Resources:
+  ProxyFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+    Properties:
+      FunctionName: !Ref FunctionName
+      Description: 'Generic Rust proxy function used by the startled CLI to determine client-side duration of Lambda invocations.'
+      CodeUri: .
+      Handler: bootstrap
+      Runtime: provided.al2023
+      MemorySize: 256
+      Timeout: 30
+      Tracing: Active
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - !If
+              - HasPrincipalOrgID
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: !Ref TargetFunctionResource
+                Condition:
+                  StringEqualsIfExists:
+                    "aws:PrincipalOrgID": !Ref PrincipalOrgID
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: !Ref TargetFunctionResource
+
+Outputs:
+  ProxyFunctionArn:
+    Description: Proxy Function ARN
+    Value: !GetAtt ProxyFunction.Arn 

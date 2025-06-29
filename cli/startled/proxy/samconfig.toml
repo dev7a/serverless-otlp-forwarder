@@ -1,0 +1,18 @@
+version = 0.1
+
+[default.global.parameters]
+stack_name = "startled-proxy"
+resolve_s3 = true
+s3_prefix = "startled-proxy"
+
+[default.build.parameters]
+beta_features = true
+
+[default.deploy.parameters]
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+
+[default.publish.parameters]
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+
