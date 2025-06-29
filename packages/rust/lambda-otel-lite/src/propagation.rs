@@ -132,7 +132,7 @@ mod tests {
         // Create a valid X-Ray header
         let trace_id = "1-5759e988-bd862e3fe1be46a994272793";
         let parent_id = "53995c3f42cd8ad8";
-        let header_value = format!("Root={};Parent={};Sampled=1", trace_id, parent_id);
+        let header_value = format!("Root={trace_id};Parent={parent_id};Sampled=1");
 
         // Create a carrier with the header
         let carrier = HashMap::from([(AWS_XRAY_TRACE_HEADER.to_string(), header_value)]);
@@ -154,7 +154,7 @@ mod tests {
         // Using a format that's known to be valid with the XrayPropagator
         let trace_id = "1-5759e988-bd862e3fe1be46a994272793";
         let parent_id = "53995c3f42cd8ad8";
-        let header_value = format!("Root={};Parent={};Sampled=1", trace_id, parent_id);
+        let header_value = format!("Root={trace_id};Parent={parent_id};Sampled=1");
         env::set_var("_X_AMZN_TRACE_ID", &header_value);
 
         // First verify the XrayPropagator itself can parse the header
@@ -225,15 +225,14 @@ mod tests {
         // Set up a test environment variable (this should NOT be used if carrier is valid)
         let env_trace_id = "1-5759e988-bd862e3fe1be46a994272793";
         let env_parent_id = "53995c3f42cd8ad8";
-        let env_header = format!("Root={};Parent={};Sampled=1", env_trace_id, env_parent_id);
+        let env_header = format!("Root={env_trace_id};Parent={env_parent_id};Sampled=1");
         env::set_var("_X_AMZN_TRACE_ID", &env_header);
 
         // Create a different valid X-Ray header for the carrier
         let carrier_trace_id = "1-58406520-a006649127e371903a2de979";
         let carrier_parent_id = "4c721bf33e3caf8f";
         let carrier_header = format!(
-            "Root={};Parent={};Sampled=1",
-            carrier_trace_id, carrier_parent_id
+            "Root={carrier_trace_id};Parent={carrier_parent_id};Sampled=1"
         );
 
         // Create a carrier with the header

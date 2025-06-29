@@ -542,7 +542,7 @@ mod tests {
 
         // Add 5 spans
         for i in 0..5 {
-            buffer.push(create_test_span(&format!("span{}", i)));
+            buffer.push(create_test_span(&format!("span{i}")));
         }
 
         assert_eq!(buffer.take_batch(2).len(), 2);
@@ -624,7 +624,7 @@ mod tests {
             let processor = processor.clone();
             handles.push(tokio::spawn(async move {
                 for j in 0..10 {
-                    processor.on_end(create_test_span(&format!("span_{}_{}", i, j)));
+                    processor.on_end(create_test_span(&format!("span_{i}_{j}")));
                 }
             }));
         }

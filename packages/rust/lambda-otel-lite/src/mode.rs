@@ -156,7 +156,7 @@ mod tests {
         for (env_value, expected_mode) in test_cases {
             set_processor_mode(Some(env_value));
             let result = ProcessorMode::resolve(None);
-            assert_eq!(result, expected_mode, "Failed for env value: {}", env_value);
+            assert_eq!(result, expected_mode, "Failed for env value: {env_value}");
         }
     }
 
@@ -190,8 +190,7 @@ mod tests {
             let result = ProcessorMode::resolve(config_mode.clone());
             assert_eq!(
                 result, expected,
-                "Failed for env: {:?}, config: {:?}",
-                env_value, config_mode
+                "Failed for env: {env_value:?}, config: {config_mode:?}"
             );
         }
     }

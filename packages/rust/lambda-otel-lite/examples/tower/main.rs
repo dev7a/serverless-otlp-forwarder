@@ -16,7 +16,7 @@ enum ErrorType {
 
 impl Display for ErrorType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "{self:?}")
     }
 }
 
@@ -73,7 +73,7 @@ async fn handler(
             // Return a successful response
             Ok(ApiGatewayV2httpResponse {
                 status_code: 200,
-                body: Some(format!("Hello from request {}", request_id).into()),
+                body: Some(format!("Hello from request {request_id}").into()),
                 ..Default::default()
             })
         }
