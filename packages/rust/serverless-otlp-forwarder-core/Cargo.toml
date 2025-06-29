@@ -7,6 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 description = "Core library for Serverless OTLP Forwarders on AWS Lambda"
 repository = "https://github.com/dev7a/serverless-otlp-forwarder/packages/rust/serverless-otlp-forwarder-core"
+homepage = "https://github.com/dev7a/serverless-otlp-forwarder"
 readme = "README.md"
 documentation = "https://docs.rs/serverless-otlp-forwarder-core"
 keywords = ["aws", "lambda", "opentelemetry", "tracing", "telemetry"]
