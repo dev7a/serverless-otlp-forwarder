@@ -231,9 +231,8 @@ mod tests {
         // Create a different valid X-Ray header for the carrier
         let carrier_trace_id = "1-58406520-a006649127e371903a2de979";
         let carrier_parent_id = "4c721bf33e3caf8f";
-        let carrier_header = format!(
-            "Root={carrier_trace_id};Parent={carrier_parent_id};Sampled=1"
-        );
+        let carrier_header =
+            format!("Root={carrier_trace_id};Parent={carrier_parent_id};Sampled=1");
 
         // Create a carrier with the header
         let carrier = HashMap::from([(AWS_XRAY_TRACE_HEADER.to_string(), carrier_header)]);
