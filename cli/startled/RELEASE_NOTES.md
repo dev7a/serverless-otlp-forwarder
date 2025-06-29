@@ -1,23 +1,22 @@
-# Release Notes for startled v0.6.0
+# Release Notes for startled v0.9.0
 
-This release introduces version `0.8.0` of the `startled` CLI tool, adding significant new features, enhancements, and fixes to improve benchmarking, reporting, and visualization capabilities. The most notable changes include the addition of memory scaling analysis, enhanced screenshot functionality, centralized chart management, basic tracing support, and multiple refinements to user experience and error handling.
+This release introduces significant updates to the `startled` CLI tool, focusing on the addition of a production-ready proxy Lambda function for enhanced benchmarking capabilities, improved documentation, and better security configurations. It also includes updates to versioning, new files for the proxy application, and enhancements to error handling in the proxy function's implementation.
 
-### New Features:
-* **Memory Scaling Analysis**: Introduced comprehensive summary pages (`/all/summary/`) that provide performance metrics across various memory configurations (128mb, 256mb, 512mb, 1024mb), with interactive line charts for cross-configuration comparisons. [[1]](diffhunk://#diff-bd0cb949bb67fcfa38060059b5016cdb217ed459714094210b87496f0714b453R8-R50) [[2]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573R55) [[3]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573L255-R263) [[4]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573R355) [[5]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573L369-R374)
-* **Enhanced Screenshot Functionality**: Overhauled screenshot system with dynamic height detection, theme-based backgrounds, improved timing logic, and support for all chart types, ensuring robust and high-quality PNG generation. [[1]](diffhunk://#diff-fe149fe84e623fbe578902b2a7b1de940feba1824d841deab416cd165b7e6752L17-R17) [[2]](diffhunk://#diff-fe149fe84e623fbe578902b2a7b1de940feba1824d841deab416cd165b7e6752L30-R112) [[3]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573L67-R73)
-* **Centralized Chart Management**: Added a `ChartManager` system to handle chart lifecycle management, eliminating duplication and memory leaks during theme switching.
-* **Basic Tracing Support**: Implemented the `init_tracing()` function for lightweight debugging of the report command, controlled by the `TRACING_STDOUT` environment variable. [[1]](diffhunk://#diff-5fb52f72c3daaba5adfbdfaddaf0e2bc6b28ebbb5e4d9e8a4082eaf66b5d8886L224-R231) [[2]](diffhunk://#diff-03e2f68cbacf7c23a9129ff280a4f594c2e81ee146958c27319eddca01a43135R14-R34)
+### Proxy Lambda Function Enhancements
 
-### Enhancements:
-* **Chart Architecture Refactoring**: Improved JavaScript chart generation with better theming, tooltips, and a new `MemoryScalingCharts` module for multi-configuration visualizations.
-* **Improved User Experience**: Enhanced chart interactions, responsive design, and DOM restoration for seamless theme switching.
-* **Error Handling**: Added silent error handling for production use while maintaining debugging capabilities.
+* **Proxy Function SAR Application Documentation**: Added detailed documentation for deploying the proxy function via AWS Serverless Application Repository (SAR) with support for AWS Console, AWS CLI, and SAM CLI. Security parameters such as `FunctionName`, `TargetFunctionResource`, and `PrincipalOrgID` are now documented. [[1]](diffhunk://#diff-bd0cb949bb67fcfa38060059b5016cdb217ed459714094210b87496f0714b453R8-R21) [[2]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573R109-R179) [[3]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573L428-R500) [[4]](diffhunk://#diff-ab5303c476f248d5b47eaf1c0c7cc172a9b41e67adeb3de47938e8e0250576aeR1-R110)
+* **Proxy Function Implementation**: Improved error handling in the proxy Lambda function (`cli/startled/proxy/src/main.rs`) to provide user-friendly and detailed error messages for AWS service errors. Updated AWS SDK configuration to use the latest behavior version. [[1]](diffhunk://#diff-a9b3fbc2781ab6c4163776e1788312198e2db5b53a0de0ee43b71cb2e9ccb02aL68-R120) [[2]](diffhunk://#diff-a9b3fbc2781ab6c4163776e1788312198e2db5b53a0de0ee43b71cb2e9ccb02aL99-R141)
 
-### Fixes:
-* **Screenshot Timing Issue**: Resolved issues with unavailable CSS/JS files during screenshot generation by adjusting file copying order.
-* **Theme Switching Stability**: Fixed chart disappearance and duplication problems during light/dark theme transitions.
+### New Proxy Application Files
 
-### Miscellaneous:
-* **Pricing Script**: Added a Python script (`pricing.py`) to fetch AWS Lambda compute pricing based on region and architecture.
-* **Version Update**: Updated the package version from `0.7.0` to `0.8.0` in `Cargo.toml`.
-* **Sidebar Update**: Modified sidebar structure in `_sidebar.html` to include links to memory scaling analysis pages.
+* **Proxy Application Files**: Introduced new files for the proxy Lambda function, including `Cargo.toml`, `LICENSE`, `Makefile`, `VERSION`, and `samconfig.toml`. These files enable local development, deployment, and publishing to SAR. [[1]](diffhunk://#diff-21b2e198d1b8f15ae1e4274be9cdcfa2b74a9228cab2407ffb47322d58b24144R1-R21) [[2]](diffhunk://#diff-f54b1ffa95e9d46c6339dd286180c26b483fc6ea865c9a0c17371af6ed40b81aR1-R21) [[3]](diffhunk://#diff-98386d6377f696e6628afa8eb61d861080d80e358185ceeccb308b01d709e1caR1-R86) [[4]](diffhunk://#diff-126b799fd1cadd7d464993b09862a5a6b6da5b849929abcef5d87f47408f3cddR1) [[5]](diffhunk://#diff-34a114b574ecba0c4655c12c4f3a742f5493fab99154db1ef8a90a3b85b1df7eR1-R18)
+* **`.gitignore` Updates**: Added entries for build artifacts and temporary files specific to the proxy application.
+
+### Documentation Updates
+
+* **Enhanced Prerequisites**: Updated the `README.md` to include AWS SAM CLI as an optional prerequisite for deploying the proxy function.
+* **Better Installation Guidance**: Improved installation instructions by providing multiple deployment options for the proxy function. [[1]](diffhunk://#diff-aff33bf4e337463eb1a6180a9b58b944752069b10f5ca6a932555ac84afe0573R109-R179) [[2]](diffhunk://#diff-ab5303c476f248d5b47eaf1c0c7cc172a9b41e67adeb3de47938e8e0250576aeR1-R110)
+
+### Versioning Updates
+
+* **Version Bump**: Updated the version of the `startled` CLI tool to `0.9.0` in `Cargo.toml` and added a changelog entry for the new version. [[1]](diffhunk://#diff-112c3857fa8d5706869ef8ba5fdaee05097cf93d95f849ab39a4c1457fafa30bL3-R3) [[2]](diffhunk://#diff-bd0cb949bb67fcfa38060059b5016cdb217ed459714094210b87496f0714b453R8-R21)

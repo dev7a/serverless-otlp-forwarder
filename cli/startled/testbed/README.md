@@ -41,8 +41,6 @@ benchmark/testbed/
 │       │   └── src/main.rs
 │       └── stdout/      # Code for Rust function with lambda-otel-lite (baseline)
 │           └── src/main.rs
-├── proxy/               # Source code for the proxy Lambda function
-│   └── src/main.rs
 ├── samconfig.toml       # AWS SAM CLI configuration for deployment
 ├── template.yaml        # AWS SAM template defining all Lambda functions and resources
 └── test-events/         # Directory for test event JSON files (if any)
@@ -53,7 +51,7 @@ benchmark/testbed/
 The `template.yaml` defines a suite of Lambda functions. Each function executes a common workload to ensure fair comparison: recursively creating a tree of spans to simulate application activity and stress the telemetry system. The depth and number of iterations for span creation can be controlled via the event payload.
 
 ### Common Workload
-All benchmarked functions (except the proxy) perform the same core task:
+All benchmarked functions perform the same core task:
 - They receive `depth` and `iterations` parameters in their input event.
 - They recursively create a hierarchy of spans. `depth` controls how many levels deep the hierarchy goes, and `iterations` controls how many child spans are created at each level.
 - Each span includes attributes like `depth`, `iteration`, and a fixed-size `payload`.
@@ -113,7 +111,6 @@ The following configurations are benchmarked, with a focus on comparing extensio
     -   Instrumentation: AWS CloudWatch Application Signals. Relies on the AppSignals Python Lambda layer and `AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-instrument`.
 
 ### Supporting Resources
--   **`ProxyFunction`**: A Rust-based Lambda function (`proxy/src/main.rs`) used by the `startled` CLI (via the `--proxy` argument) to measure client-side duration from within the AWS network, minimizing local network latency impact on results.
 -   **`CollectorConfiglLayer`**: A Lambda layer built from `functions/confmaps/` that packages the `collector.yaml` (for Otel/ADOT) and `rotel.env` (for Rotel) configuration files. These are made available to the respective collector extensions at runtime (e.g., `/opt/otel/collector.yaml`).
 -   **`MockOTLPReceiver`**: An API Gateway endpoint defined in `template.yaml` that acts as a mock OTLP receiver. The collector configurations in `functions/confmaps/` are set up to send telemetry to this mock endpoint by default (via the `MOCK_OTLP_ENDPOINT` environment variable). This allows testing telemetry export paths without requiring a full backend observability platform and preventing variability in the results due to external factors.
 

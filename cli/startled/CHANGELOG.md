@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2025-06-28
+
+### Added
+- **Proxy Function SAR Application Documentation**: Added comprehensive documentation for the new AWS Serverless Application Repository (SAR) application for the startled proxy function
+  - New "Proxy Function Setup (Optional)" section in README with installation instructions
+  - Support for deployment via AWS Console, AWS CLI, and SAM CLI
+  - Documentation of security configuration parameters (FunctionName, TargetFunctionResource, PrincipalOrgID)
+  - Direct link to [startled-proxy SAR application](https://serverlessrepo.aws.amazon.com/applications/us-east-1/961341555982/startled-proxy)
+- **Enhanced Prerequisites**: Added AWS SAM CLI as an optional prerequisite for proxy function deployment
+
+### Changed
+- **Improved Proxy Function References**: Updated existing "Proxy Function Contract" section to reference the production-ready SAR application with enhanced security features
+- **Better Installation Guidance**: Provided multiple deployment options for different user preferences and environments
+
 ## [0.8.0] - 2025-06-27
 
 ### Added

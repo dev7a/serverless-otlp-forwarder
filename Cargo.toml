@@ -8,7 +8,6 @@ members = [
     "forwarders/experimental/otlp-stdout-kinesis-processor/extension/layer",
     "demo/rust",
     "cli/startled",
-    "cli/startled/testbed/proxy", 
     "cli/startled/testbed/functions/rust/*",
     "cli/livetrace"
 ]
