@@ -159,20 +159,6 @@ aws secretsmanager update-secret \
   }'
 ```
 
-### 2. Verify Deployment
-
-```bash
-# Check deployment status
-uvx samstacks validate pipeline.yaml
-
-# Test the Kinesis extension (if deployed)
-FUNCTION_URL=$(aws cloudformation describe-stacks \
-  --stack-name rearset-kinesis-extension \
-  --query 'Stacks[0].Outputs[?OutputKey==`ExampleFunctionUrl`].OutputValue' \
-  --output text)
-
-curl -f $FUNCTION_URL
-```
 
 ## Management Commands
 
