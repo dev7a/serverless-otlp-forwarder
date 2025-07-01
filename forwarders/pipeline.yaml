@@ -2,7 +2,7 @@ pipeline_name: rearset-pipeline
 pipeline_description: |
   Rearset Pipeline
   This pipeline deploys the Rearset infrastructure and related resources.
-  It includes a collector configuration layer, a OTLP Relay for the CloudWach Logs transport,
+  It includes a collector configuration layer, a OTLP Relay for the CloudWatch Logs transport,
   and a Kinesis Relay for the Kinesis Data Streams transport.
   It also includes an experimental Kinesis extension to send data to the Kinesis Relay.
  
