@@ -32,7 +32,7 @@ impl Config {
 
         if kinesis_stream_name.is_none() {
             tracing::info!(
-                "extension: {} not set, disabling Kinesis output. Will write recordsto stdout.",
+                "extension: {} not set, disabling Kinesis output. Will write records to stdout.",
                 ENV_VAR_STREAM_NAME
             );
         } else {
