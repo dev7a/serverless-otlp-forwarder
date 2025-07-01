@@ -7,7 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-otlp-stdout-logs-processor.workspace = true
+serverless-otlp-forwarder-core = { workspace = true, features = ["instrumented-client"] }
 tokio.workspace = true
 anyhow.workspace = true
 lambda_runtime.workspace = true
@@ -16,19 +16,22 @@ tracing.workspace = true
 lambda-otel-lite.workspace = true
 opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
-otlp-sigv4-client.workspace = true
-otlp-stdout-span-exporter.workspace = true
+reqwest-middleware.workspace = true
+reqwest-tracing.workspace = true
 aws-config.workspace = true
-aws-credential-types.workspace = true
 serde_json.workspace = true
 aws_lambda_events = { workspace = true, features = ["kinesis"] }
+otlp-stdout-span-exporter.workspace = true
+opentelemetry.workspace = true
+serde = { workspace = true, features = ["derive"] }
+async-trait.workspace = true
+bytes.workspace = true
+url.workspace = true
+
 
 [dev-dependencies]
-chrono.workspace = true
-base64.workspace = true
-flate2.workspace = true
-prost.workspace = true
-opentelemetry-proto.workspace = true 
+tokio = { workspace = true, features = ["full"] }
+chrono = { workspace = true, features = ["serde"] }
 
 [[bin]]
 name = "kinesis_processor"

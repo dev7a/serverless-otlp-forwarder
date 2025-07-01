@@ -80,7 +80,7 @@ mod tests {
         // Ideally, capture logs to verify the warning was logged, but that's harder in basic unit tests.
     }
 
-     #[test]
+    #[test]
     fn test_add_record_at_limit() {
         let mut batch = KinesisBatch::default();
         // Create a string exactly at the limit

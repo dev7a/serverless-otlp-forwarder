@@ -6,8 +6,8 @@ Description: AWS Lambda function that processes CloudWatch Logs containing OTLP 
 Parameters:
   RouteAllLogs:
     Type: String
-    Default: yes
     Description: Route all AWS logs to the Lambda function
+    Default: "true"
   VpcId:
     Type: String
     Description: (Optional) VPC ID for VPC deployment
@@ -16,9 +16,15 @@ Parameters:
     Type: CommaDelimitedList
     Description: (Optional) List of subnet IDs for VPC deployment
     Default: ""
+  CollectorExtensionArn:
+    Type: String
+    Description: ARN of the Collector Extension
+  CollectorConfigMapArn:
+    Type: String
+    Description: ARN of the Collector Config Map Layer
 
 Conditions:
-  RouteAllLogs: !Equals [!Ref RouteAllLogs, "yes"]
+  RouteAllLogs: !Equals [!Ref RouteAllLogs, "true"]
   HasVpcConfig: !Not [!Equals [!Ref VpcId, ""]]
 
 Resources:
@@ -37,7 +43,7 @@ Resources:
       Architectures:
         - arm64
       Timeout: 60
-      Tracing: Active
+      Tracing: Disabled
       LoggingConfig:
         LogFormat: JSON
         ApplicationLogLevel: INFO
@@ -48,10 +54,7 @@ Resources:
           LAMBDA_TRACING_ENABLE_FMT_LAYER: false
           OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          OPENTELEMETRY_EXTENSION_LOG_LEVEL: DEBUG
           OPENTELEMETRY_COLLECTOR_CONFIG_URI: /opt/collector.yaml
-          FORWARDER_OTLPHTTP_HEADERS_SECRET: serverless-otlp-forwarder/keys/newrelic
-          FORWARDER_OTLPHTTP_ENDPOINT: https://otlp.nr-data.net
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -68,8 +71,8 @@ Resources:
                 - "secretsmanager:GetSecretValue"
               Resource: !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*"
       Layers:
-        - !Ref CollectorConfig
-        - arn:aws:lambda:us-east-1:961341555982:layer:ocel-arm64-spaneventtolog-0_123_0-local:6
+        - !Ref CollectorConfigMapArn
+        - !Ref CollectorExtensionArn
       VpcConfig: !If
         - HasVpcConfig
         - SecurityGroupIds:
@@ -112,16 +115,6 @@ Resources:
       Scope: "ALL"
       SelectionCriteria: !Sub 'LogGroupName NOT IN ["/aws/${ProcessorFunction}"]'
 
-  CollectorConfig:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub "${AWS::StackName}-collector-config"
-      Description: "Layer for the collector configuration"
-      ContentUri: config/
-    Metadata:
-      BuildMethod: makefile
-
-    
 Outputs:
   ProcessorFunctionArn:
     Description: ARN of the Cloudwatch Logs processor Lambda function

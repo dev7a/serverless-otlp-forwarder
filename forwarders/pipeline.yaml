@@ -1,0 +1,103 @@
+pipeline_name: rearset-pipeline
+pipeline_description: |
+  Rearset Pipeline
+  This pipeline deploys the Rearset infrastructure and related resources.
+  It includes a collector configuration layer, a OTLP Relay for the CloudWatch Logs transport,
+  and a Kinesis Relay for the Kinesis Data Streams transport.
+  It also includes an experimental Kinesis extension to send data to the Kinesis Relay.
+ 
+
+pipeline_settings:
+  stack_name_prefix: rearset
+  output_masking:
+    enabled: true
+  default_sam_config:
+    default:
+      global:
+        parameters:
+          beta_features: true
+      build:
+        parameters:
+          cached: true
+          parallel: false
+      deploy:
+        parameters:
+          capabilities: CAPABILITY_IAM
+          confirm_changeset: false
+          resolve_s3: true
+    version: 0.1
+  inputs:
+    collector_extension_arn: 
+      type: string
+      # default: ${{ env.OTEL_COLLECTOR_EXTENSION || 'arn:aws:lambda:us-east-1:902605180476:layer:ocel-arm64-minimal-forwarder-0_127_0-beta:1' }}
+      default: ${{ env.OTEL_COLLECTOR_EXTENSION || 'arn:aws:lambda:us-east-1:961341555982:layer:ocel-arm64-minimal-forwarder-0_128_0-local:8' }}
+      
+    enable_kinesis_relay:
+      type: boolean
+      default: "true"
+    enable_signals_relay:
+      type: boolean
+      default: "true"
+
+stacks:
+  - id: collector
+    description: "Create a collector configuration layer for the OTel Collector"
+    dir: collector/
+    run: |
+      echo 'Deployment complete. 
+      Ensure that the collector configuration secrets are created in AWS Secrets Manager:
+      Run the following command to update the secret:
+         
+      aws secretsmanager update-secret \
+          --secret-id ${{ stacks.collector.outputs.CollectorConfigSecretsArn }} \
+          --secret-string '"'"'{
+            "name": "a friendly name for your collector",
+            "endpoint": "https://your-otel-collector.example.com",
+            "auth": "some-header=some-value,another-header=another-value"
+          }'"'"'
+
+      Or head to the AWS Secrets Manager console and update the secret manually.
+      '  
+
+  - id: logs-relay
+    description: "Processes CloudWatch Logs and relays them to the OTel Collector"
+    dir: otlp-stdout-logs-processor/
+    params:
+      CollectorExtensionArn: ${{ inputs.collector_extension_arn }}
+      CollectorConfigMapArn: ${{ stacks.collector.outputs.CollectorConfigMapArn }}
+      RouteAllLogs: ${{ env.ROUTE_ALL_LOGS || "true" }}
+      VpcId: ${{ env.VPC_ID }}
+      SubnetIds: ${{ env.SUBNET_IDS }}
+  
+  - id: kinesis-relay
+    if: ${{ inputs.enable_kinesis_relay }}
+    description: "Processes Kinesis Data Streams and relays them to the OTel Collector"
+    dir: experimental/otlp-stdout-kinesis-processor
+    params:
+      CollectorExtensionArn: ${{ inputs.collector_extension_arn }}
+      CollectorConfigMapArn: ${{ stacks.collector.outputs.CollectorConfigMapArn }}
+      VpcId: ${{ env.VPC_ID }}
+      SubnetIds: ${{ env.SUBNET_IDS }}
+      RouteAllLogs: ${{ env.ROUTE_ALL_LOGS || "true" }}
+      KinesisStreamMode: ${{ env.KINESIS_STREAM_MODE || "PROVISIONED" }}
+      ShardCount: ${{ env.KINESIS_SHARD_COUNT || "1" }}
+
+  - id: kinesis-extension
+    if: ${{ inputs.enable_kinesis_relay }}
+    description: "Deploys an experimental Kinesis extension to send data to the Kinesis Relay"
+    dir: experimental/otlp-stdout-kinesis-processor/extension
+    params:
+      KinesisStreamName: ${{ stacks.kinesis-relay.outputs.KinesisStreamName }}
+    run: |
+      echo "invoking example function"
+      curl -q ${{ stacks.kinesis-extension.outputs.ExampleFunctionUrl }}
+
+  - id: signals-relay
+    if: ${{ inputs.enable_signals_relay }}
+    description: "Processes AWS Application Signals spans and relays them to the OTel Collector"
+    dir: experimental/aws-span-processor/
+    params:
+      CollectorExtensionArn: ${{ inputs.collector_extension_arn }}
+      CollectorConfigMapArn: ${{ stacks.collector.outputs.CollectorConfigMapArn }}
+      VpcId: ${{ env.VPC_ID }}
+      SubnetIds: ${{ env.SUBNET_IDS }}

@@ -1,333 +1,142 @@
-//! AWS Lambda function that forwards CloudWatch logs to OpenTelemetry collectors.
-//!
-//! This Lambda function:
-//! 1. Receives CloudWatch log events as raw JSON OTLP Span
-//! 2. Converts logs to TelemetryData
-//! 3. Forwards the data to collectors in parallel
-//!
-//! The function supports:
-//! - Multiple collectors with different endpoints
-//! - Custom headers and authentication
-//! - Base64 encoded payloads
-//! - Gzip compressed data
-//! - OpenTelemetry instrumentation
-
 mod otlp;
+mod parser;
 
 use anyhow::Result;
-use aws_credential_types::provider::ProvideCredentials;
-use aws_lambda_events::event::cloudwatch_logs::LogEntry;
-use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
-use otlp_sigv4_client::SigV4ClientBuilder;
-use otlp_stdout_logs_processor::{
-    collectors::Collectors,
-    processing::process_telemetry_batch,
-    span_compactor::{compact_telemetry_payloads, SpanCompactionConfig},
-    telemetry::TelemetryData,
-    AppState, LogsEventWrapper,
+use aws_lambda_events::event::cloudwatch_logs::LogsEvent;
+use lambda_otel_lite::{
+    init_telemetry, LambdaSpanProcessor, OtelTracingLayer, SpanAttributes, SpanAttributesExtractor,
+    TelemetryConfig,
 };
-use serde_json::Value as JsonValue;
+use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
+use opentelemetry::Value as OtelValue;
+use opentelemetry_otlp::{Protocol, WithExportConfig};
+use reqwest::Client as ReqwestClient;
+use reqwest_middleware::ClientBuilder;
+use reqwest_tracing::TracingMiddleware;
+use serde::{Deserialize, Serialize};
+use serverless_otlp_forwarder_core::{
+    processor::process_event_batch, span_compactor::SpanCompactionConfig, InstrumentedHttpClient,
+};
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
+use parser::AwsAppSignalSpanParser;
 
-use opentelemetry_otlp::{Protocol, WithExportConfig, WithHttpConfig};
-use opentelemetry_sdk::trace::BatchSpanProcessor;
+// Wrapper for LogsEvent for this specific processor to implement SpanAttributesExtractor
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AwsSpanProcessorEventWrapper(LogsEvent);
 
-/// Convert a CloudWatch log event containing a raw span into TelemetryData
-fn convert_span_event(event: &LogEntry, log_group: &str) -> Option<TelemetryData> {
-    // Parse the raw span
-    let span: JsonValue = match serde_json::from_str(&event.message) {
-        Ok(span) => span,
-        Err(e) => {
-            tracing::warn!("Failed to parse span JSON: {}", e);
-            return None;
-        }
-    };
+impl SpanAttributesExtractor for AwsSpanProcessorEventWrapper {
+    fn extract_span_attributes(&self) -> SpanAttributes {
+        let mut attributes: HashMap<String, OtelValue> = HashMap::new();
+        let log_data = &self.0.aws_logs.data;
 
-    // Convert directly to OTLP protobuf
-    let protobuf_bytes = match otlp::convert_span_to_otlp_protobuf(span) {
-        Ok(bytes) => bytes,
-        Err(e) => {
-            tracing::debug!("Failed to convert span to OTLP protobuf: {}", e);
-            return None;
-        }
-    };
+        attributes.insert(
+            "faas.trigger.type".to_string(),
+            OtelValue::String("cloudwatch_logs".into()),
+        );
+        attributes.insert(
+            "aws.cloudwatch.log_group".to_string(),
+            OtelValue::String(log_data.log_group.clone().into()),
+        );
+        attributes.insert(
+            "aws.cloudwatch.log_stream".to_string(),
+            OtelValue::String(log_data.log_stream.clone().into()),
+        );
+        attributes.insert(
+            "aws.cloudwatch.owner".to_string(),
+            OtelValue::String(log_data.owner.clone().into()),
+        );
+        attributes.insert(
+            "aws.cloudwatch.events.count".to_string(),
+            OtelValue::I64(log_data.log_events.len() as i64),
+        );
+        attributes.insert(
+            "processor.type".to_string(),
+            OtelValue::String("aws_appsignal_span_processor".into()),
+        );
 
-    // Create TelemetryData with the protobuf payload
-    Some(TelemetryData {
-        source: log_group.to_string(),
-        endpoint: "https://localhost:4318/v1/traces".to_string(),
-        payload: protobuf_bytes,
-        content_type: "application/x-protobuf".to_string(),
-        content_encoding: None, // No compression at this stage
-    })
+        SpanAttributes::builder()
+            .span_name(format!("aws_span_processor_{}", log_data.log_group.clone()))
+            .kind("consumer".to_string())
+            .attributes(attributes)
+            .build()
+    }
 }
 
 async fn function_handler(
-    event: LambdaEvent<LogsEventWrapper>,
-    state: Arc<AppState>,
+    event: LambdaEvent<AwsSpanProcessorEventWrapper>,
+    http_client: Arc<InstrumentedHttpClient>,
 ) -> Result<(), LambdaError> {
-    tracing::debug!("Function handler started");
+    tracing::info!("aws-span-processor: function_handler started.");
 
-    // Check and refresh collectors cache if stale
-    Collectors::init(&state.secrets_client).await?;
+    let log_group = event.payload.0.aws_logs.data.log_group.clone();
+    let parser = AwsAppSignalSpanParser;
+    let compaction_config = SpanCompactionConfig::default();
 
-    let log_group = &event.payload.0.aws_logs.data.log_group;
-    let log_events = &event.payload.0.aws_logs.data.log_events;
-
-    // Convert all events to TelemetryData
-    let telemetry_records = log_events
-        .iter()
-        .filter_map(|event| convert_span_event(event, log_group))
-        .collect::<Vec<_>>();
-
-    // Only process if we have records
-    if !telemetry_records.is_empty() {
-        // Compact all telemetry records into a single batch payload
-        let compacted_telemetry =
-            match compact_telemetry_payloads(telemetry_records, &SpanCompactionConfig::default()) {
-                Ok(telemetry) => vec![telemetry],
-                Err(e) => {
-                    tracing::error!("Failed to compact telemetry payloads: {}", e);
-                    return Err(e);
-                }
-            };
-
-        process_telemetry_batch(
-            compacted_telemetry,
-            &state.http_client,
-            &state.credentials,
-            &state.region,
-        )
-        .await?;
-    } else {
-        tracing::debug!("No valid telemetry records to process");
+    match process_event_batch(
+        event.payload.0,
+        &parser,
+        &log_group,
+        http_client.as_ref(),
+        &compaction_config,
+    )
+    .await
+    {
+        Ok(_) => {
+            tracing::info!("aws-span-processor: Batch processed successfully.");
+            Ok(())
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "aws-span-processor: Error processing event batch.");
+            Err(LambdaError::from(e.to_string()))
+        }
     }
-
-    Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<(), LambdaError> {
-    let config = aws_config::load_from_env().await;
-    let region = config.region().expect("No region found");
-    let credentials = config
-        .credentials_provider()
-        .expect("No credentials provider found")
-        .provide_credentials()
-        .await?;
-
-    let sigv4_client = SigV4ClientBuilder::new()
-        .with_client(
-            reqwest::blocking::Client::builder()
-                .build()
-                .map_err(|e| LambdaError::from(format!("Failed to build HTTP client: {}", e)))?,
-        )
-        .with_credentials(credentials)
-        .with_region(region.to_string())
-        .with_service("xray")
-        .with_signing_predicate(Box::new(|request| {
-            // Only sign requests to AWS endpoints
-            request
-                .uri()
-                .host()
-                .is_some_and(|host| host.ends_with(".amazonaws.com"))
-        }))
-        .build()?;
-
-    // Create a new exporter for BatchSpanProcessor
-    let batch_exporter = opentelemetry_otlp::SpanExporter::builder()
+    let otlp_http_exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
-        .with_http_client(sigv4_client)
         .with_protocol(Protocol::HttpBinary)
-        .with_timeout(std::time::Duration::from_secs(3))
         .build()?;
 
     let (_, completion_handler) = init_telemetry(
         TelemetryConfig::builder()
-            .with_span_processor(BatchSpanProcessor::builder(batch_exporter).build())
+            .with_span_processor(
+                LambdaSpanProcessor::builder()
+                    .exporter(otlp_http_exporter)
+                    .build(),
+            )
             .build(),
     )
     .await?;
+    tracing::info!("lambda-otel-lite initialized with OTLP HTTP exporter for aws-span-processor.");
 
-    // Initialize shared application state
-    let state = Arc::new(AppState::new().await?);
+    let base_reqwest_client = ReqwestClient::new();
+    let client_with_middleware = ClientBuilder::new(base_reqwest_client)
+        .with(TracingMiddleware::default())
+        .build();
+    let instrumented_client = InstrumentedHttpClient::new(client_with_middleware);
+    let http_client_for_forwarding = Arc::new(instrumented_client);
 
-    // Initialize collectors using state's secrets client
-    Collectors::init(&state.secrets_client).await?;
+    tracing::info!("Instrumented HTTP client for data forwarding initialized.");
 
     let service = ServiceBuilder::new()
         .layer(OtelTracingLayer::new(completion_handler))
-        .service_fn(|event| {
-            let state = Arc::clone(&state);
-            async move { function_handler(event, state).await }
+        .service_fn(move |event: LambdaEvent<AwsSpanProcessorEventWrapper>| {
+            let client_for_handler = Arc::clone(&http_client_for_forwarding);
+            async move { function_handler(event, client_for_handler).await }
         });
 
-    // Create and run the Lambda runtime
-    let runtime = Runtime::new(service);
-    runtime.run().await
+    tracing::info!("aws-span-processor starting Lambda runtime.");
+    Runtime::new(service).run().await
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn test_convert_span_event() {
-        // Create a test span with all required fields
-        let span_record = json!({
-            "name": "test-span",
-            "traceId": "0123456789abcdef0123456789abcdef",
-            "spanId": "0123456789abcdef",
-            "kind": "SERVER",
-            "startTimeUnixNano": 1619712000000000000_u64,
-            "endTimeUnixNano": 1619712001000000000_u64,
-            "attributes": {
-                "service.name": "test-service"
-            },
-            "status": {
-                "code": "OK"
-            },
-            "resource": {
-                "attributes": {
-                    "service.name": "test-service"
-                }
-            },
-            "scope": {
-                "name": "test-scope",
-                "version": "1.0.0"
-            }
-        });
-
-        let event = LogEntry {
-            id: "test-id".to_string(),
-            timestamp: 1234567890,
-            message: serde_json::to_string(&span_record).unwrap(),
-        };
-
-        let result = convert_span_event(&event, "aws/spans");
-        assert!(result.is_some());
-        let telemetry = result.unwrap();
-        assert_eq!(telemetry.source, "aws/spans");
-        assert_eq!(telemetry.content_type, "application/x-protobuf");
-        assert_eq!(telemetry.content_encoding, None);
-    }
-
-    #[test]
-    fn test_convert_span_event_invalid_json() {
-        let event = LogEntry {
-            id: "test-id".to_string(),
-            timestamp: 1234567890,
-            message: "invalid json".to_string(),
-        };
-
-        let result = convert_span_event(&event, "aws/spans");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_convert_span_event_missing_endtime() {
-        let span_record = json!({
-            "name": "test-span",
-            "traceId": "0123456789abcdef0123456789abcdef",
-            "spanId": "0123456789abcdef",
-            // endTimeUnixNano is missing
-        });
-
-        let event = LogEntry {
-            id: "test-id".to_string(),
-            timestamp: 1234567890,
-            message: serde_json::to_string(&span_record).unwrap(),
-        };
-
-        let result = convert_span_event(&event, "aws/spans");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_convert_span_event_null_endtime() {
-        let span_record = json!({
-            "name": "test-span",
-            "traceId": "0123456789abcdef0123456789abcdef",
-            "spanId": "0123456789abcdef",
-            "endTimeUnixNano": null
-        });
-
-        let event = LogEntry {
-            id: "test-id".to_string(),
-            timestamp: 1234567890,
-            message: serde_json::to_string(&span_record).unwrap(),
-        };
-
-        let result = convert_span_event(&event, "aws/spans");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_convert_span_event_complete() {
-        // Create a complete test span with all fields
-        let span_record = json!({
-            "name": "test-span",
-            "traceId": "0123456789abcdef0123456789abcdef",
-            "spanId": "0123456789abcdef",
-            "parentSpanId": "fedcba9876543210",
-            "kind": "SERVER",
-            "startTimeUnixNano": 1619712000000000000_u64,
-            "endTimeUnixNano": 1619712001000000000_u64,
-            "attributes": {
-                "service.name": "test-service",
-                "http.method": "GET",
-                "http.url": "https://example.com",
-                "http.status_code": 200
-            },
-            "status": {
-                "code": "OK"
-            },
-            "resource": {
-                "attributes": {
-                    "service.name": "test-service",
-                    "service.version": "1.0.0"
-                }
-            },
-            "scope": {
-                "name": "test-scope",
-                "version": "1.0.0"
-            },
-            "events": [
-                {
-                    "timeUnixNano": 1619712000500000000_u64,
-                    "name": "Event 1",
-                    "attributes": {
-                        "event.key1": "value1",
-                        "event.key2": 123
-                    }
-                },
-                {
-                    "timeUnixNano": 1619712000800000000_u64,
-                    "name": "Event 2",
-                    "attributes": {
-                        "event.key3": "value3"
-                    }
-                }
-            ]
-        });
-
-        let event = LogEntry {
-            id: "test-id".to_string(),
-            timestamp: 1234567890,
-            message: serde_json::to_string(&span_record).unwrap(),
-        };
-
-        let result = convert_span_event(&event, "aws/spans");
-        assert!(result.is_some());
-        let telemetry = result.unwrap();
-        assert_eq!(telemetry.source, "aws/spans");
-        assert_eq!(telemetry.content_type, "application/x-protobuf");
-        assert_eq!(telemetry.content_encoding, None);
-
-        // Verify the payload is not empty
-        assert!(!telemetry.payload.is_empty());
-    }
+    // Main logic is tested in the core library and the local parser.rs.
+    // Tests for otlp.rs (the JSON to Protobuf conversion) should be within otlp.rs itself.
+    // This main.rs primarily orchestrates, so unit tests here would be minimal,
+    // focusing on integration if any (e.g., ensuring correct components are wired).
 }

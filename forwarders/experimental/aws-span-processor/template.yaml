@@ -1,7 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: "AWS::Serverless-2016-10-31"
-Description: AWS Lambda function that processes aws/spans CloudWatch Logs
-  and forwards them to OpenTelemetry collectors
+Description: AWS Lambda function that processes Application Signals aws/spans CloudWatch Logs and forwards them to OpenTelemetry collectors
 
 Parameters:
   SpanLogGroupName:
@@ -16,6 +15,12 @@ Parameters:
     Type: CommaDelimitedList
     Description: (Optional) List of subnet IDs for VPC deployment
     Default: ""
+  CollectorExtensionArn:
+    Type: String
+    Description: ARN of the Collector Extension
+  CollectorConfigMapArn:
+    Type: String
+    Description: ARN of the Collector Config Map Layer
 
 Conditions:
   HasVpcConfig: !Not [!Equals [!Ref VpcId, ""]]
@@ -47,7 +52,6 @@ Resources:
           LAMBDA_TRACING_ENABLE_FMT_LAYER: false
           OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4318
           OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
-          OPENTELEMETRY_EXTENSION_LOG_LEVEL: DEBUG
           OPENTELEMETRY_COLLECTOR_CONFIG_URI: /opt/collector.yaml
       Policies:
         - Version: "2012-10-17"
@@ -65,8 +69,8 @@ Resources:
                 - "secretsmanager:GetSecretValue"
               Resource: !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*"
       Layers:
-        - !Ref CollectorConfig
-        - arn:aws:lambda:us-east-1:961341555982:layer:ocel-arm64-spaneventtolog-0_123_0-local:6
+        - !Ref CollectorConfigMapArn
+        - !Ref CollectorExtensionArn
       VpcConfig: !If
         - HasVpcConfig
         - SecurityGroupIds:

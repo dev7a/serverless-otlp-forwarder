@@ -7,18 +7,18 @@ use opentelemetry::{trace::SpanId, Value as OtelValue};
 use opentelemetry_sdk::trace::{SpanData, SpanExporter};
 
 // Add nix for mkfifo (Re-add these)
+use nix::errno::Errno;
 use nix::sys::stat::Mode;
 use nix::unistd::mkfifo;
-use nix::errno::Errno;
 use std::path::Path;
 
 use lambda_otel_lite::resource::get_lambda_resource;
-use otlp_stdout_span_exporter::{OtlpStdoutSpanExporter, BufferOutput};
+use opentelemetry::trace::TraceId;
+use otlp_stdout_span_exporter::{BufferOutput, OtlpStdoutSpanExporter};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use opentelemetry::trace::TraceId;
 use std::time::{Instant, SystemTime};
+use tokio::sync::{mpsc, Mutex};
 
 // Import for pipe reading
 use tokio::fs::File;
@@ -29,8 +29,8 @@ mod aggregation;
 mod config;
 mod events;
 mod kinesis;
-mod types;
 mod otlp_parsing;
+mod types;
 
 // Use the types from the modules
 use aggregation::SpanAggregator;
@@ -63,8 +63,11 @@ impl AppState {
             tracing::debug!("Kinesis stream not configured, skipping flush.");
             let mut batch = self.batch.lock().await;
             if !batch.is_empty() {
-                 tracing::warn!("Clearing {} records from Kinesis batch because Kinesis is disabled.", batch.records.len());
-                 batch.clear();
+                tracing::warn!(
+                    "Clearing {} records from Kinesis batch because Kinesis is disabled.",
+                    batch.records.len()
+                );
+                batch.clear();
             }
             return Ok(());
         }
@@ -137,8 +140,8 @@ async fn telemetry_handler(
                 Some(ParsedPlatformEvent {
                     timestamp,
                     // PlatformInitStart doesn't have a request_id, use an empty string for now.
-                    request_id: "".to_string(), 
-                    data: PlatformEventData::InitStart { 
+                    request_id: "".to_string(),
+                    data: PlatformEventData::InitStart {
                         // No fields needed
                      },
                 })
@@ -242,7 +245,7 @@ async fn telemetry_handler(
                         spans: telemetry_spans,
                     },
                 };
-                
+
                 // Send the InitDataAvailable message IF init duration was present
                 if let Some(init_duration_ms) = init_duration_ms_opt {
                      tracing::debug!(request_id = %request_id, init_duration_ms, "Found init duration in report, sending InitDataAvailable message");
@@ -260,7 +263,10 @@ async fn telemetry_handler(
 
         // Send the PlatformTelemetry message (if any was created)
         if let Some(parsed_event) = parsed_event_opt {
-            if let Err(e) = tx.send(ProcessorInput::PlatformTelemetry(parsed_event)).await {
+            if let Err(e) = tx
+                .send(ProcessorInput::PlatformTelemetry(parsed_event))
+                .await
+            {
                 tracing::error!("Failed to send platform event to processor channel: {}", e);
             }
         }
@@ -279,7 +285,10 @@ async fn main() -> Result<(), Error> {
     if !pipe_path.exists() {
         let pipe_path_str = PIPE_PATH.to_string();
         tokio::task::spawn_blocking(move || {
-            match mkfifo(pipe_path_str.as_str(), Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO) {
+            match mkfifo(
+                pipe_path_str.as_str(),
+                Mode::S_IRWXU | Mode::S_IRWXG | Mode::S_IRWXO,
+            ) {
                 Ok(_) => tracing::debug!("Created named pipe: {}", pipe_path_str),
                 Err(Errno::EEXIST) => {
                     tracing::debug!("Named pipe already exists: {}", pipe_path_str);
@@ -288,7 +297,9 @@ async fn main() -> Result<(), Error> {
                     panic!("Failed to create named pipe {}: {}", pipe_path_str, e);
                 }
             }
-        }).await.map_err(|e| Error::from(format!("Pipe creation task failed: {}", e)))?;
+        })
+        .await
+        .map_err(|e| Error::from(format!("Pipe creation task failed: {}", e)))?;
     } else {
         tracing::debug!("Named pipe already exists: {}", PIPE_PATH);
     }
@@ -394,7 +405,9 @@ async fn main() -> Result<(), Error> {
                                             // Existing Kinesis/stdout forwarding logic
                                             if state.stream_name.is_some() {
                                                 let mut kinesis_batch = state.batch.lock().await;
-                                                if let Err(e) = kinesis_batch.add_record(line.to_string()) {
+                                                if let Err(e) =
+                                                    kinesis_batch.add_record(line.to_string())
+                                                {
                                                     tracing::error!(error = %e, "Failed to add record to Kinesis batch");
                                                 }
                                             } else {
@@ -425,29 +438,31 @@ async fn main() -> Result<(), Error> {
                         match receiver_guard.try_recv() {
                             Ok(ProcessorInput::PlatformTelemetry(parsed_event)) => {
                                 drop(receiver_guard); // Drop lock ASAP
-                                
+
                                 // --- Handle InitStart Event --- START ---
                                 if let PlatformEventData::InitStart { .. } = parsed_event.data {
-                                    tracing::debug!("Received InitStart platform event, storing start time.");
+                                    tracing::debug!(
+                                        "Received InitStart platform event, storing start time."
+                                    );
                                     let mut init_start_opt = state.init_start_time.lock().await;
                                     *init_start_opt = Some(parsed_event.timestamp.into());
                                     drop(init_start_opt);
                                     // Don't process InitStart further in aggregation
-                                    continue; 
+                                    continue;
                                 }
                                 // --- Handle InitStart Event --- END ---
-                                
+
                                 tracing::debug!(
                                     "Processing platform telemetry for request_id: {}",
                                     parsed_event.request_id
                                 );
-                                
+
                                 // --- Correlation Logic --- START ---
                                 // Always attempt to look up trace info for this request_id
                                 let map = state.execution_trace_map.lock().await;
                                 let trace_info = map.get(&parsed_event.request_id).cloned();
                                 drop(map); // Release lock
-                                
+
                                 // Pass the trace info to the aggregator during update or creation
                                 let mut aggregations_map = state.aggregations.lock().await;
                                 let key = parsed_event.request_id.clone();
@@ -458,7 +473,7 @@ async fn main() -> Result<(), Error> {
                                     if let Some((trace_id, parent_span_id, _)) = trace_info {
                                         agg.set_trace_context(trace_id, parent_span_id);
                                     }
-                                    
+
                                     agg.update_from_event(&parsed_event);
                                     if agg.is_complete() {
                                         if let Some(span_data) = agg.to_otel_span_data() {
@@ -468,13 +483,14 @@ async fn main() -> Result<(), Error> {
                                         aggregations_map.remove(&key);
                                     }
                                 } else {
-                                    let mut new_agg = SpanAggregator::new(key, parsed_event.timestamp);
-                                    
+                                    let mut new_agg =
+                                        SpanAggregator::new(key, parsed_event.timestamp);
+
                                     // Pass any found trace info
                                     if let Some((trace_id, parent_span_id, _)) = trace_info {
                                         new_agg.set_trace_context(trace_id, parent_span_id);
                                     }
-                                    
+
                                     new_agg.update_from_event(&parsed_event);
                                     if new_agg.is_complete() {
                                         if let Some(span_data) = new_agg.to_otel_span_data() {
@@ -482,7 +498,8 @@ async fn main() -> Result<(), Error> {
                                             completed_spans.append(&mut new_agg.child_spans_data);
                                         }
                                     } else {
-                                        aggregations_map.insert(new_agg.request_id.clone(), new_agg);
+                                        aggregations_map
+                                            .insert(new_agg.request_id.clone(), new_agg);
                                     }
                                 }
                                 drop(aggregations_map); // Drop lock before await
@@ -496,26 +513,35 @@ async fn main() -> Result<(), Error> {
                                             tracing::debug!(count = span_count, "Successfully called exporter. Aggregated spans should now be in the buffer.");
                                             // Note: Output will be processed right after this block.
                                         }
-                                        Err(e) => tracing::error!(count = span_count, error = ?e, "Failed to export aggregated spans"),
+                                        Err(e) => {
+                                            tracing::error!(count = span_count, error = ?e, "Failed to export aggregated spans")
+                                        }
                                     }
 
                                     // --- Process aggregated spans from the internal exporter's buffer --- START ---
-                                    match state.internal_exporter_buffer.take_lines() { // Get lines & clear buffer
-                                        Ok(aggregated_lines) => { // Successfully got the lines
+                                    match state.internal_exporter_buffer.take_lines() {
+                                        // Get lines & clear buffer
+                                        Ok(aggregated_lines) => {
+                                            // Successfully got the lines
                                             if !aggregated_lines.is_empty() {
                                                 tracing::debug!("Processing {} line(s) from internal exporter buffer", aggregated_lines.len());
                                                 if state.stream_name.is_some() {
                                                     // Add to Kinesis batch if Kinesis is enabled
-                                                    let mut kinesis_batch = state.batch.lock().await;
-                                                    for line in aggregated_lines { // Iterate over the Vec<String>
-                                                        if let Err(e) = kinesis_batch.add_record(line) {
+                                                    let mut kinesis_batch =
+                                                        state.batch.lock().await;
+                                                    for line in aggregated_lines {
+                                                        // Iterate over the Vec<String>
+                                                        if let Err(e) =
+                                                            kinesis_batch.add_record(line)
+                                                        {
                                                             tracing::error!(error = %e, "Failed to add aggregated span record to Kinesis batch");
                                                         }
                                                     }
                                                     drop(kinesis_batch);
                                                 } else {
                                                     // Otherwise, print to stdout (CloudWatch Logs)
-                                                    for line in aggregated_lines { // Iterate over the Vec<String>
+                                                    for line in aggregated_lines {
+                                                        // Iterate over the Vec<String>
                                                         println!("{}", line);
                                                     }
                                                 }
@@ -530,12 +556,15 @@ async fn main() -> Result<(), Error> {
                                 // --- Export and Buffer Handling --- END ---
                             }
                             // --- Add Case for InitDataAvailable --- START ---
-                            Ok(ProcessorInput::InitDataAvailable { request_id, init_duration_ms }) => {
+                            Ok(ProcessorInput::InitDataAvailable {
+                                request_id,
+                                init_duration_ms,
+                            }) => {
                                 drop(receiver_guard); // Drop lock ASAP
                                 tracing::debug!(request_id = %request_id, init_duration_ms, "Processing InitDataAvailable");
-                                
+
                                 let init_start_opt = state.init_start_time.lock().await.take();
-                                
+
                                 if let Some(init_start_time) = init_start_opt {
                                     let mut aggregations_map = state.aggregations.lock().await;
                                     if let Some(agg) = aggregations_map.get_mut(&request_id) {
@@ -563,7 +592,7 @@ async fn main() -> Result<(), Error> {
                         }
                     }
                     // --- Process platform telemetry --- END ---
-                    
+
                     // --- Handle Aggregation Timeouts --- START ---
                     let mut timed_out_spans: Vec<SpanData> = Vec::new();
                     let mut timed_out_req_ids: Vec<String> = Vec::new(); // To clean up map later
@@ -589,10 +618,12 @@ async fn main() -> Result<(), Error> {
                     // --- TTL Eviction for Execution Trace Map --- START ---
                     {
                         let mut map = state.execution_trace_map.lock().await;
-                        let cutoff = Instant::now().checked_sub(std::time::Duration::from_secs(300)).unwrap_or_else(Instant::now); // Use 5 minutes TTL
+                        let cutoff = Instant::now()
+                            .checked_sub(std::time::Duration::from_secs(300))
+                            .unwrap_or_else(Instant::now); // Use 5 minutes TTL
                         let initial_size = map.len();
                         map.retain(|req_id, (_, _, timestamp)| {
-                             // Also remove entries explicitly marked from aggregation timeout
+                            // Also remove entries explicitly marked from aggregation timeout
                             if timed_out_req_ids.contains(req_id) {
                                 return false;
                             }
@@ -600,7 +631,10 @@ async fn main() -> Result<(), Error> {
                         });
                         let removed_count = initial_size - map.len();
                         if removed_count > 0 {
-                            tracing::debug!("Removed {} expired entries from execution trace map", removed_count);
+                            tracing::debug!(
+                                "Removed {} expired entries from execution trace map",
+                                removed_count
+                            );
                         }
                     }
                     // --- TTL Eviction for Execution Trace Map --- END ---
@@ -614,7 +648,7 @@ async fn main() -> Result<(), Error> {
                         }
                     }
                     // --- Handle Aggregation Timeouts --- END ---
-                    
+
                     // Flush Kinesis batch
                     if let Err(e) = state.flush_batch().await {
                         tracing::error!("Error flushing Kinesis batch on INVOKE: {}", e);
@@ -629,10 +663,16 @@ async fn main() -> Result<(), Error> {
                     let mut final_spans_to_export: Vec<SpanData> = Vec::new();
                     {
                         let mut aggregations_map = state.aggregations.lock().await;
-                        tracing::debug!("Draining {} remaining aggregations on shutdown", aggregations_map.len());
+                        tracing::debug!(
+                            "Draining {} remaining aggregations on shutdown",
+                            aggregations_map.len()
+                        );
                         // Drain the map, converting each remaining aggregator to spans
                         for (key, mut agg) in aggregations_map.drain() {
-                            tracing::debug!("Flushing remaining agg for request_id '{}' on shutdown", key);
+                            tracing::debug!(
+                                "Flushing remaining agg for request_id '{}' on shutdown",
+                                key
+                            );
                             if let Some(span_data) = agg.to_otel_span_data() {
                                 final_spans_to_export.push(span_data);
                                 final_spans_to_export.append(&mut agg.child_spans_data);
@@ -642,9 +682,14 @@ async fn main() -> Result<(), Error> {
 
                     // Export the final spans (if any) via the exporter (writes to pipe)
                     if !final_spans_to_export.is_empty() {
-                        tracing::debug!("Exporting {} final spans on shutdown", final_spans_to_export.len());
+                        tracing::debug!(
+                            "Exporting {} final spans on shutdown",
+                            final_spans_to_export.len()
+                        );
                         match state.exporter.export(final_spans_to_export).await {
-                            Ok(_) => tracing::debug!("Successfully exported final spans on shutdown"),
+                            Ok(_) => {
+                                tracing::debug!("Successfully exported final spans on shutdown")
+                            }
                             Err(e) => {
                                 tracing::error!("Failed to export final spans on shutdown: {:?}", e)
                             }
@@ -657,8 +702,11 @@ async fn main() -> Result<(), Error> {
                         let mut map = state.execution_trace_map.lock().await;
                         let count = map.len();
                         if count > 0 {
-                             tracing::debug!("Clearing {} entries from execution trace map on shutdown", count);
-                             map.clear();
+                            tracing::debug!(
+                                "Clearing {} entries from execution trace map on shutdown",
+                                count
+                            );
+                            map.clear();
                         }
                     }
                     // --- Clear Execution Trace Map on Shutdown --- END ---
@@ -667,8 +715,10 @@ async fn main() -> Result<(), Error> {
                     {
                         let mut init_start_opt = state.init_start_time.lock().await;
                         if init_start_opt.is_some() {
-                            tracing::debug!("Clearing potentially stale init_start_time on shutdown.");
-                           *init_start_opt = None;
+                            tracing::debug!(
+                                "Clearing potentially stale init_start_time on shutdown."
+                            );
+                            *init_start_opt = None;
                         }
                     }
                     // --- Clear Init Start Time on Shutdown --- END ---

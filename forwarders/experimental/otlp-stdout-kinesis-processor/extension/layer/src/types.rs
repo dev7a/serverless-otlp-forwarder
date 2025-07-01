@@ -10,5 +10,5 @@ pub(crate) enum ProcessorInput {
     InitDataAvailable {
         request_id: String,
         init_duration_ms: f64,
-    }
-} 
+    },
+}

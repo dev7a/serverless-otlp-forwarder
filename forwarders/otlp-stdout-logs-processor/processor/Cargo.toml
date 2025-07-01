@@ -7,36 +7,31 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+serverless-otlp-forwarder-core = { workspace = true, features = ["instrumented-client"] }
 tokio.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
-futures.workspace = true
 opentelemetry.workspace = true
 tracing.workspace = true
 reqwest.workspace = true
+reqwest-middleware.workspace = true
+reqwest-tracing.workspace = true
 aws-config.workspace = true
 serde.workspace = true
 lambda_runtime.workspace = true
-otlp-sigv4-client.workspace = true
 lambda-otel-lite.workspace = true
 opentelemetry_sdk.workspace = true
-otlp-stdout-span-exporter.workspace = true
-
 opentelemetry-otlp.workspace = true
-aws-sdk-secretsmanager = { workspace = true, features = ["behavior-version-latest"] }
-aws-credential-types = { workspace = true }
-url = { workspace = true }
-base64 = { workspace = true }
-flate2 = { workspace = true }
-aws_lambda_events = { workspace = true, features = ["cloudwatch_logs", "kinesis"] }
-regex = { workspace = true }
-opentelemetry-proto  = { workspace = true }
-prost = { workspace = true }
+async-trait.workspace = true
+bytes.workspace = true
+url.workspace = true
+otlp-stdout-span-exporter.workspace = true
+aws_lambda_events = { workspace = true, features = ["cloudwatch_logs"] }
 
 [dev-dependencies]
-wiremock = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 [[bin]]
 name = "logs_processor"
 path = "src/main.rs"
+

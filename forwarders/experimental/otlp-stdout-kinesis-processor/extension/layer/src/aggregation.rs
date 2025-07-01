@@ -7,8 +7,8 @@ use opentelemetry::{
 };
 use opentelemetry_sdk::trace::{SpanData, SpanEvents, SpanLinks};
 use rand::Rng;
-use std::time::{Duration as StdDuration, SystemTime};
 use std::borrow::Cow;
+use std::time::{Duration as StdDuration, SystemTime};
 
 // Define constants for synthesized span names
 const INIT_PHASE_NAME: &str = "Lambda/Init";
@@ -18,7 +18,6 @@ const RESPONSE_LATENCY_NAME: &str = "Response/Latency";
 const RESPONSE_DURATION_NAME: &str = "Response/Duration";
 const EXTENSION_OVERHEAD_NAME: &str = "Overhead/Extension";
 const RUNTIME_OVERHEAD_NAME: &str = "Overhead/Runtime";
-
 
 #[derive(Debug)]
 pub struct SpanAggregator {
@@ -70,17 +69,17 @@ impl SpanAggregator {
         // Only set trace_id if it's not already set
         if self.trace_id.is_none() {
             tracing::debug!(%trace_id, %root_span_id, "Setting trace context for request_id: {}", self.request_id);
-            
+
             self.trace_id = Some(trace_id);
             self.function_root_span_id = Some(root_span_id);
-            
+
             // Generate and store the span_id for *this* aggregator's span ("Lambda Invoke")
             if self.span_id.is_none() {
                 let mut rng = rand::rng();
                 self.span_id = Some(SpanId::from_bytes(rng.random::<[u8; 8]>()));
                 tracing::debug!(generated_span_id = ?self.span_id, "Generated span_id for Lambda Invoke span");
             }
-            
+
             // Mark as sampled since we have trace information
             self.trace_flags = TraceFlags::SAMPLED;
         }
@@ -175,7 +174,9 @@ impl SpanAggregator {
 
         Some(SpanData {
             span_context,
-            parent_span_id: self.function_root_span_id.unwrap_or_else(|| SpanId::from_bytes([0; 8])),
+            parent_span_id: self
+                .function_root_span_id
+                .unwrap_or_else(|| SpanId::from_bytes([0; 8])),
             span_kind: self.kind.clone(),
             name: self.name.clone().into(),
             start_time,
@@ -225,7 +226,7 @@ impl SpanAggregator {
             None => {
                 // This case should be less likely as set_trace_context generates span_id
                 tracing::error!(
-                    request_id=%self.request_id, 
+                    request_id=%self.request_id,
                     "Cannot create platform child spans: parent span_id (Lambda Invoke ID) is missing."
                 );
                 return;
@@ -340,9 +341,9 @@ mod tests {
     use super::*; // Import items from outer module
     use chrono::TimeZone;
     use opentelemetry::trace::TraceFlags;
-    use std::collections::HashMap;
-    use std::borrow::Cow;
     use opentelemetry::Value as OtelValue;
+    use std::borrow::Cow;
+    use std::collections::HashMap;
 
     // Helper to create a default timestamp
     fn default_ts() -> DateTime<Utc> {
@@ -383,7 +384,7 @@ mod tests {
 
         // First, set the trace context directly
         agg.set_trace_context(trace_id, root_span_id);
-        
+
         // Then create and apply the start event (without trace context)
         let start_event = ParsedPlatformEvent {
             timestamp,
@@ -403,10 +404,9 @@ mod tests {
         assert_eq!(agg.received_event_types, vec!["platform.start"]);
         assert_eq!(agg.last_updated_timestamp, timestamp);
         // Check attribute was added
-        assert!(agg
-            .attributes
-            .iter()
-            .any(|kv| kv.key == KeyValue::new("faas.instance", "").key && kv.value.as_str() == "1.0"));
+        assert!(agg.attributes.iter().any(
+            |kv| kv.key == KeyValue::new("faas.instance", "").key && kv.value.as_str() == "1.0"
+        ));
     }
 
     #[test]
@@ -425,7 +425,7 @@ mod tests {
             data: PlatformEventData::RuntimeDone {
                 status: LambdaStatus::Success,
                 error_type: None,
-                metrics, // Pass the created metrics map
+                metrics,       // Pass the created metrics map
                 spans: vec![], // No child spans for this test
             },
         };
@@ -517,16 +517,21 @@ mod tests {
         if let OtelStatus::Error { description } = agg.status {
             assert_eq!(description, Cow::Borrowed("ReportError"));
         }
-        assert_eq!(agg.received_event_types, vec!["platform.runtimeDone", "platform.report"]);
+        assert_eq!(
+            agg.received_event_types,
+            vec!["platform.runtimeDone", "platform.report"]
+        );
         assert_eq!(agg.last_updated_timestamp, report_timestamp);
         // Check report metrics are added
         assert!(agg.attributes.iter().any(|kv| kv.key
             == KeyValue::new("lambda.report.report.durationMs", "").key
             && kv.value == OtelValue::F64(250.0)));
         // Check faas.execution attribute added
-        assert!(agg.attributes.iter().any(|kv| kv.key
-            == KeyValue::new("faas.execution", "").key
-            && kv.value == OtelValue::String("req-report".into())));
+        assert!(agg
+            .attributes
+            .iter()
+            .any(|kv| kv.key == KeyValue::new("faas.execution", "").key
+                && kv.value == OtelValue::String("req-report".into())));
     }
 
     #[test]
@@ -539,11 +544,9 @@ mod tests {
 
         // Add Start
         let start_event = ParsedPlatformEvent {
-            timestamp, 
-            request_id: request_id.clone(), 
-            data: PlatformEventData::Start { 
-                version: None
-            }
+            timestamp,
+            request_id: request_id.clone(),
+            data: PlatformEventData::Start { version: None },
         };
         agg.update_from_event(&start_event);
         assert!(!agg.is_complete());
@@ -553,11 +556,11 @@ mod tests {
             timestamp: timestamp + chrono::Duration::milliseconds(100),
             request_id: request_id.clone(),
             data: PlatformEventData::RuntimeDone {
-                status: LambdaStatus::Success, 
-                error_type: None, 
-                metrics: HashMap::new(), 
-                spans: vec![]
-            }
+                status: LambdaStatus::Success,
+                error_type: None,
+                metrics: HashMap::new(),
+                spans: vec![],
+            },
         };
         agg.update_from_event(&runtime_done_event);
         assert!(!agg.is_complete()); // Still needs Report
@@ -567,11 +570,11 @@ mod tests {
             timestamp: timestamp + chrono::Duration::milliseconds(200),
             request_id: request_id.clone(),
             data: PlatformEventData::Report {
-                status: LambdaStatus::Success, 
-                error_type: None, 
-                metrics: HashMap::new(), 
-                spans: vec![]
-            }
+                status: LambdaStatus::Success,
+                error_type: None,
+                metrics: HashMap::new(),
+                spans: vec![],
+            },
         };
         agg.update_from_event(&report_event);
         assert!(agg.is_complete()); // Now complete
@@ -584,19 +587,31 @@ mod tests {
         let mut agg = SpanAggregator::new(request_id.clone(), timestamp);
 
         // Initially, all fields are missing
-        assert!(agg.to_otel_span_data().is_none(), "Should be None initially");
+        assert!(
+            agg.to_otel_span_data().is_none(),
+            "Should be None initially"
+        );
 
         // Set start_time only
         agg.start_time = Some(timestamp.into());
-        assert!(agg.to_otel_span_data().is_none(), "Should be None with only start_time");
+        assert!(
+            agg.to_otel_span_data().is_none(),
+            "Should be None with only start_time"
+        );
 
         // Set trace_id only (start_time is still set)
         agg.trace_id = Some(TraceId::from_hex("01000000000000000000000000000001").unwrap());
-        assert!(agg.to_otel_span_data().is_none(), "Should be None with start_time and trace_id");
+        assert!(
+            agg.to_otel_span_data().is_none(),
+            "Should be None with start_time and trace_id"
+        );
 
         // Set span_id (now all required fields are present)
         agg.span_id = Some(SpanId::from_hex("0100000000000002").unwrap());
-        assert!(agg.to_otel_span_data().is_some(), "Should be Some when trace_id, span_id, and start_time are set");
+        assert!(
+            agg.to_otel_span_data().is_some(),
+            "Should be Some when trace_id, span_id, and start_time are set"
+        );
     }
 
     #[test]
@@ -620,7 +635,8 @@ mod tests {
         agg.trace_flags = TraceFlags::SAMPLED;
         agg.status = OtelStatus::Ok;
         // Use ::from for OtelValue::String
-        agg.attributes.push(KeyValue::new("test.key", OtelValue::from("test.value")));
+        agg.attributes
+            .push(KeyValue::new("test.key", OtelValue::from("test.value")));
 
         let span_data_opt = agg.to_otel_span_data();
         assert!(span_data_opt.is_some());
@@ -635,19 +651,23 @@ mod tests {
         assert_eq!(span_data.end_time, end_system_time);
         assert_eq!(span_data.status, OtelStatus::Ok);
         assert_eq!(span_data.attributes.len(), 1);
-        assert_eq!(span_data.attributes[0].key, KeyValue::new("test.key", "").key);
+        assert_eq!(
+            span_data.attributes[0].key,
+            KeyValue::new("test.key", "").key
+        );
         // Use ::from for comparison value as well
         assert_eq!(span_data.attributes[0].value, OtelValue::from("test.value"));
     }
 
     #[test]
     fn test_to_otel_span_data_fallback_end_time() {
-         let request_id = "req-otel-fallback".to_string();
+        let request_id = "req-otel-fallback".to_string();
         let timestamp = default_ts();
         let mut agg = SpanAggregator::new(request_id.clone(), timestamp);
 
         let start_system_time: SystemTime = timestamp.into();
-        let last_update_system_time: SystemTime = (timestamp + chrono::Duration::milliseconds(500)).into();
+        let last_update_system_time: SystemTime =
+            (timestamp + chrono::Duration::milliseconds(500)).into();
 
         agg.trace_id = Some(TraceId::from_hex("01000000000000000000000000000001").unwrap());
         agg.span_id = Some(SpanId::from_hex("0100000000000002").unwrap());
@@ -717,7 +737,8 @@ mod tests {
         assert_eq!(child1.name.as_ref(), "child1");
         // Compare SystemTime directly
         assert_eq!(child1.start_time, child_start1_st);
-        let expected_end1: SystemTime = (child_start1_dt + chrono::Duration::microseconds(50000)).into();
+        let expected_end1: SystemTime =
+            (child_start1_dt + chrono::Duration::microseconds(50000)).into();
         assert_eq!(child1.end_time, expected_end1);
         assert!(matches!(child1.span_kind, SpanKind::Internal));
 
@@ -730,7 +751,8 @@ mod tests {
         assert_eq!(child2.name.as_ref(), "child2");
         // Compare SystemTime directly
         assert_eq!(child2.start_time, child_start2_st);
-        let expected_end2: SystemTime = (child_start2_dt + chrono::Duration::microseconds(75500)).into();
+        let expected_end2: SystemTime =
+            (child_start2_dt + chrono::Duration::microseconds(75500)).into();
         assert_eq!(child2.end_time, expected_end2);
         assert!(matches!(child2.span_kind, SpanKind::Internal));
     }
