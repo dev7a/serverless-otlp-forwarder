@@ -1,0 +1,22 @@
+default:
+  build:
+    parameters:
+      build_in_source: true
+      cached: true
+      parallel: false
+  deploy:
+    parameters:
+      capabilities: CAPABILITY_IAM
+      confirm_changeset: false
+      image_repositories: []
+      parameter_overrides:
+      - KinesisStreamName=rearset-kinesis-relay-otlp-stream
+      region: us-east-1
+      resolve_s3: true
+      s3_prefix: rearset-kinesis-extension
+      stack_name: rearset-kinesis-extension
+  global:
+    parameters:
+      beta_features: true
+      stack_name: otlp-stdout-kinesis-extension
+version: 0.1

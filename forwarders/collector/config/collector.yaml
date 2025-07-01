@@ -1,0 +1,77 @@
+extensions:
+  asmauthextension/default:
+    secret_name: rearset-collector/configmap/secrets
+    region: "us-east-1"
+    header_key: auth
+
+receivers:
+  otlp:
+    protocols:
+      http:
+  
+exporters:
+  otlphttp/default:
+    endpoint: "${secretsmanager:rearset-collector/configmap/secrets#endpoint}"
+    auth:
+      authenticator: asmauthextension/default
+
+connectors:
+  spaneventtolog:
+    include_span_context: true
+    add_level: true
+    log_attributes_from: 
+      - event.attributes 
+      - resource.attributes
+
+processors:
+  batch:
+    timeout: 1s
+
+service:
+  extensions: 
+    - asmauthextension/default
+  pipelines:
+    traces:
+      receivers: 
+        - otlp
+      exporters: 
+        - otlphttp/default
+        - spaneventtolog
+    logs:
+      receivers: 
+        - spaneventtolog
+      exporters: 
+        - otlphttp/default
+    metrics:
+      receivers:
+        - otlp
+      exporters:
+        - otlphttp/default
+  telemetry:
+    resource:
+      service.name: ${env:AWS_LAMBDA_FUNCTION_NAME}/collector
+    metrics:
+      level: normal
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://localhost:4318
+    logs:
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://localhost:4318
+    traces:
+      propagators: 
+        - tracecontext
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://localhost:4318
+

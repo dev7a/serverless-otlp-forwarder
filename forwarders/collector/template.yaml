@@ -1,0 +1,29 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  AWS SAM Template for OTel Collector Layer configuration
+
+Resources:
+  CollectorConfigMap:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-configmap"
+      Description: "Layer for the collector configuration"
+      ContentUri: config/
+    Metadata:
+      BuildMethod: makefile
+
+  CollectorConfigSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${AWS::StackName}/configmap/secrets"
+      Description: "Collector configuration secrets"
+
+
+Outputs:
+  CollectorConfigMapArn:
+    Description: ARN of the Collector Config Map
+    Value: !Ref CollectorConfigMap
+  CollectorConfigSecretsArn:
+    Description: ARN of the Collector Config Secrets
+    Value: !Ref CollectorConfigSecrets

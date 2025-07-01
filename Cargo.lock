@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-otel-lite"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "aws_lambda_events",
  "bon",
@@ -2376,7 +2376,7 @@ dependencies = [
  "opentelemetry-aws",
  "opentelemetry-otlp",
  "opentelemetry_sdk 0.30.0",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.16.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "pin-project",
  "rand 0.9.1",
  "reqwest",
@@ -2532,7 +2532,7 @@ dependencies = [
  "indexmap 2.10.0",
  "indicatif",
  "opentelemetry-proto",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.16.0",
  "prost",
  "regex",
  "reqwest",
@@ -2947,6 +2947,24 @@ dependencies = [
 [[package]]
 name = "otlp-sigv4-client"
 version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68a12d2c7d61470ae79dfe8f391ece8a6268055c7beb281c6705e60eded237e2"
+dependencies = [
+ "async-trait",
+ "aws-credential-types",
+ "aws-sigv4",
+ "aws-smithy-runtime-api",
+ "bytes",
+ "http 1.3.1",
+ "opentelemetry 0.29.1",
+ "opentelemetry-http 0.29.0",
+ "reqwest",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "otlp-sigv4-client"
+version = "0.12.0"
 dependencies = [
  "async-trait",
  "aws-config",
@@ -2963,24 +2981,6 @@ dependencies = [
  "reqwest",
  "thiserror 2.0.12",
  "tokio",
-]
-
-[[package]]
-name = "otlp-sigv4-client"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68a12d2c7d61470ae79dfe8f391ece8a6268055c7beb281c6705e60eded237e2"
-dependencies = [
- "async-trait",
- "aws-credential-types",
- "aws-sigv4",
- "aws-smithy-runtime-api",
- "bytes",
- "http 1.3.1",
- "opentelemetry 0.29.1",
- "opentelemetry-http 0.29.0",
- "reqwest",
- "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -3001,7 +3001,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry-semantic-conventions 0.30.0",
  "opentelemetry_sdk 0.30.0",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.16.0",
  "prost",
  "rand 0.9.1",
  "serde",
@@ -3026,7 +3026,7 @@ dependencies = [
  "opentelemetry 0.30.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk 0.30.0",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.16.0",
  "reqwest",
  "reqwest-middleware",
  "reqwest-tracing",
@@ -3052,7 +3052,7 @@ dependencies = [
  "opentelemetry 0.30.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk 0.30.0",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.16.0",
  "reqwest",
  "reqwest-middleware",
  "reqwest-tracing",
@@ -3082,6 +3082,28 @@ dependencies = [
  "serde",
  "serde_json",
  "serial_test",
+ "tokio",
+]
+
+[[package]]
+name = "otlp-stdout-span-exporter"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5c0117a3bab0f3893f9b956487d2beef9169dcc4cc784d5de34b92968d53235"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "bon",
+ "doc-comment",
+ "flate2",
+ "log",
+ "nix",
+ "opentelemetry 0.30.0",
+ "opentelemetry-proto",
+ "opentelemetry_sdk 0.30.0",
+ "prost",
+ "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -4244,7 +4266,7 @@ dependencies = [
  "lambda-otel-lite",
  "lambda_runtime",
  "opentelemetry-proto",
- "otlp-stdout-span-exporter",
+ "otlp-stdout-span-exporter 0.16.0",
  "prost",
  "reqwest",
  "reqwest-middleware",
@@ -4402,7 +4424,7 @@ dependencies = [
  "opentelemetry-http 0.30.0",
  "opentelemetry-otlp",
  "opentelemetry_sdk 0.30.0",
- "otlp-sigv4-client 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "otlp-sigv4-client 0.11.0",
  "pulldown-cmark",
  "regex",
  "reqwest",

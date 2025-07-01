@@ -1,0 +1,16 @@
+default:
+  build:
+    parameters:
+      cached: true
+      parallel: false
+  deploy:
+    parameters:
+      capabilities: CAPABILITY_IAM
+      confirm_changeset: false
+      resolve_s3: true
+      s3_prefix: rearset-collector
+      stack_name: rearset-collector
+  global:
+    parameters:
+      beta_features: true
+version: 0.1

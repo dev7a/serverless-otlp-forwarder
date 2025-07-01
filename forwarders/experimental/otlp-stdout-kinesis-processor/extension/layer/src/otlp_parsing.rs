@@ -30,29 +30,34 @@ struct OtlpStdoutJsonLine {
 ///
 /// Returns `Ok(None)` if the line isn't valid JSON, the payload is empty,
 /// or no suitable entry span is found. Returns `Err` for decoding/decompression issues.
-pub fn extract_trace_info_from_json_line(
-    line: &str,
-) -> Result<Option<(TraceId, SpanId)>> {
+pub fn extract_trace_info_from_json_line(line: &str) -> Result<Option<(TraceId, SpanId)>> {
     let parsed_line: OtlpStdoutJsonLine = match serde_json::from_str(line) {
         Ok(p) => p,
         Err(_) => return Ok(None),
     };
-    if parsed_line.payload.is_empty() { return Ok(None); }
+    if parsed_line.payload.is_empty() {
+        return Ok(None);
+    }
     let raw_payload = if parsed_line.base64 {
-        general_purpose::STANDARD.decode(&parsed_line.payload).context("Failed to decode base64 payload")?
+        general_purpose::STANDARD
+            .decode(&parsed_line.payload)
+            .context("Failed to decode base64 payload")?
     } else {
         parsed_line.payload.into_bytes()
     };
     let decompressed_payload = if parsed_line.content_encoding == "gzip" {
         let mut decoder = GzDecoder::new(&raw_payload[..]);
         let mut decompressed_data = Vec::new();
-        decoder.read_to_end(&mut decompressed_data).context("Failed to decompress Gzip payload")?;
+        decoder
+            .read_to_end(&mut decompressed_data)
+            .context("Failed to decompress Gzip payload")?;
         decompressed_data
     } else {
         raw_payload
     };
     let trace_request = if parsed_line.content_type == "application/x-protobuf" {
-        ExportTraceServiceRequest::decode(decompressed_payload.as_slice()).context("Failed to decode OTLP protobuf payload")?
+        ExportTraceServiceRequest::decode(decompressed_payload.as_slice())
+            .context("Failed to decode OTLP protobuf payload")?
     } else {
         return Ok(None);
     };
@@ -69,8 +74,8 @@ pub fn extract_trace_info_from_json_line(
                     reason = "no parent_id";
                 }
                 // Check 2: Does it have a remote parent?
-                else if (span.flags & SPAN_FLAGS_CONTEXT_HAS_IS_REMOTE_MASK) != 0 &&
-                        (span.flags & SPAN_FLAGS_CONTEXT_IS_REMOTE_MASK) != 0
+                else if (span.flags & SPAN_FLAGS_CONTEXT_HAS_IS_REMOTE_MASK) != 0
+                    && (span.flags & SPAN_FLAGS_CONTEXT_IS_REMOTE_MASK) != 0
                 {
                     is_entry_span = true;
                     reason = "remote parent flag set";
@@ -94,7 +99,7 @@ pub fn extract_trace_info_from_json_line(
                                 tracing::warn!(%reason, "Found potential entry span with invalid trace_id or span_id, continuing search.");
                                 // Continue searching in case of invalid IDs
                             }
-                        },
+                        }
                         _ => {
                             tracing::warn!(%reason, "Found potential entry span with invalid trace_id or span_id length, continuing search.");
                             // Continue searching if ID conversion fails
@@ -112,12 +117,13 @@ pub fn extract_trace_info_from_json_line(
 #[cfg(test)]
 mod tests {
     use super::*; // Import function to test
-    use opentelemetry_proto::tonic::{ // Import OTLP types for creating test data
-        resource::v1::Resource,
-        trace::v1::{span::SpanKind, ResourceSpans, ScopeSpans, Span, Status, status::StatusCode},
-    };
-    use flate2::{write::GzEncoder, Compression};
     use base64::engine::general_purpose::STANDARD as base64_engine;
+    use flate2::{write::GzEncoder, Compression};
+    use opentelemetry_proto::tonic::{
+        // Import OTLP types for creating test data
+        resource::v1::Resource,
+        trace::v1::{span::SpanKind, status::StatusCode, ResourceSpans, ScopeSpans, Span, Status},
+    };
     use prost::Message;
     use std::io::Write;
 
@@ -178,7 +184,7 @@ mod tests {
         serde_json::to_string(&json_data).unwrap()
     }
 
-    // --- Test Cases --- 
+    // --- Test Cases ---
 
     #[test]
     fn test_valid_root_span() {
@@ -222,7 +228,11 @@ mod tests {
         let json_line = create_test_json_line(request);
 
         let result = extract_trace_info_from_json_line(&json_line);
-        assert!(result.is_ok(), "Expected Ok result, got Err: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Expected Ok result, got Err: {:?}",
+            result.err()
+        );
         let trace_info = result.unwrap();
         assert!(trace_info.is_some(), "Expected Some trace info, got None");
         let (tid, sid) = trace_info.unwrap();
@@ -232,35 +242,40 @@ mod tests {
 
     #[test]
     fn test_no_entry_span_found() {
-        let trace_id_bytes = TraceId::from_hex("cccccccccccccccccccccccccccccccc").unwrap().to_bytes();
+        let trace_id_bytes = TraceId::from_hex("cccccccccccccccccccccccccccccccc")
+            .unwrap()
+            .to_bytes();
         let span1_id_bytes = SpanId::from_hex("aaaaaaaaaaaaaaaa").unwrap().to_bytes();
         let span2_id_bytes = SpanId::from_hex("bbbbbbbbbbbbbbbb").unwrap().to_bytes();
         let parent_id_bytes = SpanId::from_hex("1111111111111111").unwrap().to_bytes();
 
         // Span 1: Has parent, no remote flags
         let span1 = create_proto_span(
-            &trace_id_bytes, 
-            &span1_id_bytes, 
-            Some(&parent_id_bytes), 
-            "internal_span_1", 
-            None // No flags
+            &trace_id_bytes,
+            &span1_id_bytes,
+            Some(&parent_id_bytes),
+            "internal_span_1",
+            None, // No flags
         );
         // Span 2: Has parent, no remote flags
         let span2 = create_proto_span(
-            &trace_id_bytes, 
-            &span2_id_bytes, 
+            &trace_id_bytes,
+            &span2_id_bytes,
             Some(&span1_id_bytes), // Parent is span1
-            "internal_span_2", 
-            None // No flags
+            "internal_span_2",
+            None, // No flags
         );
-        
+
         let request = create_test_request(vec![span1, span2]);
         let json_line = create_test_json_line(request);
 
         let result = extract_trace_info_from_json_line(&json_line);
         assert!(result.is_ok());
         let trace_info = result.unwrap();
-        assert!(trace_info.is_none(), "Expected None when no root or remote parent span exists");
+        assert!(
+            trace_info.is_none(),
+            "Expected None when no root or remote parent span exists"
+        );
     }
 
     #[test]
@@ -271,7 +286,10 @@ mod tests {
         let result = extract_trace_info_from_json_line(&json_line);
         assert!(result.is_ok());
         let trace_info = result.unwrap();
-        assert!(trace_info.is_none(), "Expected None when payload has no spans");
+        assert!(
+            trace_info.is_none(),
+            "Expected None when payload has no spans"
+        );
     }
 
     #[test]
@@ -285,7 +303,10 @@ mod tests {
         let json_line = serde_json::to_string(&json_data).unwrap();
         let result = extract_trace_info_from_json_line(&json_line);
         assert!(result.is_ok());
-        assert!(result.unwrap().is_none(), "Expected None for empty payload string");
+        assert!(
+            result.unwrap().is_none(),
+            "Expected None for empty payload string"
+        );
     }
 
     #[test]
@@ -323,7 +344,10 @@ mod tests {
         let result = extract_trace_info_from_json_line(&json_line);
         assert!(result.is_err(), "Expected Err for invalid gzip");
         // Optionally check error message content
-        assert!(result.unwrap_err().to_string().contains("Failed to decompress Gzip payload"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to decompress Gzip payload"));
     }
 
     #[test]
@@ -343,15 +367,24 @@ mod tests {
         let json_line = serde_json::to_string(&json_data).unwrap();
         let result = extract_trace_info_from_json_line(&json_line);
         assert!(result.is_err(), "Expected Err for invalid protobuf");
-        assert!(result.unwrap_err().to_string().contains("Failed to decode OTLP protobuf payload"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to decode OTLP protobuf payload"));
     }
 
     #[test]
     fn test_invalid_ids_in_entry_span() {
         let trace_id_bytes = TraceId::INVALID.to_bytes(); // All zeros
         let span_id_bytes = SpanId::from_hex("1111111111111111").unwrap().to_bytes();
-        
-        let span = create_proto_span(&trace_id_bytes, &span_id_bytes, None, "invalid_trace_id_span", None);
+
+        let span = create_proto_span(
+            &trace_id_bytes,
+            &span_id_bytes,
+            None,
+            "invalid_trace_id_span",
+            None,
+        );
         let request = create_test_request(vec![span]);
         let json_line = create_test_json_line(request);
 
@@ -359,6 +392,9 @@ mod tests {
         assert!(result.is_ok());
         let trace_info = result.unwrap();
         // Current logic continues search and returns None if only invalid IDs found
-        assert!(trace_info.is_none(), "Expected None when entry span has invalid IDs"); 
+        assert!(
+            trace_info.is_none(),
+            "Expected None when entry span has invalid IDs"
+        );
     }
-} 
+}

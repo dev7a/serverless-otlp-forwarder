@@ -31,9 +31,15 @@ impl Config {
         let kinesis_stream_name = env::var(ENV_VAR_STREAM_NAME).ok();
 
         if kinesis_stream_name.is_none() {
-            tracing::info!("extension: {} not set, disabling Kinesis output. Will write recordsto stdout.", ENV_VAR_STREAM_NAME);
+            tracing::info!(
+                "extension: {} not set, disabling Kinesis output. Will write recordsto stdout.",
+                ENV_VAR_STREAM_NAME
+            );
         } else {
-            tracing::info!("extension: Kinesis stream name set: {}", kinesis_stream_name.as_ref().unwrap());
+            tracing::info!(
+                "extension: Kinesis stream name set: {}",
+                kinesis_stream_name.as_ref().unwrap()
+            );
         }
 
         let buffer_timeout_ms = env::var(ENV_VAR_BUFFER_TIMEOUT_MS)

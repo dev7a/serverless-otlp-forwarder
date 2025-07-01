@@ -3,6 +3,11 @@ Transform: AWS::Serverless-2016-10-31
 
 Description: AWS Lambda Extension that forwards OTLP records to OpenTelemetry collectors
 
+Parameters:
+  KinesisStreamName:
+    Type: String
+    Description: The name of the Kinesis stream to send data to
+
 Resources:
   ExtensionLayerARM64:
     Type: AWS::Serverless::LayerVersion
@@ -52,10 +57,10 @@ Resources:
         Variables:
           OTLP_STDOUT_SPAN_EXPORTER_OUTPUT_TYPE: pipe
           OTEL_LITE_EXTENSION_ENABLE_PLATFORM_TELEMETRY: true
-          OTEL_LITE_EXTENSION_STREAM_NAME: !ImportValue otlp-stdout-kinesis-processor:otlp-stream-name
+          OTEL_LITE_EXTENSION_STREAM_NAME: !Ref KinesisStreamName
       Policies:
         - KinesisCrudPolicy:
-            StreamName: !ImportValue otlp-stdout-kinesis-processor:otlp-stream-name
+            StreamName: !Ref KinesisStreamName
 
 Outputs:
   ExtensionLayerARM64Arn:

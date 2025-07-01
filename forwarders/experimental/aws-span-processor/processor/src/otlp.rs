@@ -266,6 +266,7 @@ pub fn convert_span_to_otlp_protobuf(record: Value) -> Result<Vec<u8>> {
             resource: Some(Resource {
                 attributes: resource_attributes,
                 dropped_attributes_count: 0,
+                entity_refs: Vec::new(),
             }),
             scope_spans: vec![ScopeSpans {
                 scope: Some(
