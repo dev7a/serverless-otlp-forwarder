@@ -6,7 +6,7 @@ members = [
     "forwarders/experimental/aws-span-processor/processor",
     "forwarders/experimental/otlp-stdout-kinesis-processor/processor",
     "forwarders/experimental/otlp-stdout-kinesis-processor/extension/layer",
-    "demo/rust",
+    "demos/todos/rust",
     "cli/startled",
     "cli/startled/testbed/functions/rust/*",
     "cli/livetrace"
@@ -117,7 +117,7 @@ proc-macro2 = "1.0"
 quote = "1.0"
 darling = "0.20"
 syn = { version = "2.0", features = ["full"] }
-ctor = "0.2.5"
+ctor = "0.4.2"
 
 # Testing tools
 mockall = "0.13.1"
