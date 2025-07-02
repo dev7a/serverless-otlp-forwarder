@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" :data-bs-theme="$store.themeSwitcherStore.theme">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TODO App - Bootstrap</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.2/dist/yeti/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css?v={{ style_css_hash }}">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="/app.js?v={{ app_js_hash }}"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container py-4" x-data="todoApp()" x-cloak>
+        <header class="pb-3 mb-4 border-bottom d-flex justify-content-between align-items-center">
+            <h1 class="h3 mb-0">TODO App</h1>
+            <button class="btn btn-sm btn-outline-secondary d-flex align-items-center" @click="$store.themeSwitcherStore.toggleTheme()" type="button" title="Toggle theme">
+                <span x-show="$store.themeSwitcherStore.theme === 'light'" class="me-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-moon-stars-fill" viewBox="0 0 16 16"><path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z"/><path d="M10.794 3.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387a1.734 1.734 0 0 0-1.097 1.097l-.387 1.162a.217.217 0 0 1-.412 0l-.387-1.162A1.734 1.734 0 0 0 9.312 6.118l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387a1.734 1.734 0 0 0 1.097-1.097l.387-1.162zM13.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732l-.774-.258a.145.145 0 0 1 0-.274l.774.258c.346-.115.617-.386.732-.732L13.863.1z"/></svg>
+                </span>
+                <span x-show="$store.themeSwitcherStore.theme === 'dark'" class="me-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-sun-fill" viewBox="0 0 16 16"><path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM8 0a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 0zm0 13a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-1 0v-2A.5.5 0 0 1 8 13zm8-5a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2a.5.5 0 0 1 .5.5zM3 8a.5.5 0 0 1-.5.5h-2a.5.5 0 0 1 0-1h2A.5.5 0 0 1 3 8zm10.657-5.657a.5.5 0 0 1 0 .707l-1.414 1.415a.5.5 0 1 1-.707-.708l1.414-1.414a.5.5 0 0 1 .707 0zm-9.193 9.193a.5.5 0 0 1 0 .707L3.05 13.657a.5.5 0 0 1-.707-.707l1.414-1.414a.5.5 0 0 1 .707 0zm9.193 2.121a.5.5 0 0 1-.707 0l-1.414-1.414a.5.5 0 0 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707zM4.464 4.465a.5.5 0 0 1-.707 0L2.343 3.05a.5.5 0 1 1 .707-.707l1.414 1.414a.5.5 0 0 1 0 .707z"/></svg>
+                </span>
+                 <span x-text="$store.themeSwitcherStore.theme === 'light' ? 'Dark' : 'Light'"></span>
+            </button>
+        </header>
+
+        <div class="row mb-4 g-3">
+            <div class="col-md-4"><div class="card text-center h-100 shadow-sm"><div class="card-body"><h5 class="card-title text-body-secondary">Total</h5><p class="card-text fs-2 fw-bold" x-text="total_todos"></p></div></div></div>
+            <div class="col-md-4"><div class="card text-center h-100 shadow-sm"><div class="card-body"><h5 class="card-title text-body-secondary">Completed</h5><p class="card-text fs-2 fw-bold text-success" x-text="completed_todos"></p></div></div></div>
+            <div class="col-md-4"><div class="card text-center h-100 shadow-sm"><div class="card-body"><h5 class="card-title text-body-secondary">Pending</h5><p class="card-text fs-2 fw-bold text-warning" x-text="pending_todos"></p></div></div></div>
+        </div>
+
+        <div x-show="errorMessage" x-cloak class="alert alert-danger alert-dismissible fade show" role="alert">
+            <div><strong>Error:</strong> <span x-text="errorMessage"></span></div>
+            <p class="small mt-1 mb-2">The backend API may occasionally return errors (5% probability) for testing purposes.</p>
+            <div x-show="errorDetails" class="mt-2 p-2 bg-danger-subtle border border-danger-subtle rounded small">
+                <pre class="mb-0" style="white-space: pre-wrap; word-wrap: break-word;" x-text="errorDetails"></pre>
+            </div>
+            <button type="button" class="btn btn-sm btn-warning mt-2" @click="retryLastOperation">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-clockwise me-1" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>Retry
+            </button>
+            <button type="button" class="btn-close" @click="clearError()" aria-label="Close"></button>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <div class="btn-group" role="group" aria-label="Filter todos">
+                <button type="button" class="btn btn-outline-primary" @click="filterTodos('all')" :class="{ 'active': activeFilter === 'all' }">All</button>
+                <button type="button" class="btn btn-outline-primary" @click="filterTodos('active')" :class="{ 'active': activeFilter === 'active' }">Active</button>
+                <button type="button" class="btn btn-outline-primary" @click="filterTodos('completed')" :class="{ 'active': activeFilter === 'completed' }">Completed</button>
+            </div>
+            <button type="button" class="btn btn-outline-danger" @click="clearCompleted">Clear Completed</button>
+        </div>
+
+        <form @submit.prevent="addTodo()" class="mb-4">
+            <div class="input-group">
+                <input type="text" x-model="newTodo" class="form-control form-control-lg" placeholder="Add a new task..." required>
+                <button class="btn btn-primary btn-lg" type="submit">Add</button>
+            </div>
+        </form>
+
+        <ul class="list-group mb-4" x-show="todos && todos.length > 0">
+            <template x-for="todo_item in todos" :key="todo_item.id">
+                <li class="list-group-item d-flex justify-content-between align-items-center todo-item-alpine"
+                    :class="{ 'list-group-item-light opacity-75 completed': todo_item.completed }" :data-id="todo_item.id">
+                    <div class="form-check">
+                        <input class="form-check-input me-2" type="checkbox" :checked="todo_item.completed" :id="'todo-'+todo_item.id" @change="updateTodo(todo_item.id, $event.target.checked)">
+                        <label class="form-check-label todo-text-alpine" :for="'todo-'+todo_item.id" x-text="todo_item.todo"></label>
+                    </div>
+                    <div class="todo-meta text-end ms-3">
+                        <span class="badge rounded-pill text-bg-info me-2" x-text="todo_item.category || 'general'"></span>
+                        <div class="priority-dots d-inline-block me-2" title="Priority">
+                            <template x-for="i in 5"><span class="priority-dot" :class="{'active': i <= todo_item.priority}"></span></template>
+                        </div>
+                        <small class="text-body-secondary" x-text="formatDate(todo_item.created_at)"></small>
+                    </div>
+                </li>
+            </template>
+        </ul>
+        <div x-show="!todos || todos.length === 0" class="text-center p-5 border rounded bg-body-tertiary" x-cloak>
+            <p class="lead">No tasks yet!</p>
+            <p>Add a new task to get started or try a different filter.</p>
+        </div>
+        
+        <!-- Pagination -->
+        <nav x-show="totalPages > 1" aria-label="Todo list pagination" class="d-flex justify-content-center mt-4">
+            <ul class="pagination">
+                <!-- Previous page -->
+                <li class="page-item" :class="{ 'disabled': currentPage === 1 }">
+                    <a class="page-link" href="#" @click.prevent="goToPage(currentPage - 1)" aria-label="Previous">
+                        <span aria-hidden="true">&laquo;</span>
+                    </a>
+                </li>
+                
+                <!-- Page numbers -->
+                <template x-for="page in getPageNumbers()" :key="page">
+                    <li x-show="page !== '...'" class="page-item" :class="{ 'active': page === currentPage }">
+                        <a class="page-link" href="#" @click.prevent="goToPage(page)" x-text="page"></a>
+                    </li>
+                    <li x-show="page === '...'" class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                </template>
+                
+                <!-- Next page -->
+                <li class="page-item" :class="{ 'disabled': currentPage === totalPages }">
+                    <a class="page-link" href="#" @click.prevent="goToPage(currentPage + 1)" aria-label="Next">
+                        <span aria-hidden="true">&raquo;</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        
+        <!-- Pagination info -->
+        <div x-show="totalPages > 1" class="text-center text-body-secondary small my-2">
+            Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span> 
+            (showing <span x-text="todos.length"></span> of <span x-text="totalItems"></span> tasks)
+        </div>
+        
+        <footer class="pt-3 mt-4 text-body-secondary border-top text-center">
+            Serverless TODO App &copy; <span x-text="new Date().getFullYear()"></span>
+            <br class="d-sm-none">
+            <small>Powered by AWS Lambda & OpenTelemetry.</small>
+            <a href="javascript:void(0)" @click="$store.themeSwitcherStore.toggleTheme()" class="link-secondary text-decoration-none d-block mt-2">
+                Toggle Theme (<span x-text="$store.themeSwitcherStore.theme === 'light' ? 'Dark' : 'Light'"></span> Mode)
+            </a>
+        </footer>
+    </div>
+
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1100">
+        <!-- Toasts will be injected here by Alpine.js -->
+    </div>
+    <div x-show="$store.uiStore.isLoading" class="loading-overlay" x-cloak>
+        <div class="spinner-border text-primary" style="width:3rem;height:3rem;" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

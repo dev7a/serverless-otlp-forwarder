@@ -1,0 +1,38 @@
+[package]
+name = "todo-app"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aws-config.workspace = true
+aws-sdk-dynamodb.workspace = true
+serde_dynamo.workspace = true
+aws_lambda_events.workspace = true
+base64.workspace = true
+chrono.workspace = true
+lambda_runtime.workspace = true
+lambda-otel-lite.workspace = true
+lambda-lw-http-router.workspace = true
+opentelemetry.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tera.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+include_dir = "0.7.4"
+hex.workspace = true
+uuid.workspace = true
+# ctor.workspace = true
+
+[[bin]]
+name = "todo_backend"
+path = "src/backend/main.rs"
+
+[[bin]]
+name = "todo_frontend"
+path = "src/frontend/main.rs"

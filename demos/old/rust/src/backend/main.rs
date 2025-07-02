@@ -5,12 +5,12 @@ use std::sync::Arc;
 
 use aws_lambda_events::event::apigw::ApiGatewayProxyRequest;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
+use demo_lambda::spanevent::{span_event, Level};
 use lambda_lw_http_router::{define_router, route};
 use lambda_otel_lite::{init_telemetry, OtelTracingLayer, TelemetryConfig};
 use lambda_runtime::Error as LambdaError;
 use lambda_runtime::{tower::ServiceBuilder, LambdaEvent, Runtime};
 use rand::Rng; // Import Rng trait for random number generation
-use demo_lambda::spanevent::{span_event, Level};
 mod db;
 
 #[derive(Clone, Debug)]

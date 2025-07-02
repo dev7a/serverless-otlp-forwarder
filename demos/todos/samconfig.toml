@@ -1,0 +1,10 @@
+version = 0.1
+[default.global.parameters]
+beta_features = "true"
+stack_name = "todo"
+
+[default.deploy.parameters]
+resolve_s3 = true
+s3_prefix = "todo"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"

@@ -1,0 +1,407 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AWS SAM template for the serverless-otlp-forwarder TODO application.
+
+Globals:
+  Function:
+    MemorySize: 128
+    Timeout: 30
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+    Tracing: Active
+
+Resources:
+  # SQS Queue - Message Queue for TODOs
+  # Receives TODOs from the fetcher and provides them to the processor
+  TodosQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${AWS::StackName}-queue
+      VisibilityTimeout: 180
+      MessageRetentionPeriod: 345600  # 4 days
+
+  # API Gateway - REST API for the backend
+  # Hosts the endpoints for the TODO API
+  BackendApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub ${AWS::StackName}-api
+      StageName: prod
+      TracingEnabled: true
+      EndpointConfiguration:
+        Type: REGIONAL
+
+  # Lambda Function - TODO Storage API
+  # Backend service that handles CRUD operations for TODOs in DynamoDB
+  TodoStorageAPIFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: todo_backend
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-storage-api
+      CodeUri: ./rust
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - arm64
+      Description: Backend API for TODO storage with CRUD operations
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref Table
+      Environment:
+        Variables:
+          OTEL_SERVICE_NAME: !Sub ${AWS::StackName}-storage-api
+          TABLE_NAME: !Sub ${AWS::StackName}-table
+          ERROR_PROBABILITY: 0.05
+          EXPIRATION_TIME: 3600
+      Events:
+        PostTodo:
+          Type: Api
+          Properties:
+            Path: /todos
+            Method: post
+            RestApiId: !Ref BackendApi
+        GetTodo:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: get
+            RestApiId: !Ref BackendApi
+        ListTodos:
+          Type: Api
+          Properties:
+            Path: /todos
+            Method: get
+            RestApiId: !Ref BackendApi
+        UpdateTodo:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: put
+            RestApiId: !Ref BackendApi
+        DeleteTodo:
+          Type: Api
+          Properties:
+            Path: /todos/{id}
+            Method: delete
+            RestApiId: !Ref BackendApi
+
+  # Lambda Function - TODO UI
+  # Frontend web UI for viewing and interacting with TODOs
+  # Secured with IAM auth and accessed via CloudFront
+  TodoUIFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: todo_frontend
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-ui
+      CodeUri: ./rust
+      Handler: bootstrap
+      Runtime: provided.al2023
+      Architectures:
+        - arm64
+      Description: User interface for viewing and interacting with TODOs
+      FunctionUrlConfig:
+        AuthType: NONE
+        # AuthType: AWS_IAM
+      Environment:
+        Variables:
+          OTEL_SERVICE_NAME: !Sub ${AWS::StackName}-ui
+          TARGET_URL: !Sub https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod
+
+  # Lambda Function - TODO Processor
+  # Processes TODOs from SQS queue and forwards them to the backend API
+  TodoProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-processor
+      CodeUri: ./python/processor
+      Handler: main.lambda_handler
+      Runtime: python3.13
+      Architectures:
+        - arm64
+      Description: Processes TODOs from SQS and forwards them to the backend API
+      Environment:
+        Variables:
+          OTEL_SERVICE_NAME: !Sub ${AWS::StackName}-processor
+          TARGET_URL: !Sub https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/todos
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt TodosQueue.Arn
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 10
+      Policies:
+        - Version: 2012-10-17
+          Statement:
+            Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+            Resource: "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:*"
+
+  # Lambda Function - TODO Fetcher
+  # Periodically fetches TODOs and sends them to the SQS queue
+  TodoFetcherFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2022"
+        Format: "cjs"
+        Platform: "node"
+        EntryPoints:
+          - index.ts
+          - init.js
+        External:
+          - "@aws-sdk/client-sqs"
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-fetcher
+      CodeUri: ./node
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Architectures:
+        - arm64
+      Description: Periodically fetches random TODOs and sends them to SQS
+      Environment:
+        Variables:
+          OTEL_SERVICE_NAME: !Sub ${AWS::StackName}-fetcher
+          TARGET_URL: !Sub https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/todos
+          TODOS_QUEUE_URL: !Ref TodosQueue
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt TodosQueue.QueueName
+      Events:
+        ScheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(5 minutes)
+            Description: Trigger the Lambda function every 5 minutes
+            Enabled: true
+
+  # DynamoDB Table - TODO Storage
+  # Stores TODOs with pk as the hash key and includes TTL support
+  Table:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${AWS::StackName}-table
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expiry
+        Enabled: true
+
+  # CloudFront Origin Access Control - TODO UI Security
+  # Controls access to the Lambda function URL from CloudFront
+  TodoUIOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-ui-oac
+        Description: OAC for TODO UI Lambda Function URL
+        OriginAccessControlOriginType: lambda
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Lambda Permission - CloudFront Access
+  # Grants CloudFront permission to invoke the TODO UI Lambda function URL
+  TodoUIFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !GetAtt TodoUIFunction.Arn
+      Principal: cloudfront.amazonaws.com
+      SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${TodoUICloudfrontDistribution}
+      FunctionUrlAuthType: AWS_IAM
+
+  # CloudFront Distribution - TODO UI CDN
+  # Low-cost CDN for serving the TODO UI globally with improved performance
+  # Uses OAC to securely access the Lambda function URL
+  TodoUICloudfrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !Select
+              - 2
+              - !Split
+                - /
+                - !GetAtt TodoUIFunctionUrl.FunctionUrl
+            Id: TodoUIFunctionOrigin
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+            OriginAccessControlId: !GetAtt TodoUIOAC.Id
+          - DomainName: !Sub ${BackendApi}.execute-api.${AWS::Region}.amazonaws.com
+            Id: BackendApiOrigin
+            OriginPath: /prod
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: TodoUIFunctionOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: !Ref TodoUICachePolicy
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewerExceptHostHeader policy
+          AllowedMethods: # Only allow GET, HEAD, OPTIONS for the frontend served at /
+            - HEAD
+            - GET
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          LambdaFunctionAssociations:
+            - EventType: origin-request
+              LambdaFunctionARN: !Ref EdgeFunction.Version
+            - EventType: origin-response
+              LambdaFunctionARN: !Ref EdgeResponseFunction.Version
+        CacheBehaviors:
+          - PathPattern: /todos* # Route all /todos and /todos/* to the Backend API
+            TargetOriginId: BackendApiOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods:
+              - HEAD
+              - GET
+              - POST
+              - DELETE
+              - PUT
+              - OPTIONS
+              - PATCH
+            CachedMethods: # Typically only GET and HEAD are cached for APIs
+              - GET
+              - HEAD
+            LambdaFunctionAssociations:
+              - EventType: origin-request
+                LambdaFunctionARN: !Ref EdgeFunction.Version
+              - EventType: origin-response
+                LambdaFunctionARN: !Ref EdgeResponseFunction.Version
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewerExceptHostHeader policy
+        PriceClass: PriceClass_100 # Lowest cost option (North America and Europe only)
+        HttpVersion: http2
+        IPV6Enabled: true
+
+  # Lambda Function - Edge Function for CloudFront
+  # Simple passthrough function that can be extended for custom logic
+  # Lambda@Edge must be deployed in us-east-1 region
+  EdgeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-edge-origin-request
+      CodeUri: ./python/edge
+      Handler: request.handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64  # Lambda@Edge only supports x86_64 architecture
+      Description: Lambda@Edge function for CloudFront request processing
+      MemorySize: 128
+      Timeout: 5
+      AutoPublishAlias: live
+      Role: !GetAtt EdgeFunctionRole.Arn
+
+  # Lambda Function - Edge Response Function for CloudFront
+  # Handles origin responses and propagates trace context
+  # Lambda@Edge must be deployed in us-east-1 region
+  EdgeResponseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ${AWS::StackName}-edge-origin-response
+      CodeUri: ./python/edge
+      Handler: response.handler
+      Runtime: python3.13
+      Architectures:
+        - x86_64  # Lambda@Edge only supports x86_64 architecture
+      Description: Lambda@Edge function for CloudFront response processing
+      MemorySize: 128
+      Timeout: 5
+      AutoPublishAlias: live
+      Role: !GetAtt EdgeFunctionRole.Arn
+
+  # IAM Role - Lambda@Edge Execution Role
+  # Special role that allows Lambda@Edge to be executed by CloudFront
+  EdgeFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+                - edgelambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # CloudFront Cache Policy - TODO UI
+  # Custom cache policy that respects origin Cache-Control headers but excludes Host header
+  TodoUICachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub ${AWS::StackName}-lambda-function-url-cache-policy
+        Comment: Cache policy that respects origin Cache-Control headers but excludes
+          Host header
+        DefaultTTL: 0
+        MinTTL: 0
+        MaxTTL: 31536000  # 1 year
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Origin
+              - X-HTTP-Method-Override
+              - X-HTTP-Method
+              - X-Method-Override
+            # Host header explicitly excluded
+          CookiesConfig:
+            CookieBehavior: all # Or "none" depending on your needs
+          QueryStringsConfig:
+            QueryStringBehavior: all # Or "none" depending on your needs
+
+# Outputs - Resource information exposed after deployment 
+Outputs:
+  TodoUIFunctionArn:
+    Description: ARN of the TODO UI function
+    Value: !GetAtt TodoUIFunction.Arn
+  TodoStorageAPIFunctionArn:
+    Description: ARN of the TODO Storage API function
+    Value: !GetAtt TodoStorageAPIFunction.Arn
+  TodoProcessorFunctionArn:
+    Description: ARN of the TODO Processor function
+    Value: !GetAtt TodoProcessorFunction.Arn
+  BackendApiUrl:
+    Description: URL of the TODO API
+    Value: !Sub https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/todos
+  TodoUIFunctionUrl:
+    Description: URL of the TODO UI function
+    Value: !GetAtt TodoUIFunctionUrl.FunctionUrl
+  CloudFrontUrl:
+    Description: CloudFront URL for accessing the TODO UI
+    Value: !Sub https://${TodoUICloudfrontDistribution.DomainName}
+  EdgeFunctionArn:
+    Description: ARN of the Lambda@Edge function
+    Value: !GetAtt EdgeFunction.Arn
+  EdgeFunctionVersionArn:
+    Description: ARN of the Lambda@Edge function version
+    Value: !Ref EdgeFunction.Version
+  EdgeResponseFunctionArn:
+    Description: ARN of the Lambda@Edge response function
+    Value: !GetAtt EdgeResponseFunction.Arn
+  EdgeResponseFunctionVersionArn:
+    Description: ARN of the Lambda@Edge response function version
+    Value: !Ref EdgeResponseFunction.Version

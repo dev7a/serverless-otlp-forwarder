@@ -1,0 +1,7 @@
+requests>=2.32.4
+opentelemetry-instrumentation-requests>=0.55b1
+opentelemetry-api>=1.34.1
+lambda-otel-lite>=0.15.0
+opentelemetry-instrumentation-boto3sqs>=0.55b1
+opentelemetry-propagator-aws-xray>=1.0.2
+

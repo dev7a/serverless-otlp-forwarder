@@ -1,0 +1,55 @@
+/* CSS styles will go here */
+body {
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+}
+
+[x-cloak] {
+    display: none !important;
+}
+
+.priority-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 2px;
+}
+
+html[data-bs-theme="light"] .priority-dot {
+    background-color: #e9ecef;
+}
+
+html[data-bs-theme="light"] .priority-dot.active {
+    background-color: #ffc107;
+}
+
+html[data-bs-theme="dark"] .priority-dot {
+    background-color: #495057;
+}
+
+html[data-bs-theme="dark"] .priority-dot.active {
+    background-color: #ffca2c;
+}
+
+.todo-item-alpine.completed .todo-text-alpine {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1060;
+}
+
+/* Styles for the TODO application */
