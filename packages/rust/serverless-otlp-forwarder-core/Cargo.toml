@@ -31,8 +31,8 @@ base64 = { workspace = true }
 flate2 = { workspace = true }
 bytes = "1.0"
 
-# OTLP Exporter needs to be pinned to 0.16.0 for publishing to crates.io
-otlp-stdout-span-exporter = { version = "0.16.0" }
+# OTLP Exporter needs to be pinned to current version for publishing to crates.io
+otlp-stdout-span-exporter = { workspace = true }
 
 async-trait = "0.1"
 

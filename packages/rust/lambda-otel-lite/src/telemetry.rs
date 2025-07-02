@@ -1034,7 +1034,7 @@ mod tests {
 
         // Verify X-Ray trace ID format:
         // 1. Convert to hex string for easier checking
-        let trace_id_hex = format!("{:032x}", trace_id);
+        let trace_id_hex = format!("{trace_id:032x}");
 
         // 2. The first 8 characters of X-Ray trace IDs represent a timestamp in seconds
         // This is the key characteristic of X-Ray trace IDs that we can verify

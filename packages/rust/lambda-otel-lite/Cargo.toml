@@ -14,8 +14,8 @@ categories = ["development-tools::debugging", "web-programming::http-server"]
 exclude = ["examples/"]
 
 [dependencies]
-# pinned to specific version for publishing
-otlp-stdout-span-exporter = "0.16.0"
+# pin to specific version for publishing
+otlp-stdout-span-exporter = { workspace = true }
 
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true
