@@ -88,10 +88,10 @@ where
                     let param_name = segment[1..segment.len() - 1].trim_end_matches('+');
                     if segment.ends_with("+}") {
                         // Greedy match for proxy+ style parameters
-                        format!("(?P<{}>.*)", param_name)
+                        format!("(?P<{param_name}>.*)")
                     } else {
                         // Normal parameter match (non-greedy, no slashes)
-                        format!("(?P<{}>[^/]+)", param_name)
+                        format!("(?P<{param_name}>[^/]+)")
                     }
                 } else {
                     regex::escape(segment) // Escape regular segments
@@ -100,7 +100,7 @@ where
             .collect::<Vec<_>>()
             .join("/");
 
-        let regex = Regex::new(&format!("^{}$", regex_pattern)).expect("Invalid route pattern");
+        let regex = Regex::new(&format!("^{regex_pattern}$")).expect("Invalid route pattern");
 
         let handler = Arc::new(move |ctx| {
             Box::pin(handler(ctx)) as Pin<Box<dyn Future<Output = Result<JsonValue, Error>> + Send>>
@@ -120,7 +120,7 @@ where
             // - Leave status unset for 1xx-4xx
             // - Set error only for 5xx
             let otel_status = if (500..600).contains(&(status as u16)) {
-                Status::error(format!("Server error {}", status))
+                Status::error(format!("Server error {status}"))
             } else {
                 Status::Unset
             };

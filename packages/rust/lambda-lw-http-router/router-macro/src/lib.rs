@@ -39,7 +39,7 @@ fn default_method() -> String {
 }
 
 fn default_module_name() -> String {
-    "__lambda_lw_http_router_core_default_router".to_string()
+    String::new() // Default to empty, indicating types are in the current/crate scope
 }
 
 /// Defines a route handler for Lambda HTTP events.
@@ -118,7 +118,6 @@ fn impl_router(args: Vec<NestedMeta>, input: ItemFn) -> proc_macro2::TokenStream
     let fn_name = &input.sig.ident;
     let method = &route_args.method;
     let path = &route_args.path;
-    let module = format_ident!("{}", route_args.module);
     let register_fn = format_ident!("__register_{}", fn_name);
 
     // Validate function signature
@@ -164,10 +163,17 @@ fn impl_router(args: Vec<NestedMeta>, input: ItemFn) -> proc_macro2::TokenStream
         }
     }
 
+    let (state_path, event_path) = if route_args.module.is_empty() {
+        (quote! { crate::State }, quote! { crate::Event })
+    } else {
+        let mod_ident = format_ident!("{}", route_args.module);
+        (quote! { #mod_ident::State }, quote! { #mod_ident::Event })
+    };
+
     let output = quote! {
-        #[::lambda_lw_http_router::ctor::ctor]
+        #[::lambda_lw_http_router::ctor_attribute(crate_path = ::lambda_lw_http_router::ctor)]
         fn #register_fn() {
-            ::lambda_lw_http_router::register_route::<#module::State, #module::Event>(
+            ::lambda_lw_http_router::register_route::<#state_path, #event_path>(
                 #method,
                 #path,
                 |ctx| Box::pin(async move {
@@ -175,7 +181,6 @@ fn impl_router(args: Vec<NestedMeta>, input: ItemFn) -> proc_macro2::TokenStream
                 })
             );
         }
-
         #input
     };
     output

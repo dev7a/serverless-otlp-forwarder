@@ -22,6 +22,7 @@
 //! for more information on how to use the router.
 
 pub use ctor;
+pub use ctor::ctor as ctor_attribute;
 mod routable_http_event;
 mod route_context;
 mod router;

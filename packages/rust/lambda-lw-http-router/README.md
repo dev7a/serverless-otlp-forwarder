@@ -21,7 +21,7 @@ Run `cargo add lambda-lw-http-router` to add the crate to your project or add th
 
 ```toml
 [dependencies]
-lambda-lw-http-router = "0.1.1"
+lambda-lw-http-router = "0.4.0"
 ```
 
 ## Quick Start

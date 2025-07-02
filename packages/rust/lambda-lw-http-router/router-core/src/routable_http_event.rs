@@ -194,7 +194,7 @@ pub trait RoutableHttpEvent: Send + Sync + Clone + 'static {
                             .map(String::from)
                             .collect();
                         span.set_attribute(
-                            format!("http.request.header.{}", name),
+                            format!("http.request.header.{name}"),
                             header_values.join(","),
                         );
                     }
@@ -215,7 +215,7 @@ pub trait RoutableHttpEvent: Send + Sync + Clone + 'static {
                             .map(String::from)
                             .collect();
                         span.set_attribute(
-                            format!("http.response.header.{}", name),
+                            format!("http.response.header.{name}"),
                             header_values.join(","),
                         );
                     }
@@ -308,7 +308,7 @@ impl RoutableHttpEvent for ApiGatewayProxyRequest {
             Some(
                 self.query_string_parameters
                     .iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
+                    .map(|(k, v)| format!("{k}={v}"))
                     .collect::<Vec<_>>()
                     .join("&"),
             )
@@ -340,7 +340,7 @@ impl RoutableHttpEvent for AlbTargetGroupRequest {
             Some(
                 self.query_string_parameters
                     .iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
+                    .map(|(k, v)| format!("{k}={v}"))
                     .collect::<Vec<_>>()
                     .join("&"),
             )
@@ -384,7 +384,7 @@ impl RoutableHttpEvent for ApiGatewayWebsocketProxyRequest {
             Some(
                 self.query_string_parameters
                     .iter()
-                    .map(|(k, v)| format!("{}={}", k, v))
+                    .map(|(k, v)| format!("{k}={v}"))
                     .collect::<Vec<_>>()
                     .join("&"),
             )
