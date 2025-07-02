@@ -29,8 +29,7 @@ pipeline_settings:
   inputs:
     collector_extension_arn: 
       type: string
-      # default: ${{ env.OTEL_COLLECTOR_EXTENSION || 'arn:aws:lambda:us-east-1:902605180476:layer:ocel-arm64-minimal-forwarder-0_127_0-beta:1' }}
-      default: ${{ env.OTEL_COLLECTOR_EXTENSION || 'arn:aws:lambda:us-east-1:961341555982:layer:ocel-arm64-minimal-forwarder-0_128_0-local:8' }}
+      default: ${{ env.OTEL_COLLECTOR_EXTENSION || 'arn:aws:lambda:us-east-1:902605180476:layer:ocel-arm64-minimal-forwarder-0_128_0-beta:2' }}
       
     enable_kinesis_relay:
       type: boolean

@@ -8,8 +8,8 @@ default:
       capabilities: CAPABILITY_IAM
       confirm_changeset: false
       parameter_overrides:
-      - CollectorExtensionArn=arn:aws:lambda:us-east-1:961341555982:layer:ocel-arm64-minimal-forwarder-0_128_0-local:8
-      - CollectorConfigMapArn=arn:aws:lambda:us-east-1:961341555982:layer:rearset-collector-configmap:16
+      - CollectorExtensionArn=arn:aws:lambda:us-east-1:902605180476:layer:ocel-arm64-minimal-forwarder-0_128_0-beta:2
+      - CollectorConfigMapArn=arn:aws:lambda:us-east-1:961341555982:layer:rearset-collector-configmap:17
       - VpcId=""
       - SubnetIds=""
       - RouteAllLogs=true

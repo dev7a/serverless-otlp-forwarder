@@ -20,8 +20,12 @@ connectors:
     include_span_context: true
     add_level: true
     log_attributes_from: 
-      - event.attributes 
-      - resource.attributes
+      - event.attributes                        # copy event.attributes to log attributes
+      - resource.attributes                     # copy resource.attributes to log attributes
+    attribute_mappings:
+      body: "event.body"                        # Use event.body attribute for log body
+      severity_number: "event.severity_number"  # Use event.severity_number for log severity
+      severity_text: "event.severity_text"      # Use event.severity_text for log severity text
 
 processors:
   batch:
