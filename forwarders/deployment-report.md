@@ -101,3 +101,43 @@ It also includes an experimental Kinesis extension to send data to the Kinesis R
 | ProcessorFunctionArn | arn:aws:lambda:us-east-1:************:function:rearset-signals-relay |
 
 ---
+
+## Pipeline Summary
+# Rearset Pipeline - Deployment Complete
+
+Your OpenTelemetry infrastructure has been successfully deployed with the following components:
+
+
+### 1. Configure Collector Secrets
+**Critical:** Update the collector configuration secret in AWS Secrets Manager:
+
+```bash
+aws secretsmanager update-secret \
+    --secret-id arn:aws:secretsmanager:us-east-1:************:secret:rearset-collector/configmap/secrets-RgR8wl \
+    --secret-string '{
+      "name": "Production OTel Collector",
+      "endpoint": "https://your-otel-collector.example.com",
+      "auth": "api-key=your-api-key,x-custom-header=your-value"
+    }'
+```
+
+**Alternative:** Use the [AWS Secrets Manager Console](https://console.aws.amazon.com/secretsmanager/) to update the secret manually.
+
+### 2. Verify Network Configuration
+- **VPC ID**: `No VPC`
+- **Subnets**: `No subnets`
+- **Extension Layer**: `arn:aws:lambda:us-east-1:************:layer:ocel-arm64-minimal-forwarder-0_128_0-beta:2`
+
+## Testing Your Deployment
+
+### CloudWatch Logs Relay
+1. Check CloudWatch Logs for any log groups being processed
+2. Verify logs are being forwarded to your OTel Collector endpoint
+
+
+## Important Notes
+
+- **Secrets Configuration**: The pipeline will not function until you configure the collector secrets
+- **Network Access**: Ensure your Lambda functions can reach the OTel Collector endpoint
+- **Cost Monitoring**: Monitor Kinesis and Lambda costs, especially in high-throughput scenarios
+- **Security**: Review IAM roles and VPC configurations for your security requirements

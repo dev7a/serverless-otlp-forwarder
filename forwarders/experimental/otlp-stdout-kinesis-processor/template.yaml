@@ -126,15 +126,6 @@ Resources:
         - !Ref "AWS::NoValue"
         - StreamMode: !Ref KinesisStreamMode
 
-  CollectorConfig:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      LayerName: !Sub "${AWS::StackName}-collector-config"
-      Description: "Layer for the collector configuration"
-      ContentUri: config/
-    Metadata:
-      BuildMethod: makefile
-
 Outputs:
   ProcessorFunctionArn:
     Description: ARN of the Kinesis processor Lambda function

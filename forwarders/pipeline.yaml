@@ -33,30 +33,15 @@ pipeline_settings:
       
     enable_kinesis_relay:
       type: boolean
-      default: "true"
+      default: true
     enable_signals_relay:
       type: boolean
-      default: "true"
+      default: true
 
 stacks:
   - id: collector
     description: "Create a collector configuration layer for the OTel Collector"
     dir: collector/
-    run: |
-      echo 'Deployment complete. 
-      Ensure that the collector configuration secrets are created in AWS Secrets Manager:
-      Run the following command to update the secret:
-         
-      aws secretsmanager update-secret \
-          --secret-id ${{ stacks.collector.outputs.CollectorConfigSecretsArn }} \
-          --secret-string '"'"'{
-            "name": "a friendly name for your collector",
-            "endpoint": "https://your-otel-collector.example.com",
-            "auth": "some-header=some-value,another-header=another-value"
-          }'"'"'
-
-      Or head to the AWS Secrets Manager console and update the secret manually.
-      '  
 
   - id: logs-relay
     description: "Processes CloudWatch Logs and relays them to the OTel Collector"
@@ -89,7 +74,12 @@ stacks:
       KinesisStreamName: ${{ stacks.kinesis-relay.outputs.KinesisStreamName }}
     run: |
       echo "invoking example function"
-      curl -q ${{ stacks.kinesis-extension.outputs.ExampleFunctionUrl }}
+      if curl -qs ${{ stacks.kinesis-extension.outputs.ExampleFunctionUrl }}
+      then
+        echo "\nExample function invoked successfully"
+      else
+        echo "\nFailed to invoke example function at ${{ stacks.kinesis-extension.outputs.ExampleFunctionUrl }}"
+      fi
 
   - id: signals-relay
     if: ${{ inputs.enable_signals_relay }}
@@ -100,3 +90,44 @@ stacks:
       CollectorConfigMapArn: ${{ stacks.collector.outputs.CollectorConfigMapArn }}
       VpcId: ${{ env.VPC_ID }}
       SubnetIds: ${{ env.SUBNET_IDS }}
+
+summary: |
+  # Rearset Pipeline - Deployment Complete
+  
+  Your OpenTelemetry infrastructure has been successfully deployed with the following components:
+  
+  
+  ### 1. Configure Collector Secrets
+  **Critical:** Update the collector configuration secret in AWS Secrets Manager:
+  
+  ```bash
+  aws secretsmanager update-secret \
+      --secret-id ${{ stacks.collector.outputs.CollectorConfigSecretsArn }} \
+      --secret-string '{
+        "name": "Production OTel Collector",
+        "endpoint": "https://your-otel-collector.example.com",
+        "auth": "api-key=your-api-key,x-custom-header=your-value"
+      }'
+  ```
+  
+  **Alternative:** Use the [AWS Secrets Manager Console](https://console.aws.amazon.com/secretsmanager/) to update the secret manually.
+  
+  ### 2. Verify Network Configuration
+  - **VPC ID**: `${{ env.VPC_ID || "No VPC" }}`
+  - **Subnets**: `${{ env.SUBNET_IDS || "No subnets" }}`
+  - **Extension Layer**: `${{ inputs.collector_extension_arn }}`
+  
+  ## Testing Your Deployment
+  
+  ### CloudWatch Logs Relay
+  1. Check CloudWatch Logs for any log groups being processed
+  2. Verify logs are being forwarded to your OTel Collector endpoint
+  
+  
+  ## Important Notes
+  
+  - **Secrets Configuration**: The pipeline will not function until you configure the collector secrets
+  - **Network Access**: Ensure your Lambda functions can reach the OTel Collector endpoint
+  - **Cost Monitoring**: Monitor Kinesis and Lambda costs, especially in high-throughput scenarios
+  - **Security**: Review IAM roles and VPC configurations for your security requirements
+  
