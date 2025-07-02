@@ -14,8 +14,8 @@ categories = ["web-programming::http-server", "network-programming"]
 
 [dependencies]
 # pin versions to publish
-lambda-lw-http-router-core.workspace = { version = "0.4.0" }
-lambda-lw-http-router-macro.workspace = { version = "0.4.0" } 
+lambda-lw-http-router-core = { version = "0.4.0" }
+lambda-lw-http-router-macro = { version = "0.4.0" } 
 ctor.workspace = true
 
 [dev-dependencies]
