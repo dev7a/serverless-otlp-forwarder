@@ -57,6 +57,6 @@ html[data-bs-theme="dark"] .priority-dot.active {
 /* Mobile media query */
 @media (max-width: 768px) {
     .form-check-input {
-        margin-left: -2rem;
+        margin-left: -2rem !important;
     }
 }
