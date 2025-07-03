@@ -93,7 +93,7 @@ fn dynamodb_json_to_api_json(mut item_map: JsonMap<String, Value>) -> Value {
 }
 
 /// Write a TODO item to DynamoDB
-#[instrument(skip_all)]
+#[instrument(name = "database/storage/write", skip_all)]
 pub async fn write_item(
     id: &str,
     timestamp: &str,
@@ -161,7 +161,7 @@ pub async fn write_item(
 }
 
 /// Read a TODO item from DynamoDB
-#[instrument(skip(state))]
+#[instrument(name = "database/storage/read", skip(state))]
 pub async fn read_item(
     id: &str,
     state: &AppState,
@@ -214,7 +214,7 @@ pub async fn read_item(
 }
 
 /// Unified function to list TODO items with optional filtering and pagination.
-#[instrument(skip(state), fields(
+#[instrument(name = "database/storage/list", skip(state), fields(
     filter.completed = field::Empty,
     pagination.limit = field::Empty,
     pagination.offset = field::Empty
@@ -347,7 +347,7 @@ pub async fn list_items(
 }
 
 /// Update a TODO item in DynamoDB
-#[instrument(skip(state))]
+#[instrument(name = "database/storage/update", skip(state))]
 pub async fn update_item(
     id: &str,
     todo_payload: &Value, // Expected to be like {"completed": true/false}
@@ -484,7 +484,7 @@ pub async fn update_item(
 }
 
 /// Delete a TODO item from DynamoDB
-#[instrument(skip(state))]
+#[instrument(name = "database/storage/delete", skip(state))]
 pub async fn delete_item(id: &str, state: &AppState) -> Result<bool, Box<dyn std::error::Error>> {
     let span = tracing::info_span!(
         "dynamodb_operation",

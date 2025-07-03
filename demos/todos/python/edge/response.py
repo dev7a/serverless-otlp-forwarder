@@ -83,7 +83,7 @@ def cloudfront_origin_response_extractor(event, context):
     return SpanAttributes(
         trigger=TriggerType.HTTP,
         attributes=attributes,
-        span_name="cloudfront-edge-response",
+        span_name="edge/response/transform",
         kind=SpanKind.SERVER,
         carrier=carrier
     )

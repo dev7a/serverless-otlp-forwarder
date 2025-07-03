@@ -75,7 +75,7 @@ fn create_router() -> Router {
     RouterBuilder::from_registry().build()
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "frontend/serve/page", skip_all)]
 #[route(method = "GET", path = "/")]
 async fn home_page(ctx: RouteContext) -> Result<Value, LambdaError> {
     let mut tera_ctx = TeraContext::new();
@@ -121,7 +121,7 @@ async fn home_page(ctx: RouteContext) -> Result<Value, LambdaError> {
     Ok(html_response(200, rendered))
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "frontend/serve/css", skip_all)]
 #[route(method = "GET", path = "/style.css")]
 async fn handle_css(_ctx: RouteContext) -> Result<Value, LambdaError> {
     match STATIC_DIR.get_file("css/style.css") {
@@ -141,7 +141,7 @@ async fn handle_css(_ctx: RouteContext) -> Result<Value, LambdaError> {
     }
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "frontend/serve/js", skip_all)]
 #[route(method = "GET", path = "/app.js")]
 async fn handle_js(_ctx: RouteContext) -> Result<Value, LambdaError> {
     match STATIC_DIR.get_file("js/app.js") {
@@ -161,7 +161,7 @@ async fn handle_js(_ctx: RouteContext) -> Result<Value, LambdaError> {
     }
 }
 
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "frontend/serve/favicon", skip_all)]
 #[route(method = "GET", path = "/favicon.ico")]
 async fn handle_favicon(_ctx: RouteContext) -> Result<Value, LambdaError> {
     match STATIC_DIR.get_file("favicon.ico") {

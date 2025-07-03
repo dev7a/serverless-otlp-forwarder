@@ -53,3 +53,10 @@ html[data-bs-theme="dark"] .priority-dot.active {
 }
 
 /* Styles for the TODO application */
+
+/* Mobile media query */
+@media (max-width: 768px) {
+    .form-check-input {
+        margin-left: -2rem;
+    }
+}

@@ -143,7 +143,7 @@ def start_sqs_message_span(tracer: Tracer, record: dict) -> Iterator[Span]:
     queue_name = queue_arn.split(":")[-1] if queue_arn else None
 
     span = tracer.start_span(
-        f"{queue_name} process",
+        "consumer/processor/process-message",
         kind=SpanKind.CONSUMER,
         links=links,
         attributes={

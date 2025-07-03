@@ -29,7 +29,7 @@ target_url = os.environ.get("TARGET_URL")
 # Categories for TODOs
 CATEGORIES = ["work", "personal", "study", "health", "home", "general"]
 
-@tracer.start_as_current_span("analyze-todo")
+@tracer.start_as_current_span("consumer/processor/analyze")
 def analyze_todo_with_bedrock(todo_text: str) -> Dict[str, Any]:
     """
     Use Amazon Bedrock to analyze a todo item and determine its category and priority.
@@ -113,7 +113,7 @@ def analyze_todo_with_bedrock(todo_text: str) -> Dict[str, Any]:
         }
 
 
-@tracer.start_as_current_span("save-todo")
+@tracer.start_as_current_span("consumer/processor/save")
 def save_todo(todo: dict) -> dict:
     """
     Save a TODO to the backend service.

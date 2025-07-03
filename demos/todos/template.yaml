@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: AWS SAM template for the serverless-otlp-forwarder TODO application.
+Description: AWS SAM template for the serverless-otlp-forwarder Todos application.
 
 Globals:
   Function:
@@ -20,27 +20,26 @@ Resources:
     Properties:
       QueueName: !Sub ${AWS::StackName}-queue
       VisibilityTimeout: 180
-      MessageRetentionPeriod: 345600  # 4 days
 
   # API Gateway - REST API for the backend
-  # Hosts the endpoints for the TODO API
+  # Hosts the endpoints for the Todos API
   BackendApi:
     Type: AWS::Serverless::Api
     Properties:
-      Name: !Sub ${AWS::StackName}-api
+      Name: !Sub ${AWS::StackName}-apigateway
       StageName: prod
       TracingEnabled: true
       EndpointConfiguration:
         Type: REGIONAL
 
-  # Lambda Function - TODO Storage API
+  # Lambda Function - Todos Storage API
   # Backend service that handles CRUD operations for TODOs in DynamoDB
   TodoStorageAPIFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
       BuildProperties:
-        Binary: todo_backend
+        Binary: todos_backend
     Properties:
       FunctionName: !Sub ${AWS::StackName}-storage-api
       CodeUri: ./rust
@@ -48,7 +47,7 @@ Resources:
       Runtime: provided.al2023
       Architectures:
         - arm64
-      Description: Backend API for TODO storage with CRUD operations
+      Description: Backend API for Todos storage with CRUD operations
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref Table
@@ -59,13 +58,13 @@ Resources:
           ERROR_PROBABILITY: 0.05
           EXPIRATION_TIME: 3600
       Events:
-        PostTodo:
+        PostTodos:
           Type: Api
           Properties:
             Path: /todos
             Method: post
             RestApiId: !Ref BackendApi
-        GetTodo:
+        GetTodos:
           Type: Api
           Properties:
             Path: /todos/{id}
@@ -77,28 +76,28 @@ Resources:
             Path: /todos
             Method: get
             RestApiId: !Ref BackendApi
-        UpdateTodo:
+        UpdateTodos:
           Type: Api
           Properties:
             Path: /todos/{id}
             Method: put
             RestApiId: !Ref BackendApi
-        DeleteTodo:
+        DeleteTodos:
           Type: Api
           Properties:
             Path: /todos/{id}
             Method: delete
             RestApiId: !Ref BackendApi
 
-  # Lambda Function - TODO UI
+  # Lambda Function - Todos UI
   # Frontend web UI for viewing and interacting with TODOs
   # Secured with IAM auth and accessed via CloudFront
-  TodoUIFunction:
+  TodosUIFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: rust-cargolambda
       BuildProperties:
-        Binary: todo_frontend
+        Binary: todos_frontend
     Properties:
       FunctionName: !Sub ${AWS::StackName}-ui
       CodeUri: ./rust
@@ -115,9 +114,9 @@ Resources:
           OTEL_SERVICE_NAME: !Sub ${AWS::StackName}-ui
           TARGET_URL: !Sub https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod
 
-  # Lambda Function - TODO Processor
+  # Lambda Function - Todos Processor
   # Processes TODOs from SQS queue and forwards them to the backend API
-  TodoProcessorFunction:
+  TodosProcessorFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ${AWS::StackName}-processor
@@ -146,9 +145,9 @@ Resources:
               - bedrock:InvokeModel
             Resource: "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-micro-v1:*"
 
-  # Lambda Function - TODO Fetcher
+  # Lambda Function - Todos Fetcher
   # Periodically fetches TODOs and sends them to the SQS queue
-  TodoFetcherFunction:
+  TodosFetcherFunction:
     Type: AWS::Serverless::Function
     Metadata:
       BuildMethod: esbuild
@@ -186,7 +185,7 @@ Resources:
             Description: Trigger the Lambda function every 5 minutes
             Enabled: true
 
-  # DynamoDB Table - TODO Storage
+  # DynamoDB Table - Todos Storage
   # Stores TODOs with pk as the hash key and includes TTL support
   Table:
     Type: AWS::DynamoDB::Table
@@ -203,33 +202,33 @@ Resources:
         AttributeName: expiry
         Enabled: true
 
-  # CloudFront Origin Access Control - TODO UI Security
+  # CloudFront Origin Access Control - Todos UI Security
   # Controls access to the Lambda function URL from CloudFront
-  TodoUIOAC:
+  TodosUIOAC:
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
         Name: !Sub ${AWS::StackName}-ui-oac
-        Description: OAC for TODO UI Lambda Function URL
+        Description: OAC for Todos UI Lambda Function URL
         OriginAccessControlOriginType: lambda
         SigningBehavior: always
         SigningProtocol: sigv4
 
   # Lambda Permission - CloudFront Access
-  # Grants CloudFront permission to invoke the TODO UI Lambda function URL
-  TodoUIFunctionPermission:
+  # Grants CloudFront permission to invoke the Todos UI Lambda function URL
+  TodosUIFunctionPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunctionUrl
-      FunctionName: !GetAtt TodoUIFunction.Arn
+      FunctionName: !GetAtt TodosUIFunction.Arn
       Principal: cloudfront.amazonaws.com
-      SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${TodoUICloudfrontDistribution}
+      SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${TodosUICloudfrontDistribution}
       FunctionUrlAuthType: AWS_IAM
 
-  # CloudFront Distribution - TODO UI CDN
-  # Low-cost CDN for serving the TODO UI globally with improved performance
+  # CloudFront Distribution - Todos UI CDN
+  # Low-cost CDN for serving the Todos UI globally with improved performance
   # Uses OAC to securely access the Lambda function URL
-  TodoUICloudfrontDistribution:
+  TodosUICloudfrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
@@ -238,21 +237,27 @@ Resources:
               - 2
               - !Split
                 - /
-                - !GetAtt TodoUIFunctionUrl.FunctionUrl
-            Id: TodoUIFunctionOrigin
+                - !GetAtt TodosUIFunctionUrl.FunctionUrl
+            Id: TodosUIFunctionOrigin
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
-            OriginAccessControlId: !GetAtt TodoUIOAC.Id
+            OriginAccessControlId: !GetAtt TodosUIOAC.Id
+            OriginShield:
+              Enabled: true
+              OriginShieldRegion: us-east-1
           - DomainName: !Sub ${BackendApi}.execute-api.${AWS::Region}.amazonaws.com
             Id: BackendApiOrigin
             OriginPath: /prod
             CustomOriginConfig:
               OriginProtocolPolicy: https-only
+            OriginShield:
+              Enabled: true
+              OriginShieldRegion: us-east-1
         Enabled: true
         DefaultCacheBehavior:
-          TargetOriginId: TodoUIFunctionOrigin
+          TargetOriginId: TodosUIFunctionOrigin
           ViewerProtocolPolicy: redirect-to-https
-          CachePolicyId: !Ref TodoUICachePolicy
+          CachePolicyId: !Ref TodosUICachePolicy
           OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac # AllViewerExceptHostHeader policy
           AllowedMethods: # Only allow GET, HEAD, OPTIONS for the frontend served at /
             - HEAD
@@ -345,9 +350,9 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
-  # CloudFront Cache Policy - TODO UI
+  # CloudFront Cache Policy - Todos UI
   # Custom cache policy that respects origin Cache-Control headers but excludes Host header
-  TodoUICachePolicy:
+  TodosUICachePolicy:
     Type: AWS::CloudFront::CachePolicy
     Properties:
       CachePolicyConfig:
@@ -375,24 +380,24 @@ Resources:
 
 # Outputs - Resource information exposed after deployment 
 Outputs:
-  TodoUIFunctionArn:
-    Description: ARN of the TODO UI function
-    Value: !GetAtt TodoUIFunction.Arn
+  TodosUIFunctionArn:
+    Description: ARN of the Todos UI function
+    Value: !GetAtt TodosUIFunction.Arn
   TodoStorageAPIFunctionArn:
-    Description: ARN of the TODO Storage API function
+    Description: ARN of the Todos Storage API function
     Value: !GetAtt TodoStorageAPIFunction.Arn
-  TodoProcessorFunctionArn:
-    Description: ARN of the TODO Processor function
-    Value: !GetAtt TodoProcessorFunction.Arn
+  TodosProcessorFunctionArn:
+    Description: ARN of the Todos Processor function
+    Value: !GetAtt TodosProcessorFunction.Arn
   BackendApiUrl:
-    Description: URL of the TODO API
+    Description: URL of the Todos API
     Value: !Sub https://${BackendApi}.execute-api.${AWS::Region}.amazonaws.com/prod/todos
-  TodoUIFunctionUrl:
-    Description: URL of the TODO UI function
-    Value: !GetAtt TodoUIFunctionUrl.FunctionUrl
+  TodosUIFunctionUrl:
+    Description: URL of the Todos UI function
+    Value: !GetAtt TodosUIFunctionUrl.FunctionUrl
   CloudFrontUrl:
-    Description: CloudFront URL for accessing the TODO UI
-    Value: !Sub https://${TodoUICloudfrontDistribution.DomainName}
+    Description: CloudFront URL for accessing the Todos UI
+    Value: !Sub https://${TodosUICloudfrontDistribution.DomainName}
   EdgeFunctionArn:
     Description: ARN of the Lambda@Edge function
     Value: !GetAtt EdgeFunction.Arn

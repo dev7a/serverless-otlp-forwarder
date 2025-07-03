@@ -52,7 +52,7 @@ const queueUrl = process.env.TODOS_QUEUE_URL;
  * Fetches random TODOs from dummyjson API within a trace span.
  */
 async function getRandomTodos(count: number = 5): Promise<TodoResponse[]> {
-  return tracer.startActiveSpan('todo-fetcher.get-todos', async (span: Span) => {
+  return tracer.startActiveSpan('producer/fetcher/fetch', async (span: Span) => {
     try {
       // We'll fetch multiple random TODOs in a single call
       const response: AxiosResponse<TodoResponse[]> = await axios.get(`https://dummyjson.com/todos/random/${count}`);
@@ -86,7 +86,7 @@ async function getRandomTodos(count: number = 5): Promise<TodoResponse[]> {
  * Sends a TODO object to SQS within a trace span.
  */
 async function sendTodo(todo: TodoResponse): Promise<void> {
-  return tracer.startActiveSpan('todo-fetcher.send-todos', async (span: Span) => {
+  return tracer.startActiveSpan('producer/fetcher/send', async (span: Span) => {
     try {
       const command = new SendMessageCommand({
         QueueUrl: queueUrl,
@@ -126,14 +126,22 @@ async function sendTodo(todo: TodoResponse): Promise<void> {
  */
 async function processTodo(todo: TodoResponse, todoNumber: number, totalTodos: number): Promise<TodoResponse> {
 
-  return tracer.startActiveSpan('process-todo', async (span: Span) => {
-    // Add processing metadata to the current span
-    span.setAttribute('todo.id', todo.id);
-    span.setAttribute('todo.number', todoNumber);
-    span.setAttribute('todo.total', totalTodos);
+  return tracer.startActiveSpan('producer/fetcher/process', async (span: Span) => {
+    try {
+      // Add processing metadata to the current span
+      span.setAttribute('todo.id', todo.id);
+      span.setAttribute('todo.number', todoNumber);
+      span.setAttribute('todo.total', totalTodos);
 
-    await sendTodo(todo);
-    return todo;
+      await sendTodo(todo);
+      return todo;
+    } catch (error: unknown) {
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error instanceof Error ? error.message : 'Unknown error processing TODO') });
+      throw error;
+    } finally {
+      span.end();
+    }
   });
 }
 
@@ -141,16 +149,24 @@ async function processTodo(todo: TodoResponse, todoNumber: number, totalTodos: n
  * Processes a batch of TODOs.
  */
 async function processBatch(batchSize: number): Promise<TodoResponse[]> {
-  return tracer.startActiveSpan('process-batch', async (span: Span) => {
-    const todos = await getRandomTodos(batchSize);
-    const processedTodos: TodoResponse[] = [];
-    
-    for (let i = 0; i < todos.length; i++) {
-      const processedTodo = await processTodo(todos[i], i + 1, todos.length);
-      processedTodos.push(processedTodo);
+  return tracer.startActiveSpan('producer/fetcher/batch', async (span: Span) => {
+    try {
+      const todos = await getRandomTodos(batchSize);
+      const processedTodos: TodoResponse[] = [];
+      
+      for (let i = 0; i < todos.length; i++) {
+        const processedTodo = await processTodo(todos[i], i + 1, todos.length);
+        processedTodos.push(processedTodo);
+      }
+
+      return processedTodos;
+    } catch (error: unknown) {
+      span.recordException(error as Error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error instanceof Error ? error.message : 'Unknown error processing batch') });
+      throw error;
+    } finally {
+      span.end();
     }
-  
-    return processedTodos;
   });
 }
 
@@ -163,7 +179,7 @@ const timerExtractor = (event: ScheduledEvent, context: Context): SpanAttributes
   return {
     ...baseAttributes,
     trigger: TriggerType.Timer,
-    spanName: 'fetch-todos',
+    spanName: 'producer/fetcher/schedule',
     attributes: {
       ...baseAttributes.attributes,
       'aws.cloudwatch.event.id': event.id,

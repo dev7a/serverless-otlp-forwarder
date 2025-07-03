@@ -30,9 +30,9 @@ uuid.workspace = true
 # ctor.workspace = true
 
 [[bin]]
-name = "todo_backend"
+name = "todos_backend"
 path = "src/backend/main.rs"
 
 [[bin]]
-name = "todo_frontend"
+name = "todos_frontend"
 path = "src/frontend/main.rs"

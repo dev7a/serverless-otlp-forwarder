@@ -27,7 +27,7 @@ fn create_router() -> Router {
 }
 
 // Handler for creating a new TODO
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "api/backend/create", skip_all)]
 #[route(method = "POST", path = "/todos")]
 async fn create_todo_handler(ctx: RouteContext) -> Result<Value, LambdaError> {
     // Maybe inject an error
@@ -90,7 +90,7 @@ async fn create_todo_handler(ctx: RouteContext) -> Result<Value, LambdaError> {
 }
 
 // Handler for getting a TODO by ID
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "api/backend/get", skip_all)]
 #[route(method = "GET", path = "/todos/{id}")]
 async fn get_todo(ctx: RouteContext) -> Result<Value, LambdaError> {
     if should_inject_error(&ctx.state) {
@@ -138,7 +138,7 @@ async fn get_todo(ctx: RouteContext) -> Result<Value, LambdaError> {
 }
 
 // Handler for listing all TODOs
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "api/backend/list", skip_all)]
 #[route(method = "GET", path = "/todos")]
 async fn list_todo(ctx: RouteContext) -> Result<Value, LambdaError> {
     if should_inject_error(&ctx.state) {
@@ -211,7 +211,7 @@ async fn list_todo(ctx: RouteContext) -> Result<Value, LambdaError> {
 }
 
 // Handler for updating a TODO
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "api/backend/update", skip_all)]
 #[route(method = "PUT", path = "/todos/{id}")]
 async fn update_todo(ctx: RouteContext) -> Result<Value, LambdaError> {
     if should_inject_error(&ctx.state) {
@@ -266,7 +266,7 @@ async fn update_todo(ctx: RouteContext) -> Result<Value, LambdaError> {
 }
 
 // Handler for deleting a TODO
-#[tracing::instrument(skip_all)]
+#[tracing::instrument(name = "api/backend/delete", skip_all)]
 #[route(method = "DELETE", path = "/todos/{id}")]
 async fn delete_todo(ctx: RouteContext) -> Result<Value, LambdaError> {
     if should_inject_error(&ctx.state) {
