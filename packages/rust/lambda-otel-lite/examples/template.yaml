@@ -55,6 +55,26 @@ Resources:
         Variables:
           LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
 
+  CustomProcessorExample:
+    # instrumented with a custom span processor
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: rust-cargolambda
+      BuildProperties:
+        Binary: custom-processor-example
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-custom-processor-example'
+      CodeUri: ./
+      Handler: bootstrap
+      Tracing: Disabled
+      Description: 'Demo Custom Processor Example Lambda function to showcase OpenTelemetry integration'
+      FunctionUrlConfig:
+        AuthType: NONE
+      Environment:
+        Variables:
+          LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE: async
+          OTEL_PROPAGATORS: tracecontext
+
 Outputs:
   HandlerExampleFunctionUrl:
     Description: 'URL of the Demo Handler Example Lambda function'
@@ -62,3 +82,6 @@ Outputs:
   TowerExampleFunctionUrl:
     Description: 'URL of the Demo Tower Example Lambda function'
     Value: !GetAtt TowerExampleUrl.FunctionUrl
+  CustomProcessorExampleFunctionUrl:
+    Description: 'URL of the Demo Custom Processor Example Lambda function'
+    Value: !GetAtt CustomProcessorExampleUrl.FunctionUrl
