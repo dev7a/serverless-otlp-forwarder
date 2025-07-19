@@ -416,6 +416,124 @@ opentelemetry-aws = "0.16.0"
 
 The XrayIdGenerator formats trace IDs in a way that's compatible with AWS X-Ray, using a timestamp in the first part of the trace ID. This allows X-Ray to display and organize traces correctly, and enables correlation between OpenTelemetry traces and traces from other services that use X-Ray.
 
+### Custom configuration with sampler:
+
+```rust, no_run
+use lambda_otel_lite::{init_telemetry, TelemetryConfig};
+use opentelemetry_sdk::trace::Sampler;
+use lambda_runtime::Error;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let config = TelemetryConfig::builder()
+        // Sample all traces
+        .with_sampler(Sampler::AlwaysOn)
+        .build();
+
+    let (_, completion_handler) = init_telemetry(config).await?;
+
+    // Use the tracer and completion handler as usual
+    
+    Ok(())
+}
+```
+
+You can also use named samplers for convenience:
+
+```rust, no_run
+use lambda_otel_lite::{init_telemetry, TelemetryConfig};
+use lambda_runtime::Error;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let config = TelemetryConfig::builder()
+        // Sample all traces
+        .with_named_sampler("always_on")
+        // Or sample 10% of traces
+        // .with_named_sampler("trace_id_ratio")
+        .build();
+
+    let (_, completion_handler) = init_telemetry(config).await?;
+
+    // Use the tracer and completion handler as usual
+    
+    Ok(())
+}
+```
+
+Available named samplers:
+- `"always_on"`: Sample all traces
+- `"always_off"`: Sample no traces
+- `"trace_id_ratio"`: Sample based on trace ID ratio (uses `OTEL_TRACES_SAMPLER_ARG` environment variable for ratio)
+- `"parent_based"`: Sample based on parent span sampling decision
+
+You can also implement custom samplers by implementing the `ShouldSample` trait:
+
+```rust, no_run
+use lambda_otel_lite::{init_telemetry, TelemetryConfig};
+use opentelemetry::{
+    trace::{SamplingDecision, SamplingResult, SpanKind, TraceId, TraceContextExt},
+    Context, KeyValue,
+};
+use opentelemetry_sdk::trace::{Sampler, ShouldSample};
+use lambda_runtime::Error;
+
+#[derive(Debug, Clone)]
+struct CustomLambdaSampler {
+    base_sampler: Box<dyn ShouldSample>,
+}
+
+impl ShouldSample for CustomLambdaSampler {
+    fn should_sample(
+        &self,
+        parent_context: Option<&Context>,
+        trace_id: TraceId,
+        name: &str,
+        kind: &SpanKind,
+        attributes: &[KeyValue],
+        links: &[opentelemetry::trace::Link],
+    ) -> SamplingResult {
+        // Simple example: sample all spans with "error" in the name
+        if name.contains("error") {
+            return SamplingResult {
+                decision: SamplingDecision::RecordAndSample,
+                attributes: vec![KeyValue::new("sampler.type", "error_sampler")],
+                trace_state: opentelemetry::trace::TraceState::default(),
+            };
+        }
+
+        // Use base sampler for normal spans
+        self.base_sampler.should_sample(
+            parent_context,
+            trace_id,
+            name,
+            kind,
+            attributes,
+            links,
+        )
+    }
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let config = TelemetryConfig::builder()
+        .with_sampler(CustomLambdaSampler {
+            base_sampler: Box::new(Sampler::TraceIdRatioBased(0.1)),
+        })
+        .build();
+
+    let (_, completion_handler) = init_telemetry(config).await?;
+
+    // Use the tracer and completion handler as usual
+    
+    Ok(())
+}
+```
+
+Samplers can also be configured via environment variables:
+- `OTEL_TRACES_SAMPLER`: Sampler type (`always_on`, `always_off`, `trace_id_ratio`, `parent_based`)
+- `OTEL_TRACES_SAMPLER_ARG`: Sampler argument (e.g., ratio for `trace_id_ratio` sampler)
+
 ### Using the Tower Layer
 You can "wrap" your handler in the `OtelTracingLayer` using the `ServiceBuilder` from the `tower` crate:
 
@@ -970,6 +1088,15 @@ Resource attributes from environment variables are only included in the resource
 ### Export Configuration
 
 - `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL`: GZIP compression level (0-9, default: 6)
+
+### Sampling Configuration
+
+- `OTEL_TRACES_SAMPLER`: Sampler type for OpenTelemetry traces
+  - `"always_on"`: Sample all traces (default)
+  - `"always_off"`: Sample no traces
+  - `"trace_id_ratio"`: Sample based on trace ID ratio
+  - `"parent_based"`: Sample based on parent span sampling decision
+- `OTEL_TRACES_SAMPLER_ARG`: Sampler argument (e.g., ratio for `trace_id_ratio` sampler, default: 1.0)
 
 ### Logging and Debug
 - `RUST_LOG` or `AWS_LAMBDA_LOG_LEVEL`: Configure log levels

@@ -103,7 +103,9 @@ use opentelemetry::{global, global::set_tracer_provider, trace::TracerProvider a
 use opentelemetry_aws::trace::XrayPropagator;
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
-    trace::{IdGenerator, SdkTracerProvider, SpanProcessor, TracerProviderBuilder},
+    trace::{
+        IdGenerator, Sampler, SdkTracerProvider, ShouldSample, SpanProcessor, TracerProviderBuilder,
+    },
     Resource,
 };
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
@@ -423,6 +425,82 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
         self.provider_builder = self.provider_builder.with_id_generator(id_generator);
         self
     }
+
+    /// Add a custom sampler to the tracer provider.
+    ///
+    /// This method allows setting a custom sampler for trace sampling decisions.
+    /// Common samplers include AlwaysOn, AlwaysOff, TraceIdRatioBased, and ParentBased.
+    ///
+    /// # Arguments
+    ///
+    /// * `sampler` - A sampler implementing the [`Sampler`] trait
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lambda_otel_lite::TelemetryConfig;
+    /// use opentelemetry_sdk::trace::Sampler;
+    ///
+    /// // Sample all traces
+    /// let config = TelemetryConfig::builder()
+    ///     .with_sampler(Sampler::AlwaysOn)
+    ///     .build();
+    ///
+    /// // Sample 10% of traces
+    /// let config = TelemetryConfig::builder()
+    ///     .with_sampler(Sampler::TraceIdRatioBased(0.1))
+    ///     .build();
+    /// ```
+    pub fn with_sampler<T>(mut self, sampler: T) -> Self
+    where
+        T: ShouldSample + 'static,
+    {
+        self.provider_builder = self.provider_builder.with_sampler(sampler);
+        self
+    }
+
+    /// Add a named sampler to the tracer provider.
+    ///
+    /// This method provides convenient access to common sampler types.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The name of the sampler to use
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use lambda_otel_lite::TelemetryConfig;
+    ///
+    /// // Sample all traces
+    /// let config = TelemetryConfig::builder()
+    ///     .with_named_sampler("always_on")
+    ///     .build();
+    ///
+    /// // Sample 10% of traces
+    /// let config = TelemetryConfig::builder()
+    ///     .with_named_sampler("trace_id_ratio")
+    ///     .build();
+    /// ```
+    pub fn with_named_sampler(self, name: &str) -> Self {
+        match name {
+            "always_on" => self.with_sampler(Sampler::AlwaysOn),
+            "always_off" => self.with_sampler(Sampler::AlwaysOff),
+            "trace_id_ratio" => {
+                // Could support ratio via environment variable
+                let ratio = std::env::var(constants::env_vars::TRACES_SAMPLER_ARG)
+                    .unwrap_or_else(|_| "1.0".to_string())
+                    .parse()
+                    .unwrap_or(1.0);
+                self.with_sampler(Sampler::TraceIdRatioBased(ratio))
+            }
+            "parent_based" => self.with_sampler(Sampler::ParentBased(Box::new(Sampler::AlwaysOn))),
+            _ => {
+                LOGGER.warn(format!("Unknown sampler: {name}, using default sampler"));
+                self
+            }
+        }
+    }
 }
 
 /// Initialize OpenTelemetry for AWS Lambda with the provided configuration.
@@ -580,6 +658,35 @@ pub async fn init_telemetry(
 
     let composite_propagator = TextMapCompositePropagator::new(config.propagators);
     global::set_text_map_propagator(composite_propagator);
+
+    // Configure sampler from environment variable if set
+    if let Ok(env_sampler) = env::var(constants::env_vars::TRACES_SAMPLER) {
+        match env_sampler.to_lowercase().as_str() {
+            "always_on" => {
+                config.provider_builder = config.provider_builder.with_sampler(Sampler::AlwaysOn)
+            }
+            "always_off" => {
+                config.provider_builder = config.provider_builder.with_sampler(Sampler::AlwaysOff)
+            }
+            "trace_id_ratio" => {
+                let ratio = env::var(constants::env_vars::TRACES_SAMPLER_ARG)
+                    .unwrap_or_else(|_| "1.0".to_string())
+                    .parse()
+                    .unwrap_or(1.0);
+                config.provider_builder = config
+                    .provider_builder
+                    .with_sampler(Sampler::TraceIdRatioBased(ratio));
+            }
+            "parent_based" => {
+                config.provider_builder = config
+                    .provider_builder
+                    .with_sampler(Sampler::ParentBased(Box::new(Sampler::AlwaysOn)));
+            }
+            _ => LOGGER.warn(format!(
+                "Unknown sampler: {env_sampler}, using default sampler"
+            )),
+        }
+    }
 
     // Add default span processor if none was added
     if !config.has_processor {
@@ -1056,6 +1163,93 @@ mod tests {
         // Verify remaining 24 characters are not all zeros (random part)
         let random_part = &trace_id_hex[8..];
         assert_ne!(random_part, "000000000000000000000000");
+    }
+
+    #[test]
+    #[sealed_test]
+    fn test_telemetry_config_with_sampler() {
+        cleanup_env();
+
+        // Test with AlwaysOn sampler
+        let config = TelemetryConfig::builder()
+            .with_sampler(Sampler::AlwaysOn)
+            .build();
+
+        // Test with TraceIdRatioBased sampler
+        let config = TelemetryConfig::builder()
+            .with_sampler(Sampler::TraceIdRatioBased(0.1))
+            .build();
+
+        // Test with ParentBased sampler
+        let config = TelemetryConfig::builder()
+            .with_sampler(Sampler::ParentBased(Box::new(Sampler::AlwaysOn)))
+            .build();
+
+        // Verify configurations don't panic
+        let _provider = config.provider_builder.build();
+    }
+
+    #[test]
+    #[sealed_test]
+    fn test_telemetry_config_with_named_sampler() {
+        cleanup_env();
+
+        // Test with named samplers
+        let config = TelemetryConfig::builder()
+            .with_named_sampler("always_on")
+            .build();
+
+        let config = TelemetryConfig::builder()
+            .with_named_sampler("always_off")
+            .build();
+
+        let config = TelemetryConfig::builder()
+            .with_named_sampler("trace_id_ratio")
+            .build();
+
+        let config = TelemetryConfig::builder()
+            .with_named_sampler("parent_based")
+            .build();
+
+        // Test with unknown sampler (should warn but not panic)
+        let config = TelemetryConfig::builder()
+            .with_named_sampler("unknown_sampler")
+            .build();
+
+        // Verify configurations don't panic
+        let _provider = config.provider_builder.build();
+    }
+
+    #[test]
+    #[sealed_test]
+    fn test_telemetry_config_env_sampler() {
+        cleanup_env();
+
+        // Test environment variable sampler configuration
+        env::set_var(constants::env_vars::TRACES_SAMPLER, "always_on");
+        let config = TelemetryConfig::builder().build();
+        let _provider = config.provider_builder.build();
+
+        env::set_var(constants::env_vars::TRACES_SAMPLER, "always_off");
+        let config = TelemetryConfig::builder().build();
+        let _provider = config.provider_builder.build();
+
+        env::set_var(constants::env_vars::TRACES_SAMPLER, "trace_id_ratio");
+        env::set_var(constants::env_vars::TRACES_SAMPLER_ARG, "0.5");
+        let config = TelemetryConfig::builder().build();
+        let _provider = config.provider_builder.build();
+
+        env::set_var(constants::env_vars::TRACES_SAMPLER, "parent_based");
+        let config = TelemetryConfig::builder().build();
+        let _provider = config.provider_builder.build();
+
+        // Test with unknown sampler
+        env::set_var(constants::env_vars::TRACES_SAMPLER, "unknown_sampler");
+        let config = TelemetryConfig::builder().build();
+        let _provider = config.provider_builder.build();
+
+        // Clean up
+        cleanup_env();
     }
 }
 

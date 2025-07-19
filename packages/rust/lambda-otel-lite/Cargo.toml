@@ -1,6 +1,6 @@
 [package]
 name = "lambda-otel-lite"
-version = "0.16.0"
+version = "0.17.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -15,7 +15,7 @@ exclude = ["examples/"]
 
 [dependencies]
 # pin to specific version for publishing
-otlp-stdout-span-exporter = { workspace = true }
+otlp-stdout-span-exporter = "0.16.0"
 
 opentelemetry.workspace = true
 opentelemetry_sdk.workspace = true

@@ -30,6 +30,13 @@ pub mod env_vars {
     /// Controls whether to enable the fmt layer for logging regardless of code settings.
     /// Set to "true" to force enable logging output.
     pub const ENABLE_FMT_LAYER: &str = "LAMBDA_TRACING_ENABLE_FMT_LAYER";
+
+    /// Sampler type for OpenTelemetry traces.
+    /// Valid values: always_on, always_off, trace_id_ratio, parent_based
+    pub const TRACES_SAMPLER: &str = "OTEL_TRACES_SAMPLER";
+
+    /// Sampler argument (e.g., ratio for trace_id_ratio sampler).
+    pub const TRACES_SAMPLER_ARG: &str = "OTEL_TRACES_SAMPLER_ARG";
 }
 
 /// Default values for configuration parameters.

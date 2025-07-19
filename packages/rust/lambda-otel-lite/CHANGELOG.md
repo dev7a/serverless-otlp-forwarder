@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2025-07-19
+
+### Added
+- **Custom Sampler Support**: Added comprehensive sampler configuration capabilities
+  - `with_sampler()` method for custom `ShouldSample` trait implementations
+  - `with_named_sampler()` method for convenient access to common sampler types
+  - Environment variable support via `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG`
+  - Support for `always_on`, `always_off`, `trace_id_ratio`, and `parent_based` named samplers
+  - Integration with OpenTelemetry's built-in sampler types (`Sampler::AlwaysOn`, `Sampler::AlwaysOff`, etc.)
+  - Added sampler environment variable constants to the constants module
+  - Comprehensive documentation with examples for custom sampler implementations
+  - Added sampler example demonstrating different sampling strategies
+
 ## [0.16.0] - 2025-06-29
 
 ### Added
