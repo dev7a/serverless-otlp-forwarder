@@ -438,34 +438,7 @@ async fn main() -> Result<(), Error> {
 }
 ```
 
-You can also use named samplers for convenience:
-
-```rust, no_run
-use lambda_otel_lite::{init_telemetry, TelemetryConfig};
-use lambda_runtime::Error;
-
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    let config = TelemetryConfig::builder()
-        // Sample all traces
-        .with_named_sampler("always_on")
-        // Or sample 10% of traces
-        // .with_named_sampler("trace_id_ratio")
-        .build();
-
-    let (_, completion_handler) = init_telemetry(config).await?;
-
-    // Use the tracer and completion handler as usual
-    
-    Ok(())
-}
-```
-
-Available named samplers:
-- `"always_on"`: Sample all traces
-- `"always_off"`: Sample no traces
-- `"trace_id_ratio"`: Sample based on trace ID ratio (uses `OTEL_TRACES_SAMPLER_ARG` environment variable for ratio)
-- `"parent_based"`: Sample based on parent span sampling decision
+You can configure custom samplers using the `with_sampler()` method:
 
 You can also implement custom samplers by implementing the `ShouldSample` trait:
 
@@ -530,9 +503,7 @@ async fn main() -> Result<(), Error> {
 }
 ```
 
-Samplers can also be configured via environment variables:
-- `OTEL_TRACES_SAMPLER`: Sampler type (`always_on`, `always_off`, `trace_id_ratio`, `parent_based`)
-- `OTEL_TRACES_SAMPLER_ARG`: Sampler argument (e.g., ratio for `trace_id_ratio` sampler)
+
 
 ### Using the Tower Layer
 You can "wrap" your handler in the `OtelTracingLayer` using the `ServiceBuilder` from the `tower` crate:
@@ -1077,6 +1048,8 @@ async fn main() -> Result<(), Error> {
 ```
 
 Note that the environment variable `LAMBDA_EXTENSION_SPAN_PROCESSOR_MODE` will always take precedence over the programmatic setting if both are specified.
+
+
 
 ### Resource Configuration
 
