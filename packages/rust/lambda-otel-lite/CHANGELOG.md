@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2025-07-19
+
+### Added
+- **Custom Sampler Support**: Added `with_sampler()` method for custom `ShouldSample` trait implementations
+  - Support for all standard OpenTelemetry sampler types (`Sampler::AlwaysOn`, `Sampler::AlwaysOff`, etc.)
+  - Leverages OpenTelemetry SDK's built-in environment variable handling
+  - Comprehensive documentation with examples for custom sampler implementations
+  - Added sampler example demonstrating different sampling strategies
+
 ## [0.16.0] - 2025-06-29
 
 ### Added

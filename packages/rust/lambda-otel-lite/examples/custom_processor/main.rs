@@ -3,7 +3,7 @@ use lambda_otel_lite::telemetry::{init_telemetry, TelemetryConfig};
 use lambda_otel_lite::{create_traced_handler, LambdaSpanProcessor};
 use lambda_runtime::{service_fn, Error, LambdaEvent, Runtime};
 use opentelemetry::trace::{SpanId, TraceId};
-use opentelemetry::{Context, KeyValue};
+use opentelemetry::Context;
 use opentelemetry_sdk::{
     error::OTelSdkResult,
     trace::{Span, SpanData, SpanProcessor},
@@ -18,7 +18,7 @@ use tracing::instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// A custom span processor that implements the "wide events" pattern.
-/// 
+///
 /// This processor accumulates attributes from all spans within a trace and attaches
 /// them to the root span, creating a comprehensive view of the entire request flow.
 /// This is useful for:
@@ -65,7 +65,7 @@ impl SpanProcessor for WideEventsSpanProcessor {
     }
 
     /// **THE CORE OF THE WIDE EVENTS PATTERN**
-    /// 
+    ///
     /// When a span ends, we don't immediately forward it to the next processor.
     /// Instead, we buffer it until the entire trace is complete, then process all spans together.
     ///
@@ -101,7 +101,7 @@ impl SpanProcessor for WideEventsSpanProcessor {
                 .any(|s| s.span_context.span_id() == root_span_id)
             {
                 // Step 5: THE ROOT SPAN IS COMPLETE! Time to aggregate and forward.
-                
+
                 // Remove this trace from buffer (we're done with it)
                 let mut trace_data = traces.remove(&trace_id).unwrap();
                 let mut root_span_idx = None;
@@ -123,7 +123,7 @@ impl SpanProcessor for WideEventsSpanProcessor {
                     let mut root_span = trace_data.spans.remove(idx);
                     // CRITICAL: Replace root span's attributes with ALL attributes from trace
                     root_span.attributes = all_attributes.into_iter().collect();
-                    
+
                     // Forward the enriched root span first
                     self.next.on_end(root_span);
                 }
@@ -169,17 +169,21 @@ impl SpanProcessor for WideEventsSpanProcessor {
 }
 
 // Simple nested function that creates its own span. The attributes are recorded also on the root span.
-#[instrument(fields(
-    nested_tracing_span_attr_in_function,
-))]
+#[instrument(fields(nested_tracing_span_attr_in_function,))]
 async fn nested_function() -> Result<String, Error> {
     let span = tracing::Span::current();
 
     // using the tracing api
-    span.record("nested_tracing_span_attr_in_function", "nested_tracing_value_in_function");
+    span.record(
+        "nested_tracing_span_attr_in_function",
+        "nested_tracing_value_in_function",
+    );
 
     // using the OpenTelemetrySpanExt trait
-    span.set_attribute("nested_otel_span_attr_in_function", "nested_otel_value_in_function");
+    span.set_attribute(
+        "nested_otel_span_attr_in_function",
+        "nested_otel_value_in_function",
+    );
 
     Ok("success".to_string())
 }
@@ -205,8 +209,7 @@ async fn handler(
 async fn main() -> Result<(), Error> {
     let exporter = OtlpStdoutSpanExporter::default();
     let lambda_processor = LambdaSpanProcessor::builder().exporter(exporter).build();
-    let aggregating_processor =
-        WideEventsSpanProcessor::new(Box::new(lambda_processor));
+    let aggregating_processor = WideEventsSpanProcessor::new(Box::new(lambda_processor));
 
     let config = TelemetryConfig::builder()
         .with_span_processor(aggregating_processor)
@@ -217,4 +220,4 @@ async fn main() -> Result<(), Error> {
     let handler = create_traced_handler("custom-processor-handler", completion_handler, handler);
 
     Runtime::new(service_fn(handler)).run().await
-} 
+}
