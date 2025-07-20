@@ -431,7 +431,7 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
     ///
     /// # Arguments
     ///
-    /// * `sampler` - A sampler implementing the [`Sampler`] trait
+    /// * `sampler` - A sampler implementing the [`ShouldSample`] trait
     ///
     /// # Examples
     ///
