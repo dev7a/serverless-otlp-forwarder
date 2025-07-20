@@ -109,7 +109,7 @@ use opentelemetry_sdk::{
     Resource,
 };
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
-use std::{borrow::Cow, env, sync::Arc};
+use std::{borrow::Cow, env, sync::Arc, str::FromStr};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -487,11 +487,7 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
             "always_on" => self.with_sampler(Sampler::AlwaysOn),
             "always_off" => self.with_sampler(Sampler::AlwaysOff),
             "trace_id_ratio" => {
-                // Could support ratio via environment variable
-                let ratio = std::env::var(constants::env_vars::TRACES_SAMPLER_ARG)
-                    .unwrap_or_else(|_| "1.0".to_string())
-                    .parse()
-                    .unwrap_or(1.0);
+                let ratio = parse_sampler_ratio(constants::env_vars::TRACES_SAMPLER_ARG);
                 self.with_sampler(Sampler::TraceIdRatioBased(ratio))
             }
             "parent_based" => self.with_sampler(Sampler::ParentBased(Box::new(Sampler::AlwaysOn))),
@@ -499,6 +495,50 @@ impl<S: telemetry_config_builder::State> TelemetryConfigBuilder<S> {
                 LOGGER.warn(format!("Unknown sampler: {name}, using default sampler"));
                 self
             }
+        }
+    }
+}
+
+/// Parse sampler ratio from environment variable with improved error handling.
+///
+/// Attempts to parse the sampler ratio from the specified environment variable.
+/// If the environment variable is not set, defaults to 1.0.
+/// If parsing fails, logs a warning and defaults to 1.0.
+///
+/// # Arguments
+///
+/// * `env_var` - The environment variable name to read the ratio from
+///
+/// # Returns
+///
+/// Returns the parsed ratio as f64, defaulting to 1.0 if parsing fails.
+fn parse_sampler_ratio(env_var: &str) -> f64 {
+    match env::var(env_var) {
+        Ok(value) => {
+            match f64::from_str(&value) {
+                Ok(ratio) => {
+                    if ratio < 0.0 || ratio > 1.0 {
+                        LOGGER.warn(format!(
+                            "Sampler ratio '{}' from {} is outside valid range [0.0, 1.0], using 1.0",
+                            value, env_var
+                        ));
+                        1.0
+                    } else {
+                        ratio
+                    }
+                }
+                Err(_) => {
+                    LOGGER.warn(format!(
+                        "Failed to parse sampler ratio '{}' from {} as f64, using 1.0",
+                        value, env_var
+                    ));
+                    1.0
+                }
+            }
+        }
+        Err(_) => {
+            // Environment variable not set, use default
+            1.0
         }
     }
 }
@@ -669,10 +709,7 @@ pub async fn init_telemetry(
                 config.provider_builder = config.provider_builder.with_sampler(Sampler::AlwaysOff)
             }
             "trace_id_ratio" => {
-                let ratio = env::var(constants::env_vars::TRACES_SAMPLER_ARG)
-                    .unwrap_or_else(|_| "1.0".to_string())
-                    .parse()
-                    .unwrap_or(1.0);
+                let ratio = parse_sampler_ratio(constants::env_vars::TRACES_SAMPLER_ARG);
                 config.provider_builder = config
                     .provider_builder
                     .with_sampler(Sampler::TraceIdRatioBased(ratio));
