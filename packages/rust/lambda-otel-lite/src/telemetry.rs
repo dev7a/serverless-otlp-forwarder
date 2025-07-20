@@ -103,9 +103,7 @@ use opentelemetry::{global, global::set_tracer_provider, trace::TracerProvider a
 use opentelemetry_aws::trace::XrayPropagator;
 use opentelemetry_sdk::{
     propagation::TraceContextPropagator,
-    trace::{
-        IdGenerator, SdkTracerProvider, ShouldSample, SpanProcessor, TracerProviderBuilder,
-    },
+    trace::{IdGenerator, SdkTracerProvider, ShouldSample, SpanProcessor, TracerProviderBuilder},
     Resource,
 };
 use otlp_stdout_span_exporter::OtlpStdoutSpanExporter;
