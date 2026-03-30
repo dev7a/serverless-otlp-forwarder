@@ -6,6 +6,7 @@ use http::StatusCode;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_ENCODING, CONTENT_TYPE};
 use reqwest::Client as ReqwestClient;
 use std::env;
+use std::future::Future;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,16 +23,42 @@ pub struct HttpForwarderResponse {
 }
 
 impl HttpForwarderResponse {
-    fn new(status: StatusCode, body: String) -> Self {
+    pub fn new(status: StatusCode, body: String) -> Self {
         Self { status, body }
     }
 
-    fn status(&self) -> StatusCode {
+    pub fn status(&self) -> StatusCode {
         self.status
     }
 
-    fn into_body(self) -> String {
+    pub fn body(&self) -> &str {
+        &self.body
+    }
+
+    pub fn into_body(self) -> String {
         self.body
+    }
+}
+
+async fn read_error_body_if_needed<F, E>(status: StatusCode, read_body: F) -> String
+where
+    F: Future<Output = std::result::Result<String, E>>,
+    E: std::fmt::Display,
+{
+    if status.is_success() {
+        return String::new();
+    }
+
+    match read_body.await {
+        Ok(body) => body,
+        Err(err) => {
+            warn!(
+                status = %status,
+                error = %err,
+                "Failed to read OTLP error response body"
+            );
+            String::new()
+        }
     }
 }
 
@@ -229,7 +256,7 @@ impl HttpOtlpForwarderClient for ReqwestClient {
             .context("HTTP request failed during OTLP export")?;
 
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let body = read_error_body_if_needed(status, response.text()).await;
         Ok(HttpForwarderResponse::new(status, body))
     }
 }
@@ -370,7 +397,7 @@ pub mod instrumented {
                 .context("HTTP request failed during instrumented OTLP export")?;
 
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = read_error_body_if_needed(status, response.text()).await;
             Ok(HttpForwarderResponse::new(status, body))
         }
     }
@@ -411,6 +438,7 @@ pub mod client_builder {
 mod tests {
     use super::*;
     use crate::telemetry::TelemetryData;
+    use anyhow::anyhow;
     use reqwest::Client as ReqwestClient;
     use sealed_test::prelude::*;
     use std::time::Duration as StdDuration;
@@ -463,6 +491,48 @@ mod tests {
     async fn test_parse_otlp_headers_empty() {
         let headers = parse_otlp_headers("").unwrap();
         assert!(headers.is_empty());
+    }
+
+    #[test]
+    fn test_http_forwarder_response_public_accessors() {
+        let response = HttpForwarderResponse::new(StatusCode::CREATED, "accepted".to_string());
+
+        assert_eq!(response.status(), StatusCode::CREATED);
+        assert_eq!(response.body(), "accepted");
+        assert_eq!(response.into_body(), "accepted");
+    }
+
+    #[tokio::test]
+    async fn test_read_error_body_if_needed_skips_success_responses() {
+        let body = read_error_body_if_needed(
+            StatusCode::OK,
+            std::future::ready(Err::<String, anyhow::Error>(anyhow!(
+                "success responses should not read the body"
+            ))),
+        )
+        .await;
+
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_read_error_body_if_needed_reads_error_body() {
+        let body = read_error_body_if_needed(StatusCode::BAD_GATEWAY, async {
+            Ok::<String, anyhow::Error>("upstream failure".to_string())
+        })
+        .await;
+
+        assert_eq!(body, "upstream failure");
+    }
+
+    #[tokio::test]
+    async fn test_read_error_body_if_needed_logs_and_returns_empty_on_read_error() {
+        let body = read_error_body_if_needed(StatusCode::BAD_GATEWAY, async {
+            Err::<String, anyhow::Error>(anyhow!("body stream closed"))
+        })
+        .await;
+
+        assert!(body.is_empty());
     }
 
     #[tokio::test]
