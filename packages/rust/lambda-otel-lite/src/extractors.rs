@@ -97,7 +97,7 @@ use urlencoding;
 ///
 /// Custom trigger types can be used for more specific cases by using
 /// the string value directly in SpanAttributes.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum TriggerType {
     /// Database trigger
     Datasource,
@@ -108,6 +108,7 @@ pub enum TriggerType {
     /// Schedule/cron trigger
     Timer,
     /// Other/unknown trigger
+    #[default]
     Other,
 }
 
@@ -120,12 +121,6 @@ impl Display for TriggerType {
             TriggerType::Timer => write!(f, "timer"),
             TriggerType::Other => write!(f, "other"),
         }
-    }
-}
-
-impl Default for TriggerType {
-    fn default() -> Self {
-        Self::Other
     }
 }
 

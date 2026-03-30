@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-03-29
+
+### Changed
+- **Breaking**: Upgraded `lambda-otel-lite` to the OpenTelemetry `0.31.0` dependency line
+  - Updated `opentelemetry` to `0.31.0`
+  - Updated `opentelemetry_sdk` to `0.31.0`
+  - Updated `opentelemetry-otlp` to `0.31.0`
+  - Updated `opentelemetry-aws` to `0.19.0`
+  - Updated `tracing-opentelemetry` to `0.32.1`
+- Updated the pinned `otlp-stdout-span-exporter` dependency to `0.17.0`
+- Aligned the in-repo examples with the same OpenTelemetry dependency line used by the crate
+
 ## [0.17.0] - 2025-07-19
 
 ### Added
@@ -209,4 +221,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added integration patterns comparison (Tower Layer vs Handler Wrapper)
 - Added best practices for configuration and usage
 - Improved API documentation with more examples
-

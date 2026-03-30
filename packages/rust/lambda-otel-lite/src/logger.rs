@@ -127,15 +127,59 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
+    fn logger_with_level(level: &'static str) -> Logger {
+        match level {
+            "none" => Logger {
+                prefix: "test",
+                log_level_fn: || "none",
+            },
+            "error" => Logger {
+                prefix: "test",
+                log_level_fn: || "error",
+            },
+            "warn" => Logger {
+                prefix: "test",
+                log_level_fn: || "warn",
+            },
+            "info" => Logger {
+                prefix: "test",
+                log_level_fn: || "info",
+            },
+            "debug" => Logger {
+                prefix: "test",
+                log_level_fn: || "debug",
+            },
+            _ => unreachable!("unsupported level"),
+        }
+    }
+
     #[test]
     #[serial]
     fn test_log_levels() {
-        let logger = Logger::new("test");
+        let none = logger_with_level("none");
+        assert!(!none.should_log("error"));
 
-        assert!(logger.should_log("error"));
-        assert!(logger.should_log("warn"));
-        assert!(logger.should_log("info"));
-        assert!(!logger.should_log("invalid"));
+        let error = logger_with_level("error");
+        assert!(error.should_log("error"));
+        assert!(!error.should_log("warn"));
+
+        let warn = logger_with_level("warn");
+        assert!(warn.should_log("error"));
+        assert!(warn.should_log("warn"));
+        assert!(!warn.should_log("info"));
+
+        let info = logger_with_level("info");
+        assert!(info.should_log("error"));
+        assert!(info.should_log("warn"));
+        assert!(info.should_log("info"));
+        assert!(!info.should_log("debug"));
+        assert!(!info.should_log("invalid"));
+
+        let debug = logger_with_level("debug");
+        assert!(debug.should_log("error"));
+        assert!(debug.should_log("warn"));
+        assert!(debug.should_log("info"));
+        assert!(debug.should_log("debug"));
     }
 
     #[test]
@@ -144,5 +188,15 @@ mod tests {
         let logger = Logger::new("test");
 
         assert_eq!(logger.format_message("hello"), "[test] hello");
+    }
+
+    #[test]
+    fn test_const_logger_uses_default_info_level() {
+        static LOGGER: Logger = Logger::const_new("const-test");
+
+        assert_eq!(LOGGER.log_level(), "info");
+        assert!(LOGGER.should_log("info"));
+        assert!(!LOGGER.should_log("debug"));
+        assert_eq!(LOGGER.format_message("hello"), "[const-test] hello");
     }
 }

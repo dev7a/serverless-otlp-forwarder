@@ -411,7 +411,7 @@ To use the X-Ray ID generator, you'll need to add the `opentelemetry-aws` crate 
 
 ```toml
 [dependencies]
-opentelemetry-aws = "0.16.0"
+opentelemetry-aws = "0.19.0"
 ```
 
 The XrayIdGenerator formats trace IDs in a way that's compatible with AWS X-Ray, using a timestamp in the first part of the trace ID. This allows X-Ray to display and organize traces correctly, and enables correlation between OpenTelemetry traces and traces from other services that use X-Ray.

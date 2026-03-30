@@ -475,6 +475,7 @@ mod tests {
                 TraceState::default(),
             ),
             parent_span_id: SpanId::INVALID,
+            parent_span_is_remote: false,
             span_kind: opentelemetry::trace::SpanKind::Internal,
             name: Cow::Owned(name.to_string()),
             start_time: std::time::SystemTime::now(),
