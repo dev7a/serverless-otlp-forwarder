@@ -70,6 +70,20 @@ where
     }
 }
 
+async fn drain_success_body<F, E>(status: StatusCode, drain_body: F)
+where
+    F: Future<Output = std::result::Result<(), E>>,
+    E: std::fmt::Display,
+{
+    if let Err(err) = drain_body.await {
+        warn!(
+            status = %status,
+            error = %err,
+            "Failed to drain OTLP success response body"
+        );
+    }
+}
+
 /// Parses OTLP headers from a comma-separated key=value string.
 fn parse_otlp_headers(headers_str: &str) -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
@@ -264,7 +278,12 @@ impl HttpOtlpForwarderClient for ReqwestClient {
             .context("HTTP request failed during OTLP export")?;
 
         let status = response.status();
-        let body = read_error_body_if_needed(status, response.text()).await;
+        let body = if status.is_success() {
+            drain_success_body(status, async move { response.bytes().await.map(|_| ()) }).await;
+            String::new()
+        } else {
+            read_error_body_if_needed(status, response.text()).await
+        };
         Ok(HttpForwarderResponse::new(status, body))
     }
 }
@@ -369,6 +388,7 @@ pub mod instrumented {
         ///
         /// # Example
         /// ```rust,ignore
+        /// // Use reqwest 0.13.x with reqwest-middleware/reqwest-tracing.
         /// use reqwest::Client;
         /// use reqwest_middleware::ClientBuilder;
         /// use reqwest_tracing::TracingMiddleware;
@@ -405,7 +425,12 @@ pub mod instrumented {
                 .context("HTTP request failed during instrumented OTLP export")?;
 
             let status = response.status();
-            let body = read_error_body_if_needed(status, response.text()).await;
+            let body = if status.is_success() {
+                drain_success_body(status, async move { response.bytes().await.map(|_| ()) }).await;
+                String::new()
+            } else {
+                read_error_body_if_needed(status, response.text()).await
+            };
             Ok(HttpForwarderResponse::new(status, body))
         }
     }
@@ -449,6 +474,8 @@ mod tests {
     use anyhow::anyhow;
     use reqwest::Client as ReqwestClient;
     use sealed_test::prelude::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
     use std::time::Duration as StdDuration;
     use wiremock::matchers::{body_bytes, header, method, path};
     use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
@@ -541,6 +568,28 @@ mod tests {
         .await;
 
         assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_drain_success_body_executes_future() {
+        let drained = Arc::new(AtomicBool::new(false));
+        let drained_clone = Arc::clone(&drained);
+
+        drain_success_body(StatusCode::OK, async move {
+            drained_clone.store(true, Ordering::SeqCst);
+            Ok::<(), anyhow::Error>(())
+        })
+        .await;
+
+        assert!(drained.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn test_drain_success_body_ignores_read_errors() {
+        drain_success_body(StatusCode::OK, async {
+            Err::<(), anyhow::Error>(anyhow!("connection closed"))
+        })
+        .await;
     }
 
     #[tokio::test]
