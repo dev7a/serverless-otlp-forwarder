@@ -103,4 +103,4 @@ Before publishing a new version of `otlp-stdout-span-exporter`, ensure all these
 - Consider testing on different architectures (x86_64, aarch64)
 - Ensure GZIP compression functionality is properly tested at all levels (0-9)
 - Verify both simple and batch export modes work correctly
-- Test with different values of `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable 
+- Test with different values of `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable

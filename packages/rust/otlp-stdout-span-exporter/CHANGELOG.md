@@ -125,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2025-01-16
 
 ### Fixed
-- Fixed resource attributes not being properly set in the exporter by moving `set_resource` implementation into the `SpanExporter` trait implementation block 
+- Fixed resource attributes not being properly set in the exporter by moving `set_resource` implementation into the `SpanExporter` trait implementation block
 
 ## [0.1.0] - 2025-01-15
 
@@ -137,4 +137,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Both simple and batch export modes
 - Comprehensive test suite
 - Example code demonstrating usage
-- Documentation and README 
+- Documentation and README
