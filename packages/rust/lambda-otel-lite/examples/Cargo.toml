@@ -13,9 +13,9 @@ lambda_runtime.workspace = true
 tracing.workspace = true
 aws_lambda_events.workspace = true
 lambda-otel-lite.workspace = true
-tracing-opentelemetry.workspace = true
-opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
+tracing-opentelemetry = "0.32.1"
+opentelemetry = { version = "0.31.0", features = ["trace"] }
+opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 otlp-stdout-span-exporter.workspace = true
 rand.workspace = true
 

@@ -729,7 +729,9 @@ mod tests {
     fn cleanup_env() {
         env::remove_var(constants::env_vars::ENABLE_FMT_LAYER);
         env::remove_var(constants::env_vars::PROPAGATORS);
+        env::remove_var(constants::env_vars::PROCESSOR_MODE);
         env::remove_var("_X_AMZN_TRACE_ID");
+        env::remove_var("AWS_LAMBDA_RUNTIME_API");
     }
 
     #[test]
@@ -1097,13 +1099,17 @@ mod tests {
         cleanup_env();
 
         // Test with AlwaysOn sampler
-        let config = TelemetryConfig::builder()
+        let _provider = TelemetryConfig::builder()
             .with_sampler(Sampler::AlwaysOn)
+            .build()
+            .provider_builder
             .build();
 
         // Test with TraceIdRatioBased sampler
-        let config = TelemetryConfig::builder()
+        let _provider = TelemetryConfig::builder()
             .with_sampler(Sampler::TraceIdRatioBased(0.1))
+            .build()
+            .provider_builder
             .build();
 
         // Test with ParentBased sampler
@@ -1121,16 +1127,22 @@ mod tests {
         cleanup_env();
 
         // Test with standard SDK samplers using with_sampler
-        let config = TelemetryConfig::builder()
+        let _provider = TelemetryConfig::builder()
             .with_sampler(Sampler::AlwaysOn)
+            .build()
+            .provider_builder
             .build();
 
-        let config = TelemetryConfig::builder()
+        let _provider = TelemetryConfig::builder()
             .with_sampler(Sampler::AlwaysOff)
+            .build()
+            .provider_builder
             .build();
 
-        let config = TelemetryConfig::builder()
+        let _provider = TelemetryConfig::builder()
             .with_sampler(Sampler::TraceIdRatioBased(0.5))
+            .build()
+            .provider_builder
             .build();
 
         let config = TelemetryConfig::builder()

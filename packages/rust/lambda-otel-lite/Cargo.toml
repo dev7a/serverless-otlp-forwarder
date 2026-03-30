@@ -1,6 +1,6 @@
 [package]
 name = "lambda-otel-lite"
-version = "0.17.0"
+version = "0.18.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -15,14 +15,14 @@ exclude = ["examples/"]
 
 [dependencies]
 # pin to specific version for publishing
-otlp-stdout-span-exporter = "0.16.0"
+otlp-stdout-span-exporter = "0.17.0"
 
-opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
+opentelemetry = { version = "0.31.0", features = ["trace"] }
+opentelemetry_sdk = { version = "0.31.0", features = ["rt-tokio"] }
 tokio.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
-opentelemetry-aws.workspace = true
+opentelemetry-aws = { version = "0.19.0", features = ["detector-aws-lambda"] }
 urlencoding.workspace = true
 lambda_runtime.workspace = true
 lambda-extension.workspace = true
@@ -30,7 +30,7 @@ tower.workspace = true
 futures-util.workspace = true
 futures-executor.workspace = true
 tracing-subscriber.workspace = true
-tracing-opentelemetry.workspace = true
+tracing-opentelemetry = "0.32.1"
 pin-project.workspace = true
 serde.workspace = true
 aws_lambda_events.workspace = true
@@ -39,7 +39,7 @@ bon.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "sync", "macros", "test-util"] }
 mockall.workspace = true
-opentelemetry-otlp = { workspace = true, features = ["http-proto", "http-json", "reqwest-client"] }
+opentelemetry-otlp = { version = "0.31.0", features = ["http-proto", "http-json", "reqwest-client"] }
 libc.workspace = true
 doc-comment.workspace = true
 reqwest.workspace = true
