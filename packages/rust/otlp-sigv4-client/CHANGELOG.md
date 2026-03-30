@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.13.0] - 2026-03-30
+
+### Changed
+- Updated the crate to the OpenTelemetry 0.31 line
+- Refreshed documentation examples and installation snippets
+
 ## [0.12.0] - 2025-06-30
 
 ### Changed

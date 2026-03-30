@@ -145,7 +145,7 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
     global::get_text_map_propagator(|propagator| {
         // Extract and set parent context
         let parent_context = propagator.extract(&Extractor(&headers));
-        span.set_parent(parent_context);
+        let _ = span.set_parent(parent_context);
     });
 
     // Set span kind to SERVER like in the example

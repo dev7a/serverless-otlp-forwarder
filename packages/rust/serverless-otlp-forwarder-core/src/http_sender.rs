@@ -2,6 +2,7 @@ use crate::telemetry::TelemetryData;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use bytes::Bytes;
+use http::StatusCode;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_ENCODING, CONTENT_TYPE};
 use reqwest::Client as ReqwestClient;
 use std::env;
@@ -14,6 +15,25 @@ use url::Url;
 const DEFAULT_OTLP_ENDPOINT: &str = "http://localhost:4318/v1/traces";
 const OTLP_TRACES_PATH: &str = "/v1/traces";
 const DEFAULT_OTLP_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
+
+pub struct HttpForwarderResponse {
+    status: StatusCode,
+    body: String,
+}
+
+impl HttpForwarderResponse {
+    fn new(status: StatusCode, body: String) -> Self {
+        Self { status, body }
+    }
+
+    fn status(&self) -> StatusCode {
+        self.status
+    }
+
+    fn into_body(self) -> String {
+        self.body
+    }
+}
 
 /// Parses OTLP headers from a comma-separated key=value string.
 fn parse_otlp_headers(headers_str: &str) -> Result<HeaderMap> {
@@ -187,7 +207,7 @@ pub trait HttpOtlpForwarderClient: Send + Sync {
         headers: HeaderMap,
         payload: Bytes,
         timeout: Duration,
-    ) -> Result<reqwest::Response>;
+    ) -> Result<HttpForwarderResponse>;
 }
 
 #[async_trait]
@@ -198,14 +218,19 @@ impl HttpOtlpForwarderClient for ReqwestClient {
         headers: HeaderMap,
         payload: Bytes,
         timeout: Duration,
-    ) -> Result<reqwest::Response> {
-        self.post(target_url)
+    ) -> Result<HttpForwarderResponse> {
+        let response = self
+            .post(target_url)
             .headers(headers)
             .body(payload)
             .timeout(timeout)
             .send()
             .await
-            .context("HTTP request failed during OTLP export")
+            .context("HTTP request failed during OTLP export")?;
+
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Ok(HttpForwarderResponse::new(status, body))
     }
 }
 
@@ -274,10 +299,7 @@ pub async fn send_telemetry_batch(
 
     if !status.is_success() {
         Span::current().record("otel.status_code", "ERROR");
-        let error_body = response.text().await.unwrap_or_else(|e| {
-            warn!("Failed to read error response body: {}", e);
-            format!("Failed to read response body. Status: {status}")
-        });
+        let error_body = response.into_body();
         Span::current().record("error.message", error_body.clone());
         warn!(
             target_url = %resolved_target_url,
@@ -336,15 +358,20 @@ pub mod instrumented {
             headers: HeaderMap,
             payload: Bytes,
             timeout: Duration,
-        ) -> Result<reqwest::Response> {
-            self.inner
+        ) -> Result<HttpForwarderResponse> {
+            let response = self
+                .inner
                 .post(target_url)
                 .headers(headers)
                 .body(payload)
                 .timeout(timeout)
                 .send()
                 .await
-                .context("HTTP request failed during instrumented OTLP export")
+                .context("HTTP request failed during instrumented OTLP export")?;
+
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            Ok(HttpForwarderResponse::new(status, body))
         }
     }
 }
@@ -372,7 +399,7 @@ pub mod client_builder {
         use reqwest_middleware::ClientBuilder;
         use reqwest_tracing::TracingMiddleware;
 
-        let base_client = ReqwestClient::new();
+        let base_client = reqwest13::Client::new();
         let middleware_client = ClientBuilder::new(base_client)
             .with(TracingMiddleware::default())
             .build();

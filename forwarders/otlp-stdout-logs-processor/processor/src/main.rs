@@ -24,7 +24,7 @@ use lambda_otel_lite::{
 use lambda_runtime::{tower::ServiceBuilder, Error as LambdaError, LambdaEvent, Runtime};
 use opentelemetry::Value as OtelValue;
 use opentelemetry_otlp::{Protocol, WithExportConfig};
-use reqwest::Client as ReqwestClient;
+use reqwest13::Client as ReqwestClient;
 use reqwest_middleware::ClientBuilder;
 use reqwest_tracing::TracingMiddleware;
 use serde::{Deserialize, Serialize};

@@ -177,6 +177,7 @@ impl SpanAggregator {
             parent_span_id: self
                 .function_root_span_id
                 .unwrap_or_else(|| SpanId::from_bytes([0; 8])),
+            parent_span_is_remote: false,
             span_kind: self.kind.clone(),
             name: self.name.clone().into(),
             start_time,
@@ -252,6 +253,7 @@ impl SpanAggregator {
             let child_span_data = SpanData {
                 span_context: child_span_context,
                 parent_span_id,
+                parent_span_is_remote: false,
                 span_kind: SpanKind::Internal,
                 name: Self::map_platform_span_name(span.name.as_str()),
                 start_time: child_start_time,
@@ -307,6 +309,7 @@ impl SpanAggregator {
         let init_span_data = SpanData {
             span_context: init_span_context,
             parent_span_id, // Parent is the actual function's root span
+            parent_span_is_remote: false,
             span_kind: SpanKind::Internal,
             name: INIT_PHASE_NAME.into(),
             start_time,

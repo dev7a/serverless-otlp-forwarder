@@ -1,0 +1,112 @@
+name: Publish Rust lambda-lw-http-router crates
+
+on:
+  pull_request:
+    paths:
+      - 'packages/rust/lambda-lw-http-router/**'
+    types: [opened, synchronize, labeled]
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/rust/lambda-lw-http-router/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test_router_family:
+    name: Test ${{ matrix.crate_name }} (${{ matrix.arch }})
+    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'approved')
+    strategy:
+      matrix:
+        include:
+          - crate_name: lambda-lw-http-router-core
+            crate_path: packages/rust/lambda-lw-http-router/router-core
+            os: ubuntu-24.04
+            arch: x64
+          - crate_name: lambda-lw-http-router-core
+            crate_path: packages/rust/lambda-lw-http-router/router-core
+            os: ubuntu-24.04-arm
+            arch: arm64
+          - crate_name: lambda-lw-http-router-macro
+            crate_path: packages/rust/lambda-lw-http-router/router-macro
+            os: ubuntu-24.04
+            arch: x64
+          - crate_name: lambda-lw-http-router-macro
+            crate_path: packages/rust/lambda-lw-http-router/router-macro
+            os: ubuntu-24.04-arm
+            arch: arm64
+          - crate_name: lambda-lw-http-router
+            crate_path: packages/rust/lambda-lw-http-router
+            os: ubuntu-24.04
+            arch: x64
+          - crate_name: lambda-lw-http-router
+            crate_path: packages/rust/lambda-lw-http-router
+            os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.crate_path }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Set up Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Run quality checks
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+          cargo build --release
+
+  publish_router_core:
+    name: Publish lambda-lw-http-router-core
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/reusable-publish-rust-crate.yml
+    with:
+      crate_name: "lambda-lw-http-router-core"
+      crate_path: "packages/rust/lambda-lw-http-router/router-core"
+      manifest_path: "packages/rust/lambda-lw-http-router/router-core/Cargo.toml"
+      tag_prefix: "packages/rust/lambda-lw-http-router/router-core-v"
+      cargo_token_secret_name: "CARGO_REGISTRY_TOKEN"
+      test_features: ""
+    secrets: inherit
+
+  publish_router_macro:
+    name: Publish lambda-lw-http-router-macro
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/reusable-publish-rust-crate.yml
+    with:
+      crate_name: "lambda-lw-http-router-macro"
+      crate_path: "packages/rust/lambda-lw-http-router/router-macro"
+      manifest_path: "packages/rust/lambda-lw-http-router/router-macro/Cargo.toml"
+      tag_prefix: "packages/rust/lambda-lw-http-router/router-macro-v"
+      cargo_token_secret_name: "CARGO_REGISTRY_TOKEN"
+      test_features: ""
+    secrets: inherit
+
+  publish_router:
+    name: Publish lambda-lw-http-router
+    if: github.event_name != 'pull_request'
+    needs: [publish_router_core, publish_router_macro]
+    uses: ./.github/workflows/reusable-publish-rust-crate.yml
+    with:
+      crate_name: "lambda-lw-http-router"
+      crate_path: "packages/rust/lambda-lw-http-router"
+      manifest_path: "packages/rust/lambda-lw-http-router/Cargo.toml"
+      tag_prefix: "packages/rust/lambda-lw-http-router-v"
+      cargo_token_secret_name: "CARGO_REGISTRY_TOKEN"
+      test_features: ""
+    secrets: inherit

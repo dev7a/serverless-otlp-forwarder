@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-30
+
+### Changed
+- Updated the crate to the OpenTelemetry 0.31 line
+- Updated the optional instrumented HTTP client path to use the current `reqwest-tracing` middleware stack
+- Reworked the forwarder client response contract to support the mixed HTTP client versions required by the newer tracing stack
+
 ## [0.1.0] - 2025-01-26
 
 ### Added

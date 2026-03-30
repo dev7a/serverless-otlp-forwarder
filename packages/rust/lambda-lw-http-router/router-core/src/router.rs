@@ -148,7 +148,7 @@ where
         payload: &E,
     ) -> Result<JsonValue, Error> {
         let span = tracing::Span::current();
-        span.set_parent(parent_cx);
+        let _ = span.set_parent(parent_cx);
         payload.set_otel_http_attributes(&span, &route_pattern, &base_ctx.lambda_context);
 
         let ctx = RouteContext {

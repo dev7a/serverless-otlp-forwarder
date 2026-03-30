@@ -13,7 +13,7 @@ serde_json.workspace = true
 anyhow.workspace = true
 opentelemetry.workspace = true
 tracing.workspace = true
-reqwest.workspace = true
+reqwest13.workspace = true
 reqwest-middleware.workspace = true
 reqwest-tracing.workspace = true
 aws-config.workspace = true
@@ -34,4 +34,3 @@ tokio = { workspace = true, features = ["full"] }
 [[bin]]
 name = "logs_processor"
 path = "src/main.rs"
-
