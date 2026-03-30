@@ -186,12 +186,11 @@ async fn handler_function(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result
                 "data": user
             }).to_string();
             
-            ApiGatewayV2httpResponse {
-                status_code: 200,
-                headers: HeaderMap::new(),
-                body: Some(body.into()),
-                ..Default::default()
-            }
+            let mut response = ApiGatewayV2httpResponse::default();
+            response.status_code = 200;
+            response.headers = HeaderMap::new();
+            response.body = Some(body.into());
+            response
         },
         Err(error) => {
             // Simple error handling
@@ -200,12 +199,11 @@ async fn handler_function(event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result
                 "error": "Internal server error"
             }).to_string();
             
-            ApiGatewayV2httpResponse {
-                status_code: 500,
-                headers: HeaderMap::new(),
-                body: Some(body.into()),
-                ..Default::default()
-            }
+            let mut response = ApiGatewayV2httpResponse::default();
+            response.status_code = 500;
+            response.headers = HeaderMap::new();
+            response.body = Some(body.into());
+            response
         }
     };
     
@@ -945,11 +943,10 @@ async fn handler(lambda_event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<A
                 .attribute("result_size", result.data.len() as i64)
                 .call();
             
-            Ok(ApiGatewayV2httpResponse {
-                status_code: 200,
-                body: Some(json!({"success": true, "data": result.data}).to_string().into()),
-                ..Default::default()
-            })
+            let mut response = ApiGatewayV2httpResponse::default();
+            response.status_code = 200;
+            response.body = Some(json!({"success": true, "data": result.data}).to_string().into());
+            Ok(response)
         }
         Err(e) => {
             // Record error event with multiple attributes
@@ -964,11 +961,10 @@ async fn handler(lambda_event: LambdaEvent<ApiGatewayV2httpRequest>) -> Result<A
                 ])
                 .call();
             
-            Ok(ApiGatewayV2httpResponse {
-                status_code: 500,
-                body: Some(json!({"success": false, "error": "Internal server error"}).to_string().into()),
-                ..Default::default()
-            })
+            let mut response = ApiGatewayV2httpResponse::default();
+            response.status_code = 500;
+            response.body = Some(json!({"success": false, "error": "Internal server error"}).to_string().into());
+            Ok(response)
         }
     }
 }

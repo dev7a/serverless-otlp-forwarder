@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-enabled-blue.svg)](https://opentelemetry.io)
 ![AWS Lambda](https://img.shields.io/badge/AWS-Lambda-orange?logo=amazon-aws)
-[![Rust](https://img.shields.io/badge/Rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/Rust-1.84%2B-orange.svg)](https://www.rust-lang.org)
 [![Python](https://img.shields.io/badge/Python-3.13%2B-blue.svg)](https://www.python.org)
 [![Node.js](https://img.shields.io/badge/Node.js-22.x-green.svg)](https://nodejs.org)
 ![Stability: Experimental](https://img.shields.io/badge/stability-Experimental-important.svg)

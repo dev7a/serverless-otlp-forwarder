@@ -71,11 +71,10 @@ async fn handler(
     match nested_function(&event.payload).await {
         Ok(_) => {
             // Return a successful response
-            Ok(ApiGatewayV2httpResponse {
-                status_code: 200,
-                body: Some(format!("Hello from request {request_id}").into()),
-                ..Default::default()
-            })
+            let mut response = ApiGatewayV2httpResponse::default();
+            response.status_code = 200;
+            response.body = Some(format!("Hello from request {request_id}").into());
+            Ok(response)
         }
         Err(ErrorType::Expected) => {
             // Log the error and return a 400 Bad Request
@@ -88,11 +87,10 @@ async fn handler(
             );
 
             // Return a 400 Bad Request for expected errors
-            Ok(ApiGatewayV2httpResponse {
-                status_code: 400,
-                body: Some("{{\"message\": \"This is an expected error\"}}".into()),
-                ..Default::default()
-            })
+            let mut response = ApiGatewayV2httpResponse::default();
+            response.status_code = 400;
+            response.body = Some("{{\"message\": \"This is an expected error\"}}".into());
+            Ok(response)
         }
         Err(ErrorType::Unexpected) => {
             // For other errors, propagate them up
