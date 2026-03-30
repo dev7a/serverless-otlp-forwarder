@@ -12,7 +12,7 @@ Before publishing a new version of `otlp-stdout-span-exporter`, ensure all these
 - [ ] `repository` information is complete and correct
 - [ ] `homepage` URL is valid
 - [ ] `documentation` URL is specified
-- [ ] Dependencies are up-to-date and correct (currently using OpenTelemetry 0.30.0)
+- [ ] Dependencies are up-to-date and correct (currently using OpenTelemetry 0.31.0)
 - [ ] No extraneous dependencies
 - [ ] Development dependencies are in `[dev-dependencies]`
 - [ ] Feature flags are correctly defined
@@ -103,4 +103,4 @@ Before publishing a new version of `otlp-stdout-span-exporter`, ensure all these
 - Consider testing on different architectures (x86_64, aarch64)
 - Ensure GZIP compression functionality is properly tested at all levels (0-9)
 - Verify both simple and batch export modes work correctly
-- Test with different values of `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable 
+- Test with different values of `OTLP_STDOUT_SPAN_EXPORTER_COMPRESSION_LEVEL` environment variable

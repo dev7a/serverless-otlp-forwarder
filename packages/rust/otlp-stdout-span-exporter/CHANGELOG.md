@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-03-29
+
+### Changed
+- Upgraded OpenTelemetry dependencies to 0.31.0
+- Updated the exporter implementation to match OpenTelemetry SDK 0.31.0 span data changes
+- Aligned `prost` with the OpenTelemetry 0.31.0 stack to avoid protobuf trait mismatches
+
+### Added
+- Added payload-level regression tests for OTLP span flags and resource serialization
+- Added real FIFO tests for named-pipe writes and empty-batch touch behavior
+- Added export error propagation coverage and parsing edge-case tests
+
 ## [0.16.0] - 2025-01-25
 
 ### Changed
@@ -113,7 +125,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.1] - 2025-01-16
 
 ### Fixed
-- Fixed resource attributes not being properly set in the exporter by moving `set_resource` implementation into the `SpanExporter` trait implementation block 
+- Fixed resource attributes not being properly set in the exporter by moving `set_resource` implementation into the `SpanExporter` trait implementation block
 
 ## [0.1.0] - 2025-01-15
 
@@ -125,4 +137,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Both simple and batch export modes
 - Comprehensive test suite
 - Example code demonstrating usage
-- Documentation and README 
+- Documentation and README

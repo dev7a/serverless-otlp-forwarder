@@ -810,14 +810,41 @@ impl Output for TestOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use nix::{sys::stat::Mode, unistd::mkfifo};
     use opentelemetry::{
         trace::{SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId, TraceState},
         InstrumentationScope, KeyValue,
     };
+    use opentelemetry_proto::tonic::{
+        common::v1::any_value::Value as AnyValue, trace::v1::SpanFlags,
+    };
     use opentelemetry_sdk::trace::{SpanData, SpanEvents, SpanLinks};
     use serde_json::Value;
     use serial_test::serial;
-    use std::time::SystemTime;
+    use std::{
+        fs::OpenOptions,
+        io::Read,
+        path::PathBuf,
+        sync::Arc,
+        thread,
+        time::{Duration, SystemTime, UNIX_EPOCH},
+    };
+
+    #[derive(Debug)]
+    struct FailingOutput;
+
+    impl Output for FailingOutput {
+        fn write_line(&self, _line: &str) -> Result<(), OTelSdkError> {
+            Err(OTelSdkError::InternalFailure(
+                "intentional test sink failure".to_string(),
+            ))
+        }
+
+        fn is_pipe(&self) -> bool {
+            false
+        }
+    }
 
     fn create_test_span() -> SpanData {
         let trace_id_bytes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42];
@@ -835,6 +862,7 @@ mod tests {
         SpanData {
             span_context,
             parent_span_id: SpanId::from_bytes(parent_id_bytes),
+            parent_span_is_remote: false,
             span_kind: SpanKind::Client,
             name: "test-span".into(),
             start_time: SystemTime::UNIX_EPOCH,
@@ -849,6 +877,37 @@ mod tests {
                 .with_schema_url("https://opentelemetry.io/schema/1.0.0")
                 .build(),
         }
+    }
+
+    fn decode_export_request(json_str: &str) -> ExportTraceServiceRequest {
+        let json: Value = serde_json::from_str(json_str).unwrap();
+        let payload = json["payload"].as_str().unwrap();
+        let decoded = base64_engine.decode(payload).unwrap();
+
+        let mut decoder = flate2::read::GzDecoder::new(&decoded[..]);
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed).unwrap();
+
+        ExportTraceServiceRequest::decode(&*decompressed).unwrap()
+    }
+
+    fn unique_test_pipe_path(name: &str) -> PathBuf {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "otlp-stdout-span-exporter-{name}-{}-{now}.fifo",
+            std::process::id()
+        ))
+    }
+
+    #[cfg(unix)]
+    fn create_test_fifo(name: &str) -> PathBuf {
+        let path = unique_test_pipe_path(name);
+        let _ = std::fs::remove_file(&path);
+        mkfifo(&path, Mode::from_bits_truncate(0o600)).unwrap();
+        path
     }
 
     #[test]
@@ -1011,15 +1070,7 @@ mod tests {
 
     // Helper function to decode the payload and count the number of spans
     fn decode_and_count_spans(json_str: &str) -> usize {
-        let json: Value = serde_json::from_str(json_str).unwrap();
-        let payload = json["payload"].as_str().unwrap();
-        let decoded = base64_engine.decode(payload).unwrap();
-
-        let mut decoder = flate2::read::GzDecoder::new(&decoded[..]);
-        let mut decompressed = Vec::new();
-        std::io::Read::read_to_end(&mut decoder, &mut decompressed).unwrap();
-
-        let request = ExportTraceServiceRequest::decode(&*decompressed).unwrap();
+        let request = decode_export_request(json_str);
 
         // Count total spans across all resource spans
         let mut span_count = 0;
@@ -1058,7 +1109,7 @@ mod tests {
         // Verify it can be decompressed
         let mut decoder = flate2::read::GzDecoder::new(&decoded[..]);
         let mut decompressed = Vec::new();
-        std::io::Read::read_to_end(&mut decoder, &mut decompressed).unwrap();
+        decoder.read_to_end(&mut decompressed).unwrap();
 
         // Verify it's valid OTLP protobuf
         let request = ExportTraceServiceRequest::decode(&*decompressed).unwrap();
@@ -1066,10 +1117,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_export_preserves_remote_parent_flags_and_resource_attributes() {
+        let (mut exporter, output) = OtlpStdoutSpanExporter::with_test_output();
+        let resource = Resource::builder_empty()
+            .with_attributes([
+                KeyValue::new("service.name", "span-exporter-tests"),
+                KeyValue::new("deployment.environment", "test"),
+            ])
+            .build();
+        exporter.set_resource(&resource);
+
+        let mut span = create_test_span();
+        span.parent_span_is_remote = true;
+
+        exporter.export(vec![span]).await.unwrap();
+
+        let output = output.get_output();
+        assert_eq!(output.len(), 1);
+
+        let request = decode_export_request(&output[0]);
+        let resource_span = request.resource_spans.first().unwrap();
+        let scope_span = resource_span.scope_spans.first().unwrap();
+        let exported_span = scope_span.spans.first().unwrap();
+
+        assert_eq!(
+            exported_span.flags & SpanFlags::ContextHasIsRemoteMask as u32,
+            SpanFlags::ContextHasIsRemoteMask as u32
+        );
+        assert_eq!(
+            exported_span.flags & SpanFlags::ContextIsRemoteMask as u32,
+            SpanFlags::ContextIsRemoteMask as u32
+        );
+
+        let resource = resource_span.resource.as_ref().unwrap();
+        let attrs = &resource.attributes;
+        assert!(attrs.iter().any(|attr| {
+            attr.key == "service.name"
+                && attr.value.as_ref().and_then(|value| value.value.as_ref())
+                    == Some(&AnyValue::StringValue("span-exporter-tests".to_string()))
+        }));
+        assert!(attrs.iter().any(|attr| {
+            attr.key == "deployment.environment"
+                && attr.value.as_ref().and_then(|value| value.value.as_ref())
+                    == Some(&AnyValue::StringValue("test".to_string()))
+        }));
+    }
+
+    #[tokio::test]
     async fn test_export_empty_batch() {
         let exporter = OtlpStdoutSpanExporter::default();
         let result = exporter.export(vec![]).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_export_propagates_output_errors() {
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .output(Arc::new(FailingOutput))
+            .build();
+
+        let err = exporter.export(vec![create_test_span()]).await.unwrap_err();
+        assert!(
+            matches!(err, OTelSdkError::InternalFailure(message) if message == "intentional test sink failure")
+        );
     }
 
     #[test]
@@ -1293,6 +1403,20 @@ mod tests {
     }
 
     #[test]
+    fn test_buffer_output_round_trip() {
+        let output = BufferOutput::new();
+        output.write_line("first").unwrap();
+        output.write_line("second").unwrap();
+
+        assert_eq!(
+            output.take_lines().unwrap(),
+            vec!["first".to_string(), "second".to_string()]
+        );
+        assert!(output.take_lines().unwrap().is_empty());
+        assert!(format!("{output:?}").contains("BufferOutput"));
+    }
+
+    #[test]
     #[serial]
     fn test_log_level_from_env() {
         // Set environment variable
@@ -1321,6 +1445,64 @@ mod tests {
 
         // Clean up
         std::env::remove_var(env_vars::LOG_LEVEL);
+    }
+
+    #[test]
+    #[serial]
+    fn test_invalid_numeric_compression_level_falls_back() {
+        std::env::set_var(env_vars::COMPRESSION_LEVEL, "99");
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .compression_level(4)
+            .build();
+        assert_eq!(exporter.compression_level, 4);
+        std::env::remove_var(env_vars::COMPRESSION_LEVEL);
+    }
+
+    #[test]
+    #[serial]
+    fn test_header_merge_and_filtering() {
+        std::env::set_var(
+            env_vars::OTLP_HEADERS,
+            "content-type=bad, malformed, x-env=env-value",
+        );
+        std::env::set_var(
+            env_vars::OTLP_TRACES_HEADERS,
+            "content-encoding=bad, x-env=trace-value, x-trace=trace-only",
+        );
+
+        let mut constructor_headers = HashMap::new();
+        constructor_headers.insert("x-constructor".to_string(), "constructor-value".to_string());
+        constructor_headers.insert("x-env".to_string(), "constructor-env".to_string());
+
+        let exporter = OtlpStdoutSpanExporter::builder()
+            .headers(constructor_headers)
+            .build();
+        let headers = exporter.headers.unwrap();
+
+        assert_eq!(headers.get("x-constructor").unwrap(), "constructor-value");
+        assert_eq!(headers.get("x-env").unwrap(), "trace-value");
+        assert_eq!(headers.get("x-trace").unwrap(), "trace-only");
+        assert!(!headers.contains_key("content-type"));
+        assert!(!headers.contains_key("content-encoding"));
+
+        std::env::set_var(
+            env_vars::OTLP_HEADERS,
+            "content-type=bad, content-encoding=bad, malformed",
+        );
+        std::env::remove_var(env_vars::OTLP_TRACES_HEADERS);
+        assert!(OtlpStdoutSpanExporter::parse_headers().is_none());
+
+        std::env::remove_var(env_vars::OTLP_HEADERS);
+        std::env::remove_var(env_vars::OTLP_TRACES_HEADERS);
+    }
+
+    #[test]
+    fn test_shutdown_and_force_flush_are_noops() {
+        let mut exporter = OtlpStdoutSpanExporter::default();
+        assert!(exporter.force_flush().is_ok());
+        assert!(exporter
+            .shutdown_with_timeout(Duration::from_millis(1))
+            .is_ok());
     }
 
     #[tokio::test]
@@ -1355,6 +1537,62 @@ mod tests {
         // Parse the JSON to check level field is omitted
         let json: Value = serde_json::from_str(&output_lines[0]).unwrap();
         assert!(!json.as_object().unwrap().contains_key("level"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_named_pipe_output_writes_to_real_fifo() {
+        let path = create_test_fifo("write-line");
+        let path_for_reader = path.clone();
+
+        let reader = thread::spawn(move || {
+            let mut file = OpenOptions::new()
+                .read(true)
+                .open(&path_for_reader)
+                .unwrap();
+            let mut contents = String::new();
+            file.read_to_string(&mut contents).unwrap();
+            contents
+        });
+
+        let output = NamedPipeOutput { path: path.clone() };
+        assert!(output.is_pipe());
+        output.write_line("hello from fifo").unwrap();
+
+        let contents = reader.join().unwrap();
+        assert_eq!(contents, "hello from fifo\n");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_export_empty_batch_touches_real_fifo() {
+        let path = create_test_fifo("touch-pipe");
+        let path_for_reader = path.clone();
+
+        let reader = thread::spawn(move || {
+            let mut file = OpenOptions::new()
+                .read(true)
+                .open(&path_for_reader)
+                .unwrap();
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).unwrap();
+            bytes
+        });
+
+        let exporter = OtlpStdoutSpanExporter {
+            compression_level: defaults::COMPRESSION_LEVEL,
+            resource: None,
+            headers: None,
+            output: Arc::new(NamedPipeOutput { path: path.clone() }),
+            level: None,
+        };
+
+        exporter.export(vec![]).await.unwrap();
+
+        let bytes = reader.join().unwrap();
+        assert!(bytes.is_empty());
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
