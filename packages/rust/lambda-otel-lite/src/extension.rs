@@ -263,15 +263,19 @@ pub(crate) async fn register_extension(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lambda_extension::{InvokeEvent, LambdaEvent};
+    use lambda_extension::{InvokeEvent, LambdaEvent, ShutdownEvent};
+    use opentelemetry::trace::{Tracer, TracerProvider as _};
+    use opentelemetry::Context;
     use opentelemetry_sdk::{
-        trace::{SdkTracerProvider, SpanData, SpanExporter},
+        error::{OTelSdkError, OTelSdkResult},
+        trace::{SdkTracerProvider, Span, SpanData, SpanExporter, SpanProcessor},
         Resource,
     };
     use std::sync::{
         atomic::{AtomicUsize, Ordering},
         Mutex,
     };
+    use std::time::Duration;
 
     /// Test-specific logger
 
@@ -316,6 +320,33 @@ mod tests {
             .build();
 
         (Arc::new(provider), Arc::new(exporter))
+    }
+
+    fn setup_batch_test_provider() -> (Arc<SdkTracerProvider>, Arc<TestExporter>) {
+        let exporter = TestExporter::new();
+        let provider = SdkTracerProvider::builder()
+            .with_batch_exporter(exporter.clone())
+            .with_resource(Resource::builder_empty().build())
+            .build();
+
+        (Arc::new(provider), Arc::new(exporter))
+    }
+
+    #[derive(Debug)]
+    struct FailingSpanProcessor;
+
+    impl SpanProcessor for FailingSpanProcessor {
+        fn on_start(&self, _span: &mut Span, _cx: &Context) {}
+
+        fn on_end(&self, _span: SpanData) {}
+
+        fn force_flush(&self) -> OTelSdkResult {
+            Err(OTelSdkError::InternalFailure("force flush failed".into()))
+        }
+
+        fn shutdown_with_timeout(&self, _timeout: Duration) -> OTelSdkResult {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -373,6 +404,89 @@ mod tests {
         // Invoke should return error when channel is closed
         let result = extension.invoke(event).await;
         assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_extension_ignores_shutdown_events() -> Result<(), Error> {
+        let (provider, _) = setup_test_provider();
+        let (_sender, receiver) = unbounded_channel();
+
+        let extension = OtelInternalExtension::new(receiver, provider);
+
+        let event = LambdaEvent {
+            next: NextEvent::Shutdown(ShutdownEvent {
+                shutdown_reason: "SPINDOWN".to_string(),
+                deadline_ms: 1000,
+            }),
+        };
+
+        let result = extension.invoke(event).await;
+        assert!(result.is_ok());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_extension_force_flush_exports_pending_spans() -> Result<(), Error> {
+        let (provider, exporter) = setup_batch_test_provider();
+        let tracer = provider.tracer("extension-test");
+        let (sender, receiver) = unbounded_channel();
+
+        {
+            let span = tracer.start("pending-span");
+            drop(span);
+        }
+
+        let extension = OtelInternalExtension::new(receiver, provider);
+
+        let event = LambdaEvent {
+            next: NextEvent::Invoke(InvokeEvent {
+                deadline_ms: 1000,
+                request_id: "test-id".to_string(),
+                invoked_function_arn: "test-arn".to_string(),
+                tracing: Default::default(),
+            }),
+        };
+
+        let handle = tokio::spawn(async move { extension.invoke(event).await });
+        sender.send(()).unwrap();
+
+        let result = handle.await.unwrap();
+        assert!(result.is_ok());
+        assert_eq!(exporter.export_count.load(Ordering::SeqCst), 1);
+        assert_eq!(exporter.get_spans().len(), 1);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_extension_invoke_returns_ok_when_force_flush_fails() -> Result<(), Error> {
+        let provider = Arc::new(
+            SdkTracerProvider::builder()
+                .with_span_processor(FailingSpanProcessor)
+                .with_resource(Resource::builder_empty().build())
+                .build(),
+        );
+        let (sender, receiver) = unbounded_channel();
+
+        let extension = OtelInternalExtension::new(receiver, provider);
+
+        let event = LambdaEvent {
+            next: NextEvent::Invoke(InvokeEvent {
+                deadline_ms: 1000,
+                request_id: "test-id".to_string(),
+                invoked_function_arn: "test-arn".to_string(),
+                tracing: Default::default(),
+            }),
+        };
+
+        let handle = tokio::spawn(async move { extension.invoke(event).await });
+        sender.send(()).unwrap();
+
+        let result = handle.await.unwrap();
+        assert!(result.is_ok());
 
         Ok(())
     }
