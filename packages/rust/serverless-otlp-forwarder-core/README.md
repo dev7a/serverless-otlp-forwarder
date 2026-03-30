@@ -146,7 +146,7 @@ cargo add serverless-otlp-forwarder-core
 - **`instrumented-client`**: Enables the `InstrumentedHttpClient` for advanced middleware support
   ```toml
   [dependencies]
-  serverless-otlp-forwarder-core = { version = "0.1.0", features = ["instrumented-client"] }
+  serverless-otlp-forwarder-core = { version = "0.2.0", features = ["instrumented-client"] }
   ```
 
 ## Usage Example
@@ -252,7 +252,7 @@ For more advanced use cases requiring request tracing and observability of the f
 ```toml
 # Cargo.toml
 [dependencies]
-serverless-otlp-forwarder-core = { version = "0.1.0", features = ["instrumented-client"] }
+serverless-otlp-forwarder-core = { version = "0.2.0", features = ["instrumented-client"] }
 reqwest-middleware = "0.3"
 reqwest-tracing = "0.5"
 ```

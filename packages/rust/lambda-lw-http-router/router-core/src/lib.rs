@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! lambda-lw-http-router = "0.1"
+//! lambda-lw-http-router = "0.5.0"
 //! ```
 //!
 //! See the [lambda-lw-http-router documentation](https://docs.rs/lambda-lw-http-router)

@@ -11,7 +11,7 @@ serverless-otlp-forwarder-core = { workspace = true, features = ["instrumented-c
 tokio.workspace = true
 anyhow.workspace = true
 lambda_runtime.workspace = true
-reqwest.workspace = true
+reqwest13.workspace = true
 tracing.workspace = true
 lambda-otel-lite.workspace = true
 opentelemetry_sdk.workspace = true

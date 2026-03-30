@@ -153,7 +153,21 @@ jobs:
       - name: Publish ${{ inputs.crate_name }} to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets[inputs.cargo_token_secret_name] }}
-        run: cargo publish --manifest-path ${{ inputs.manifest_path }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if cargo publish --manifest-path ${{ inputs.manifest_path }}; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 5 ]; then
+              echo "Publish failed after $attempt attempts"
+              exit 1
+            fi
+
+            sleep_seconds=$((30 * (1 << (attempt - 1))))
+            echo "Publish attempt $attempt failed; retrying in ${sleep_seconds}s"
+            sleep "$sleep_seconds"
+          done
         working-directory: . # cargo publish needs to be run from where Cargo.toml is, or use --manifest-path relative to current dir
 
       - name: Create and push Git tag

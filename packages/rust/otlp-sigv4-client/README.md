@@ -21,7 +21,7 @@ Add this to your `Cargo.toml` or run `cargo add otlp-sigv4-client`:
 
 ```toml
 [dependencies]
-otlp-sigv4-client = "0.11.0"
+otlp-sigv4-client = "0.13.0"
 ```
 
 ## Usage
@@ -101,7 +101,7 @@ To use without reqwest, disable default features in your Cargo.toml:
 
 ```toml
 [dependencies]
-otlp-sigv4-client = { version = "0.11.0", default-features = false }
+otlp-sigv4-client = { version = "0.13.0", default-features = false }
 ```
 
 An example implementation using the reqwest client is provided in the examples directory.
