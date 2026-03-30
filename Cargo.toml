@@ -24,11 +24,11 @@ rust-version = "1.84"
 [workspace.dependencies]
 # Local packages
 otlp-sigv4-client = { version = "0.13.0", path = "packages/rust/otlp-sigv4-client" }
-lambda-lw-http-router = { version = "0.5.0", path = "packages/rust/lambda-lw-http-router" }
-lambda-lw-http-router-core = { version = "0.5.0", path = "packages/rust/lambda-lw-http-router/router-core" }
-lambda-lw-http-router-macro = { version = "0.5.0", path = "packages/rust/lambda-lw-http-router/router-macro" }
+lambda-lw-http-router = { version = "0.6.0", path = "packages/rust/lambda-lw-http-router" }
+lambda-lw-http-router-core = { version = "0.6.0", path = "packages/rust/lambda-lw-http-router/router-core" }
+lambda-lw-http-router-macro = { version = "0.6.0", path = "packages/rust/lambda-lw-http-router/router-macro" }
 otlp-stdout-span-exporter = { version = "0.17.0", path = "packages/rust/otlp-stdout-span-exporter" }
-lambda-otel-lite = { version = "0.18.0", path = "packages/rust/lambda-otel-lite" }
+lambda-otel-lite = { version = "0.19.0", path = "packages/rust/lambda-otel-lite" }
 otlp-stdout-logs-processor = { path = "forwarders/otlp-stdout-logs-processor/processor" }
 serverless-otlp-forwarder-core = { version = "0.2.0", path = "packages/rust/serverless-otlp-forwarder-core" }
 

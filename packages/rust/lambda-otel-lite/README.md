@@ -49,8 +49,8 @@ By leveraging Lambda's execution lifecycle and providing multiple processing mod
 
 ## Requirements
 
-- Rust 1.70+
-- AWS Lambda Rust Runtime
+- Rust 1.84+
+- AWS Lambda Rust Runtime 1.x
 - OpenTelemetry packages (automatically included as dependencies)
 
 ## Features

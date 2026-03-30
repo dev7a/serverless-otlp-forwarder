@@ -2363,7 +2363,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-lw-http-router"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "aws_lambda_events",
  "ctor",
@@ -2379,7 +2379,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-lw-http-router-core"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "aws_lambda_events",
  "ctor",
@@ -2397,7 +2397,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-lw-http-router-macro"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "aws_lambda_events",
  "darling",
@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "lambda-otel-lite"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "aws_lambda_events",
  "bon",

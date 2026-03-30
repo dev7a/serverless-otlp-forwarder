@@ -15,7 +15,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! lambda-lw-http-router = "0.5.0"
+//! lambda-lw-http-router = "0.6.0"
 //! ```
 //!
 //! See the [lambda-lw-http-router documentation](https://docs.rs/lambda-lw-http-router)
@@ -157,13 +157,11 @@ mod tests {
         path_parameters.insert("id".to_string(), "123".to_string());
         path_parameters.insert("post_id".to_string(), "456".to_string());
 
-        let event = ApiGatewayProxyRequest {
-            path: Some("/users/123/posts/456".to_string()),
-            http_method: Method::GET,
-            resource: Some("/users/{id}/posts/{post_id}".to_string()),
-            path_parameters,
-            ..Default::default()
-        };
+        let mut event = ApiGatewayProxyRequest::default();
+        event.path = Some("/users/123/posts/456".to_string());
+        event.http_method = Method::GET;
+        event.resource = Some("/users/{id}/posts/{post_id}".to_string());
+        event.path_parameters = path_parameters;
 
         let lambda_context = lambda_runtime::Context::default();
         let lambda_event = LambdaEvent::new(event, lambda_context);
@@ -191,13 +189,11 @@ mod tests {
         });
 
         // Create a POST request
-        let post_event = ApiGatewayProxyRequest {
-            path: Some("/quotes".to_string()),
-            http_method: Method::POST,
-            resource: Some("/quotes".to_string()),
-            path_parameters: HashMap::new(),
-            ..Default::default()
-        };
+        let mut post_event = ApiGatewayProxyRequest::default();
+        post_event.path = Some("/quotes".to_string());
+        post_event.http_method = Method::POST;
+        post_event.resource = Some("/quotes".to_string());
+        post_event.path_parameters = HashMap::new();
 
         let lambda_context = lambda_runtime::Context::default();
         let lambda_event = LambdaEvent::new(post_event, lambda_context);
@@ -213,13 +209,11 @@ mod tests {
         );
 
         // Create a GET request to the same path
-        let get_event = ApiGatewayProxyRequest {
-            path: Some("/quotes".to_string()),
-            http_method: Method::GET,
-            resource: Some("/quotes".to_string()),
-            path_parameters: HashMap::new(),
-            ..Default::default()
-        };
+        let mut get_event = ApiGatewayProxyRequest::default();
+        get_event.path = Some("/quotes".to_string());
+        get_event.http_method = Method::GET;
+        get_event.resource = Some("/quotes".to_string());
+        get_event.path_parameters = HashMap::new();
 
         let lambda_context = lambda_runtime::Context::default();
         let lambda_event = LambdaEvent::new(get_event, lambda_context);

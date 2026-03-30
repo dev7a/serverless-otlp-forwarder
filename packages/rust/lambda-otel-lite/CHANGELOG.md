@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-03-30
+
+### Changed
+- **Breaking**: Upgraded the AWS Lambda runtime dependency family to the current `1.x` line
+  - Updated `lambda_runtime` to `1.1.2`
+  - Updated `lambda-extension` to `1.0.4`
+  - Updated `aws_lambda_events` to `1.1.2`
+- **Breaking**: Raised the minimum supported Rust version to `1.84`
+- Updated examples, README snippets, and event fixtures for the non-exhaustive AWS Lambda event structs in `aws_lambda_events 1.x`
+
 ## [0.18.0] - 2026-03-29
 
 ### Changed
