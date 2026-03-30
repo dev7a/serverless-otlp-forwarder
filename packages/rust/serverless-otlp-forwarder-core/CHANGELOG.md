@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated the crate to the OpenTelemetry 0.31 line
 - Updated the optional instrumented HTTP client path to use the current `reqwest-tracing` middleware stack
 - Reworked the forwarder client response contract to support the mixed HTTP client versions required by the newer tracing stack
+- Made `HttpForwarderResponse` constructible and readable by external crates implementing `HttpOtlpForwarderClient`
 
 ## [0.1.0] - 2025-01-26
 

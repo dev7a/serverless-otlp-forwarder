@@ -17,24 +17,32 @@ const DEFAULT_OTLP_ENDPOINT: &str = "http://localhost:4318/v1/traces";
 const OTLP_TRACES_PATH: &str = "/v1/traces";
 const DEFAULT_OTLP_EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Public response carrier returned by [`HttpOtlpForwarderClient`] implementations.
+///
+/// External crates can construct this type when providing custom forwarder clients
+/// and inspect the HTTP status and optional error body returned by the export path.
 pub struct HttpForwarderResponse {
     status: StatusCode,
     body: String,
 }
 
 impl HttpForwarderResponse {
+    /// Creates a new forwarder response with the HTTP status and response body.
     pub fn new(status: StatusCode, body: String) -> Self {
         Self { status, body }
     }
 
+    /// Returns the HTTP status code from the export attempt.
     pub fn status(&self) -> StatusCode {
         self.status
     }
 
+    /// Returns the response body captured from the export attempt.
     pub fn body(&self) -> &str {
         &self.body
     }
 
+    /// Consumes the response and returns the captured response body.
     pub fn into_body(self) -> String {
         self.body
     }
