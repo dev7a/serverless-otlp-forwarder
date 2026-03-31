@@ -769,21 +769,21 @@ mod tests {
 
     #[test]
     fn test_apigw_v2_extraction() {
-        let request = ApiGatewayV2httpRequest {
-            raw_path: Some("/test".to_string()),
-            route_key: Some("GET /test".to_string()),
-            headers: aws_lambda_events::http::HeaderMap::new(),
-            request_context: aws_lambda_events::apigw::ApiGatewayV2httpRequestContext {
-                http: aws_lambda_events::apigw::ApiGatewayV2httpRequestContextHttpDescription {
-                    method: Method::GET,
-                    path: Some("/test".to_string()),
-                    protocol: Some("HTTP/1.1".to_string()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let mut request = ApiGatewayV2httpRequest::default();
+        request.raw_path = Some("/test".to_string());
+        request.route_key = Some("GET /test".to_string());
+        request.headers = aws_lambda_events::http::HeaderMap::new();
+
+        let mut http =
+            aws_lambda_events::apigw::ApiGatewayV2httpRequestContextHttpDescription::default();
+        http.method = Method::GET;
+        http.path = Some("/test".to_string());
+        http.protocol = Some("HTTP/1.1".to_string());
+
+        let mut request_context =
+            aws_lambda_events::apigw::ApiGatewayV2httpRequestContext::default();
+        request_context.http = http;
+        request.request_context = request_context;
 
         let attrs = request.extract_span_attributes();
 
@@ -811,17 +811,16 @@ mod tests {
 
     #[test]
     fn test_apigw_v1_extraction() {
-        let request = ApiGatewayProxyRequest {
-            path: Some("/test".to_string()),
-            http_method: Method::GET,
-            resource: Some("/test".to_string()),
-            headers: aws_lambda_events::http::HeaderMap::new(),
-            request_context: aws_lambda_events::apigw::ApiGatewayProxyRequestContext {
-                protocol: Some("HTTP/1.1".to_string()),
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let mut request = ApiGatewayProxyRequest::default();
+        request.path = Some("/test".to_string());
+        request.http_method = Method::GET;
+        request.resource = Some("/test".to_string());
+        request.headers = aws_lambda_events::http::HeaderMap::new();
+
+        let mut request_context =
+            aws_lambda_events::apigw::ApiGatewayProxyRequestContext::default();
+        request_context.protocol = Some("HTTP/1.1".to_string());
+        request.request_context = request_context;
 
         let attrs = request.extract_span_attributes();
 
@@ -849,17 +848,17 @@ mod tests {
 
     #[test]
     fn test_alb_extraction() {
-        let request = AlbTargetGroupRequest {
-            path: Some("/test".to_string()),
-            http_method: Method::GET,
-            headers: aws_lambda_events::http::HeaderMap::new(),
-            request_context: aws_lambda_events::alb::AlbTargetGroupRequestContext {
-                elb: aws_lambda_events::alb::ElbContext {
-                    target_group_arn: Some("arn:aws:elasticloadbalancing:...".to_string()),
-                },
-            },
-            ..Default::default()
-        };
+        let mut request = AlbTargetGroupRequest::default();
+        request.path = Some("/test".to_string());
+        request.http_method = Method::GET;
+        request.headers = aws_lambda_events::http::HeaderMap::new();
+
+        let mut elb = aws_lambda_events::alb::ElbContext::default();
+        elb.target_group_arn = Some("arn:aws:elasticloadbalancing:...".to_string());
+
+        let mut request_context = aws_lambda_events::alb::AlbTargetGroupRequestContext::default();
+        request_context.elb = elb;
+        request.request_context = request_context;
 
         let attrs = request.extract_span_attributes();
 
@@ -906,21 +905,21 @@ mod tests {
         );
 
         // Create API Gateway V2 request
-        let request = ApiGatewayV2httpRequest {
-            headers,
-            raw_path: Some("/test".to_string()),
-            route_key: Some("GET /test".to_string()),
-            request_context: aws_lambda_events::apigw::ApiGatewayV2httpRequestContext {
-                http: aws_lambda_events::apigw::ApiGatewayV2httpRequestContextHttpDescription {
-                    method: Method::GET,
-                    path: Some("/test".to_string()),
-                    protocol: Some("HTTP/1.1".to_string()),
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let mut request = ApiGatewayV2httpRequest::default();
+        request.headers = headers;
+        request.raw_path = Some("/test".to_string());
+        request.route_key = Some("GET /test".to_string());
+
+        let mut http =
+            aws_lambda_events::apigw::ApiGatewayV2httpRequestContextHttpDescription::default();
+        http.method = Method::GET;
+        http.path = Some("/test".to_string());
+        http.protocol = Some("HTTP/1.1".to_string());
+
+        let mut request_context =
+            aws_lambda_events::apigw::ApiGatewayV2httpRequestContext::default();
+        request_context.http = http;
+        request.request_context = request_context;
 
         // Extract attributes
         let attrs = request.extract_span_attributes();

@@ -198,11 +198,10 @@ async fn handler(
     // Call nested function (it will automatically create a child span due to #[instrument])
     let _result = nested_function().await?;
 
-    Ok(ApiGatewayV2httpResponse {
-        status_code: 200,
-        body: Some("Hello from custom processor!".into()),
-        ..Default::default()
-    })
+    let mut response = ApiGatewayV2httpResponse::default();
+    response.status_code = 200;
+    response.body = Some("Hello from custom processor!".into());
+    Ok(response)
 }
 
 #[tokio::main]

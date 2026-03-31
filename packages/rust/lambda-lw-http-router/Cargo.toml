@@ -1,6 +1,6 @@
 [package]
 name = "lambda-lw-http-router"
-version = "0.5.0"
+version = "0.6.0"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,8 +14,8 @@ categories = ["web-programming::http-server", "network-programming"]
 
 [dependencies]
 # pin versions to publish
-lambda-lw-http-router-core = { version = "0.5.0", path = "router-core" }
-lambda-lw-http-router-macro = { version = "0.5.0", path = "router-macro" }
+lambda-lw-http-router-core = { version = "0.6.0", path = "router-core" }
+lambda-lw-http-router-macro = { version = "0.6.0", path = "router-macro" }
 ctor.workspace = true
 
 [dev-dependencies]

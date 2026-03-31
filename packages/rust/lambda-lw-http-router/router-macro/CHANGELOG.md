@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-03-30
+
+### Changed
+- **Breaking**: Version aligned with the `lambda-lw-http-router` `0.6.0` release
+- **Breaking**: Raised the minimum supported Rust version to `1.84`
+- Refreshed documentation examples to match the current crate family version
+
 ## [0.5.0] - 2026-03-30
 
 ### Changed

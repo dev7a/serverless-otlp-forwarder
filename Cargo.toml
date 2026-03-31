@@ -19,16 +19,16 @@ version = "0.9.0"
 edition = "2021"
 authors = ["Alessandro Bologna <alessandro.bologna@gmail.com>"]
 license = "MIT"
-rust-version = "1.75"
+rust-version = "1.84"
 
 [workspace.dependencies]
 # Local packages
 otlp-sigv4-client = { version = "0.13.0", path = "packages/rust/otlp-sigv4-client" }
-lambda-lw-http-router = { version = "0.5.0", path = "packages/rust/lambda-lw-http-router" }
-lambda-lw-http-router-core = { version = "0.5.0", path = "packages/rust/lambda-lw-http-router/router-core" }
-lambda-lw-http-router-macro = { version = "0.5.0", path = "packages/rust/lambda-lw-http-router/router-macro" }
+lambda-lw-http-router = { version = "0.6.0", path = "packages/rust/lambda-lw-http-router" }
+lambda-lw-http-router-core = { version = "0.6.0", path = "packages/rust/lambda-lw-http-router/router-core" }
+lambda-lw-http-router-macro = { version = "0.6.0", path = "packages/rust/lambda-lw-http-router/router-macro" }
 otlp-stdout-span-exporter = { version = "0.17.0", path = "packages/rust/otlp-stdout-span-exporter" }
-lambda-otel-lite = { version = "0.18.0", path = "packages/rust/lambda-otel-lite" }
+lambda-otel-lite = { version = "0.19.0", path = "packages/rust/lambda-otel-lite" }
 otlp-stdout-logs-processor = { path = "forwarders/otlp-stdout-logs-processor/processor" }
 serverless-otlp-forwarder-core = { version = "0.2.0", path = "packages/rust/serverless-otlp-forwarder-core" }
 
@@ -66,9 +66,9 @@ aws-sdk-cloudformation = "1.81.0"
 aws-sdk-dynamodb = "1.80.0"
 aws-sdk-kinesis = { version = "1.77.0", default-features = false, features = ["rt-tokio"] }
 aws-sdk-cloudwatchlogs = { version = "1.89.0", features = ["behavior-version-latest"] }
-lambda_runtime = { version = "0.14.2", features = ["anyhow", "tracing", "opentelemetry"] }
-lambda-extension = "0.12.1"
-aws_lambda_events = { version = "0.16.1", default-features = false, features = ["apigw", "alb", "sqs"] }
+lambda_runtime = { version = "1.1.2", features = ["anyhow", "tracing", "opentelemetry"] }
+lambda-extension = "1.0.4"
+aws_lambda_events = { version = "1.1.2", default-features = false, features = ["apigw", "alb", "sqs"] }
 serde_dynamo = { version = "4.2.14", features = ["aws-sdk-dynamodb+1"] }
 
 # HTTP and networking

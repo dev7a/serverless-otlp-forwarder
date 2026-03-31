@@ -9,7 +9,7 @@ repository = "https://github.com/dev7a/serverless-otlp-forwarder/cli/startled/pr
 
 [workspace]
 [dependencies]
-lambda_runtime = "0.14.2"
+lambda_runtime = "1.1.2"
 serde = "1.0.214"
 serde_json = "1.0.134"
 tokio = "1.45.1"
