@@ -12,8 +12,6 @@ members = [
     "cli/livetrace"
 ]
 
-resolver = "2"
-
 [workspace.package]
 version = "0.9.0"
 edition = "2021"
