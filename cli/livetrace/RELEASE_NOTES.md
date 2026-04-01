@@ -1,3 +1,12 @@
+## livetrace v0.2.2 - 2026-04-01
+
+This patch release restores `livetrace` compatibility with the current OpenTelemetry workspace and keeps the CLI release gate green on current Rust/Clippy tooling.
+
+### Fixes
+
+* **OpenTelemetry proto compatibility:** Updated test fixtures to include the current `Resource.entity_refs` field required by the generated proto types.
+* **Release readiness:** Revalidated `fmt`, `clippy`, `test`, and `build` for the CLI against the current workspace dependency graph.
+
 ## livetrace v0.2.1 - 2025-05-18
 
 This minor release of `livetrace` introduces a new screenshot of the `livetrace` CLI in action.
@@ -43,4 +52,3 @@ This release of `livetrace` introduces powerful new filtering and log fetching c
     *   Added `regex` crate to support the new `--grep` feature.
 
 For a detailed list of all individual changes, bug fixes, and commits, please see the [CHANGELOG.md](https://github.com/dev7a/serverless-otlp-forwarder/blob/main/cli/livetrace/CHANGELOG.md).
-
