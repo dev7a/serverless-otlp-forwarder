@@ -113,63 +113,34 @@ pub async fn invoke_function(
         .and_then(|value| value.to_str().ok())
         .map(|s| s.to_string());
 
-    let result = if client_metrics_mode {
+    let (target_function, invoke_payload) = if client_metrics_mode {
         if let Some(proxy) = proxy_function {
             let proxy_request = ProxyRequest {
                 target: function_name.to_string(),
                 payload: final_payload,
             };
-            let req_builder = req
-                .function_name(proxy)
-                .payload(Blob::new(serde_json::to_vec(&proxy_request)?));
-            if let Some(header_value) = xray_header_value.clone() {
-                req_builder
-                    .customize()
-                    .mutate_request(move |http_req| {
-                        http_req
-                            .headers_mut()
-                            .insert("X-Amzn-Trace-Id", header_value.clone());
-                    })
-                    .send()
-                    .await
-            } else {
-                req_builder.send().await
-            }
+            (proxy, Blob::new(serde_json::to_vec(&proxy_request)?))
         } else {
-            let req_builder = req
-                .function_name(function_name)
-                .payload(Blob::new(final_payload.to_string()));
-            if let Some(header_value) = xray_header_value {
-                req_builder
-                    .customize()
-                    .mutate_request(move |http_req| {
-                        http_req
-                            .headers_mut()
-                            .insert("X-Amzn-Trace-Id", header_value.clone());
-                    })
-                    .send()
-                    .await
-            } else {
-                req_builder.send().await
-            }
+            (function_name, Blob::new(final_payload.to_string()))
         }
     } else {
-        let req_builder = req
-            .function_name(function_name)
-            .payload(Blob::new(final_payload.to_string()));
-        if let Some(header_value) = xray_header_value {
-            req_builder
-                .customize()
-                .mutate_request(move |http_req| {
-                    http_req
-                        .headers_mut()
-                        .insert("X-Amzn-Trace-Id", header_value.clone());
-                })
-                .send()
-                .await
-        } else {
-            req_builder.send().await
-        }
+        (function_name, Blob::new(final_payload.to_string()))
+    };
+
+    let req_builder = req.function_name(target_function).payload(invoke_payload);
+
+    let result = if let Some(header_value) = xray_header_value {
+        req_builder
+            .customize()
+            .mutate_request(move |http_req| {
+                http_req
+                    .headers_mut()
+                    .insert("X-Amzn-Trace-Id", header_value.clone());
+            })
+            .send()
+            .await
+    } else {
+        req_builder.send().await
     };
 
     match result {
