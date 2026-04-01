@@ -311,6 +311,7 @@ mod tests {
                         }),
                     }],
                     dropped_attributes_count: 0,
+                    entity_refs: vec![],
                 }),
                 scope_spans: vec![ScopeSpans {
                     // ... add scope/spans if needed for specific tests
@@ -545,6 +546,7 @@ mod tests {
                         }),
                     }],
                     dropped_attributes_count: 0,
+                    entity_refs: vec![],
                 }),
                 scope_spans: vec![ScopeSpans {
                     ..Default::default()
