@@ -1,3 +1,12 @@
+## livetrace v0.2.3 - 2026-04-01
+
+This patch release refreshes the packaged lockfile used for `cargo publish` and `cargo install --locked` so it no longer references the yanked `slab 0.4.10` release.
+
+### Fixes
+
+* **Lockfile refresh:** Updated the packaged workspace lockfile to use `slab 0.4.12`.
+* **Cleaner publish/install path:** Removes the yanked-package warning during publish verification and locked installs.
+
 ## livetrace v0.2.2 - 2026-04-01
 
 This patch release restores `livetrace` compatibility with the current OpenTelemetry workspace and keeps the CLI release gate green on current Rust/Clippy tooling.
