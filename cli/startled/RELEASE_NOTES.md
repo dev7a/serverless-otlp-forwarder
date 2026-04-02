@@ -1,3 +1,14 @@
+# Release Notes for startled v0.9.2
+
+This patch release refreshes the packaged lockfile used for `cargo publish` and `cargo install --locked` so it no longer references the yanked `slab 0.4.10` release.
+
+### Fixes
+
+* **Lockfile refresh:** Updated the packaged workspace lockfile to use `slab 0.4.12`.
+* **Cleaner publish/install path:** Removes the yanked-package warning during publish verification and locked installs.
+
+---
+
 # Release Notes for startled v0.9.1
 
 This patch release restores the `startled` release-quality gate on the current workspace and Rust toolchain without changing user-facing benchmark behavior.
