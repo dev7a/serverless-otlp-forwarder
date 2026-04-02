@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.1] - 2026-04-01
+
+### Fixed
+- Replaced a Clippy-triggering `map_or` pattern with `is_none_or` without changing header-serialization behavior.
+- Restored downstream workspace lint compatibility for crates that depend on the local exporter during release checks.
+
 ## [0.17.0] - 2026-03-29
 
 ### Changed

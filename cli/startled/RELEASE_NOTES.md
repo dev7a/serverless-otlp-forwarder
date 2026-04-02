@@ -1,3 +1,14 @@
+# Release Notes for startled v0.9.1
+
+This patch release restores the `startled` release-quality gate on the current workspace and Rust toolchain without changing user-facing benchmark behavior.
+
+### Fixes
+
+* **Clippy compatibility:** Simplified the Lambda proxy invocation branch to satisfy current Clippy checks while preserving existing runtime behavior.
+* **Release readiness:** Revalidated `fmt`, `clippy`, `test`, and `build` for the CLI with the current dependency set.
+
+---
+
 # Release Notes for startled v0.9.0
 
 This release introduces significant updates to the `startled` CLI tool, focusing on the addition of a production-ready proxy Lambda function for enhanced benchmarking capabilities, improved documentation, and better security configurations. It also includes updates to versioning, new files for the proxy application, and enhancements to error handling in the proxy function's implementation.

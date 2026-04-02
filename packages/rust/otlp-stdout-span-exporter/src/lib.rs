@@ -400,7 +400,7 @@ pub struct ExporterOutput {
 impl ExporterOutput {
     /// Helper function for serde to skip serializing empty headers
     fn is_headers_empty(headers: &Option<HashMap<String, String>>) -> bool {
-        headers.as_ref().map_or(true, |h| h.is_empty())
+        headers.as_ref().is_none_or(|h| h.is_empty())
     }
 }
 
