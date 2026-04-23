@@ -190,7 +190,8 @@ fn resolve_otlp_endpoint() -> Result<Url> {
                 endpoint_source = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
                 "Using configured OTLP endpoint"
             );
-            return Url::parse(&traces_endpoint).context("Invalid OTLP traces endpoint URL");
+            return Url::parse(&traces_endpoint)
+                .context("Invalid URL in OTEL_EXPORTER_OTLP_TRACES_ENDPOINT");
         }
     }
 
@@ -200,7 +201,8 @@ fn resolve_otlp_endpoint() -> Result<Url> {
                 endpoint_source = "OTEL_EXPORTER_OTLP_ENDPOINT",
                 "Using configured OTLP endpoint"
             );
-            let mut url = Url::parse(&generic_endpoint).context("Invalid OTLP endpoint URL")?;
+            let mut url = Url::parse(&generic_endpoint)
+                .context("Invalid URL in OTEL_EXPORTER_OTLP_ENDPOINT")?;
 
             let current_path = url.path();
             if !current_path.ends_with(OTLP_TRACES_PATH) {
@@ -861,6 +863,32 @@ mod tests {
 
     #[tokio::test]
     #[sealed_test]
+    async fn test_resolve_otlp_endpoint_traces_invalid_mentions_source_only() {
+        let invalid_endpoint = "not a url with a secret token";
+        let _g1 = EnvVarGuard::set("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", invalid_endpoint);
+        let _g2 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_ENDPOINT");
+
+        let err_msg = resolve_otlp_endpoint().unwrap_err().to_string();
+
+        assert!(err_msg.contains("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"));
+        assert!(!err_msg.contains(invalid_endpoint));
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_resolve_otlp_endpoint_generic_invalid_mentions_source_only() {
+        let invalid_endpoint = "not a url with a secret token";
+        let _g1 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT");
+        let _g2 = EnvVarGuard::set("OTEL_EXPORTER_OTLP_ENDPOINT", invalid_endpoint);
+
+        let err_msg = resolve_otlp_endpoint().unwrap_err().to_string();
+
+        assert!(err_msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"));
+        assert!(!err_msg.contains(invalid_endpoint));
+    }
+
+    #[tokio::test]
+    #[sealed_test]
     async fn test_resolve_otlp_timeout_default() {
         let _g1 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT");
         let _g2 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_TIMEOUT");
@@ -1059,7 +1087,7 @@ mod tests {
         assert!(!err_msg.contains("Internal Error"));
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "current_thread")]
     #[sealed_test]
     #[serial]
     async fn test_send_telemetry_batch_error_logs_exclude_sensitive_values() {
