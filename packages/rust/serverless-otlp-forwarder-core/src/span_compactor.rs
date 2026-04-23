@@ -4,6 +4,7 @@ use anyhow::Result; // Changed from LambdaError
 use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
 use prost::Message;
 use std::env;
+use std::fmt;
 use tracing::{self, instrument}; // For reading environment variables
 
 use crate::telemetry::TelemetryData; // This should be correct once telemetry.rs is in the same crate
@@ -15,7 +16,7 @@ fn decode_otlp_payload(payload: &[u8]) -> Result<ExportTraceServiceRequest> {
     // Changed from LambdaError
     // Decode protobuf directly
     ExportTraceServiceRequest::decode(payload)
-        .map_err(|e| anyhow::anyhow!("Failed to decode protobuf: {}", e)) // Changed from LambdaError
+        .map_err(|_| anyhow::anyhow!("Failed to decode protobuf payload")) // Changed from LambdaError
 }
 
 /// Encodes an OTLP request to binary protobuf format (uncompressed)
@@ -31,6 +32,21 @@ pub enum CompressionPreference {
     None,
 }
 
+impl CompressionPreference {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Gzip => "gzip",
+            Self::None => "none",
+        }
+    }
+}
+
+impl fmt::Display for CompressionPreference {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Configuration for span compaction
 #[derive(Debug, Clone)]
 pub struct SpanCompactionConfig {
@@ -42,17 +58,23 @@ pub struct SpanCompactionConfig {
 
 impl Default for SpanCompactionConfig {
     fn default() -> Self {
-        let compression_preference = env::var("OTEL_EXPORTER_OTLP_TRACES_COMPRESSION")
-            .or_else(|_| env::var("OTEL_EXPORTER_OTLP_COMPRESSION"))
-            .ok()
-            .map_or(CompressionPreference::None, |val| { // Default to None if var is not set
+        let compression_setting = env::var("OTEL_EXPORTER_OTLP_TRACES_COMPRESSION")
+            .map(|val| ("OTEL_EXPORTER_OTLP_TRACES_COMPRESSION", val))
+            .or_else(|_| {
+                env::var("OTEL_EXPORTER_OTLP_COMPRESSION")
+                    .map(|val| ("OTEL_EXPORTER_OTLP_COMPRESSION", val))
+            })
+            .ok();
+
+        let compression_preference =
+            compression_setting.map_or(CompressionPreference::None, |(env_var, val)| {
                 match val.to_lowercase().as_str() {
                     "gzip" => CompressionPreference::Gzip,
                     "none" => CompressionPreference::None, // Explicitly none
-                    _ => { // Any other value, including empty string if var is set but empty, or invalid
+                    _ => {
                         tracing::warn!(
-                            "Invalid or unrecognized value for OTEL_EXPORTER_OTLP_COMPRESSION: '{}'. Defaulting to no compression.", 
-                            val
+                            env_var,
+                            "Invalid OTLP compression setting; defaulting to no compression"
                         );
                         CompressionPreference::None
                     }
@@ -67,15 +89,17 @@ impl Default for SpanCompactionConfig {
                     Ok(level) if (0..=9).contains(&level) => Some(level),
                     Ok(_) => {
                         tracing::warn!(
-                            "Invalid value for OTEL_EXPORTER_OTLP_COMPRESSION_LEVEL: '{}'. Must be between 0 and 9. Defaulting to {}.",
-                            val_str, default_compression_level
+                            env_var = "OTEL_EXPORTER_OTLP_COMPRESSION_LEVEL",
+                            default_compression_level,
+                            "Invalid OTLP compression level; defaulting to configured fallback"
                         );
                         None // Will cause fallback to default_compression_level
                     }
                     Err(_) => {
                         tracing::warn!(
-                            "Failed to parse OTEL_EXPORTER_OTLP_COMPRESSION_LEVEL: '{}'. Defaulting to {}.",
-                            val_str, default_compression_level
+                            env_var = "OTEL_EXPORTER_OTLP_COMPRESSION_LEVEL",
+                            default_compression_level,
+                            "Failed to parse OTLP compression level; defaulting to configured fallback"
                         );
                         None // Will cause fallback to default_compression_level
                     }
@@ -93,7 +117,14 @@ impl Default for SpanCompactionConfig {
 /// Compacts multiple telemetry payloads into a single payload
 /// Since all log events in a single Lambda invocation come from the same log group,
 /// we can assume they all have the same metadata (source, endpoint, headers)
-#[instrument(name="span_compactor/compact_telemetry_payloads", skip_all, fields(compact_telemetry_payloads.records.count = batch.len() as i64, compression = ?config.compression))]
+#[instrument(
+    name = "span_compactor/compact_telemetry_payloads",
+    skip_all,
+    fields(
+        compact_telemetry_payloads.records.count = batch.len() as i64,
+        requested_compression = %config.compression
+    )
+)]
 pub fn compact_telemetry_payloads(
     batch: Vec<TelemetryData>,
     config: &SpanCompactionConfig,
@@ -116,7 +147,7 @@ pub fn compact_telemetry_payloads(
                 // but our contract is that input TelemetryData here is uncompressed.
                 telemetry_to_return
                     .compress(config.gzip_compression_level)
-                    .map_err(|e| anyhow::anyhow!("Failed to compress single payload: {}", e))?;
+                    .map_err(|_| anyhow::anyhow!("Failed to compress single payload"))?;
             }
             CompressionPreference::None => {
                 // Ensure content_encoding is None. Payload is already uncompressed per contract.
@@ -138,11 +169,8 @@ pub fn compact_telemetry_payloads(
         // Consume batch
         match decode_otlp_payload(&telemetry_item.payload) {
             Ok(request) => decoded_requests.push(request),
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to decode TelemetryData payload for compaction: {}. Skipping item.",
-                    e
-                );
+            Err(_) => {
+                tracing::warn!("Failed to decode telemetry payload for compaction; skipping item");
             }
         }
     }
@@ -176,7 +204,7 @@ pub fn compact_telemetry_payloads(
         CompressionPreference::Gzip => {
             result_telemetry_data
                 .compress(config.gzip_compression_level)
-                .map_err(|e| anyhow::anyhow!("Failed to compress merged payload: {}", e))?;
+                .map_err(|_| anyhow::anyhow!("Failed to compress merged payload"))?;
         }
         CompressionPreference::None => {
             // Ensure content_encoding is None (already set as default if not compressed)
@@ -185,9 +213,12 @@ pub fn compact_telemetry_payloads(
     }
 
     tracing::info!(
-        "Compacted {} telemetry items into a single request. Final compression: {:?}.",
-        original_count,
-        result_telemetry_data.content_encoding
+        compact_telemetry_payloads.records.count = original_count as i64,
+        compression = result_telemetry_data
+            .content_encoding
+            .as_deref()
+            .unwrap_or("none"),
+        "Compacted telemetry items"
     );
     Ok(result_telemetry_data)
 }
@@ -199,7 +230,84 @@ mod tests {
     use flate2::read::GzDecoder;
     use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
     use serial_test::serial;
+    use std::collections::BTreeMap;
+    use std::fmt::Debug;
     use std::io::Read; // For tests that modify environment variables
+    use std::sync::{Arc, Mutex};
+    use tracing::{
+        field::{Field, Visit},
+        Event, Subscriber,
+    };
+    use tracing_subscriber::{
+        layer::{Context, Layer},
+        prelude::*,
+        registry::Registry,
+    };
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct CapturedEvent {
+        fields: BTreeMap<String, String>,
+    }
+
+    #[derive(Debug, Default)]
+    struct EventFieldVisitor {
+        fields: BTreeMap<String, String>,
+    }
+
+    impl Visit for EventFieldVisitor {
+        fn record_i64(&mut self, field: &Field, value: i64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_bool(&mut self, field: &Field, value: bool) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct EventCaptureLayer {
+        events: Arc<Mutex<Vec<CapturedEvent>>>,
+    }
+
+    impl EventCaptureLayer {
+        fn new() -> Self {
+            Self::default()
+        }
+
+        fn events(&self) -> Arc<Mutex<Vec<CapturedEvent>>> {
+            Arc::clone(&self.events)
+        }
+    }
+
+    impl<S> Layer<S> for EventCaptureLayer
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = EventFieldVisitor::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(CapturedEvent {
+                fields: visitor.fields,
+            });
+        }
+    }
 
     // Helper function to create a test ExportTraceServiceRequest with a specified number of spans
     fn create_test_request(span_count: usize) -> ExportTraceServiceRequest {
@@ -435,6 +543,57 @@ mod tests {
                 + decoded_request.resource_spans[1].scope_spans[0].spans.len(),
             5
         );
+    }
+
+    #[test]
+    #[serial]
+    fn test_compaction_emits_low_cardinality_event() {
+        let telemetry1 = create_test_telemetry_uncompressed(2, "s1");
+        let telemetry2 = create_test_telemetry_uncompressed(3, "s2");
+        let config = SpanCompactionConfig {
+            compression: CompressionPreference::Gzip,
+            gzip_compression_level: 9,
+        };
+        let capture_layer = EventCaptureLayer::new();
+        let captured_events = capture_layer.events();
+        let subscriber = Registry::default().with(capture_layer);
+
+        let result = tracing::subscriber::with_default(subscriber, || {
+            compact_telemetry_payloads(vec![telemetry1, telemetry2], &config)
+        })
+        .unwrap();
+
+        assert_eq!(result.content_encoding.as_deref(), Some("gzip"));
+
+        let events = captured_events.lock().unwrap();
+        let compaction_event = events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message.contains("Compacted telemetry items"))
+            })
+            .unwrap_or_else(|| panic!("expected compaction event to be emitted, got {events:#?}"));
+
+        assert_eq!(
+            compaction_event
+                .fields
+                .get("compact_telemetry_payloads.records.count")
+                .map(String::as_str),
+            Some("2")
+        );
+        assert_eq!(
+            compaction_event
+                .fields
+                .get("compression")
+                .map(String::as_str),
+            Some("gzip")
+        );
+        assert!(compaction_event
+            .fields
+            .values()
+            .all(|value| !value.contains("Some(")));
     }
 
     #[test]

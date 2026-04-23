@@ -22,7 +22,7 @@ use tracing::{debug, error, info, instrument};
 /// * `http_client`: A reference to the HTTP client for making HTTP requests.
 /// * `compaction_config`: Configuration for span compaction.
 ///
-#[instrument(name="processor/process_event_batch", skip_all, fields(source = %source_identifier))]
+#[instrument(name = "processor/process_event_batch", skip_all)]
 pub async fn process_event_batch<
     E,
     P: EventParser<EventInput = E> + Sync + Send,
@@ -40,7 +40,7 @@ pub async fn process_event_batch<
     let telemetry_items = match parser.parse(event_payload, source_identifier) {
         Ok(items) => items,
         Err(e) => {
-            error!(error = %e, "Failed to parse event payload.");
+            error!("Failed to parse event payload.");
             return Err(e.context("Event parsing failed"));
         }
     };
@@ -50,19 +50,19 @@ pub async fn process_event_batch<
         return Ok(());
     }
     debug!(
-        "Successfully parsed {} telemetry items.",
-        telemetry_items.len()
+        telemetry_items_count = telemetry_items.len() as i64,
+        "Parsed telemetry items"
     );
 
     // 2. Compact the telemetry items into a single TelemetryData object
     let compacted_telemetry = match compact_telemetry_payloads(telemetry_items, compaction_config) {
         Ok(compacted) => compacted,
         Err(e) => {
-            error!(error = %e, "Failed to compact telemetry items.");
+            error!("Failed to compact telemetry items.");
             return Err(e.context("Telemetry compaction failed"));
         }
     };
-    debug!("Successfully compacted telemetry items.");
+    debug!("Compacted telemetry items.");
 
     // 3. Send the compacted telemetry batch
     match send_telemetry_batch(http_client, compacted_telemetry).await {
@@ -71,7 +71,7 @@ pub async fn process_event_batch<
             Ok(())
         }
         Err(e) => {
-            error!(error = %e, "Failed to send telemetry batch.");
+            error!("Failed to send telemetry batch.");
             Err(e.context("Sending telemetry batch failed"))
         }
     }

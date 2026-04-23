@@ -4299,7 +4299,7 @@ dependencies = [
 
 [[package]]
 name = "serverless-otlp-forwarder-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4323,6 +4323,7 @@ dependencies = [
  "serial_test",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "url",
  "wiremock",
 ]

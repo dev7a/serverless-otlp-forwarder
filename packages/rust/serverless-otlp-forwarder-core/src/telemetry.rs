@@ -56,9 +56,9 @@ impl TelemetryData {
         content_encoding: Option<&str>,
     ) -> Result<Vec<u8>> {
         tracing::debug!(
-            "Converting payload from {}/{:?} to protobuf",
-            content_type,
-            content_encoding
+            content_type = %content_type,
+            content_encoding = %content_encoding.unwrap_or("none"),
+            "Converting payload to protobuf"
         );
 
         // First, decompress if needed
@@ -88,7 +88,10 @@ impl TelemetryData {
             }
             _ => {
                 // Unknown format, log warning and return as-is
-                tracing::warn!("Unknown content type: {}, keeping as is", content_type);
+                tracing::warn!(
+                    content_type = %content_type,
+                    "Unknown content type; keeping payload as is"
+                );
                 Ok(decompressed)
             }
         }
@@ -108,8 +111,8 @@ impl TelemetryData {
         let protobuf_bytes = request.encode_to_vec();
 
         tracing::debug!(
-            "Successfully converted JSON to protobuf (size: {} bytes)",
-            protobuf_bytes.len()
+            payload_size_bytes = protobuf_bytes.len() as u64,
+            "Converted JSON to protobuf"
         );
 
         Ok(protobuf_bytes)
@@ -122,7 +125,7 @@ impl TelemetryData {
     pub fn compress(&mut self, compression_level: u32) -> Result<()> {
         // Only compress if not already compressed
         if self.content_encoding != Some("gzip".to_string()) {
-            tracing::debug!("Compressing payload with level {}", compression_level);
+            tracing::debug!(compression_level, "Compressing payload");
 
             let original_size = self.payload.len();
             let mut encoder = GzEncoder::new(Vec::new(), Compression::new(compression_level));
@@ -135,9 +138,9 @@ impl TelemetryData {
             self.content_encoding = Some("gzip".to_string());
 
             tracing::debug!(
-                "Compressed payload from {} to {} bytes",
-                original_size,
-                self.payload.len()
+                original_size_bytes = original_size as u64,
+                compressed_size_bytes = self.payload.len() as u64,
+                "Compressed payload"
             );
         }
 
