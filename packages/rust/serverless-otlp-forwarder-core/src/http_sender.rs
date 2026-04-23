@@ -363,7 +363,7 @@ pub async fn send_telemetry_batch(
     Span::current().record("otlp.payload.size_bytes", payload_bytes.len() as u64);
 
     debug!(
-        timeout_ms = timeout.as_millis(),
+        timeout_ms = timeout.as_millis() as u64,
         header_count = headers.len() as u64,
         payload_size_bytes = payload_bytes.len() as u64,
         "Sending telemetry batch"
