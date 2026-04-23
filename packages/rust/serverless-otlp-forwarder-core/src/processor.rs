@@ -39,9 +39,9 @@ pub async fn process_event_batch<
     // 1. Parse the event payload
     let telemetry_items = match parser.parse(event_payload, source_identifier) {
         Ok(items) => items,
-        Err(e) => {
+        Err(_) => {
             error!("Failed to parse event payload.");
-            return Err(e.context("Event parsing failed"));
+            return Err(anyhow::anyhow!("Event parsing failed"));
         }
     };
 
@@ -271,11 +271,10 @@ mod tests {
         )
         .await;
 
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Event parsing failed"));
+        let err = result.unwrap_err();
+        let err_msg = err.to_string();
+        assert_eq!(err_msg, "Event parsing failed");
+        assert!(!err_msg.contains("Mock parser failed intentionally"));
     }
 
     #[tokio::test]
