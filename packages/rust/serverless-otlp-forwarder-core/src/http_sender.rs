@@ -51,7 +51,6 @@ impl HttpForwarderResponse {
 async fn read_error_body_if_needed<F, E>(status: StatusCode, read_body: F) -> String
 where
     F: Future<Output = std::result::Result<String, E>>,
-    E: std::fmt::Display,
 {
     if status.is_success() {
         return String::new();
@@ -72,7 +71,6 @@ where
 async fn drain_success_body<F, E>(status: StatusCode, drain_body: F)
 where
     F: Future<Output = std::result::Result<(), E>>,
-    E: std::fmt::Display,
 {
     if drain_body.await.is_err() {
         warn!(
@@ -374,12 +372,12 @@ pub async fn send_telemetry_batch(
         .await
     {
         Ok(resp) => resp,
-        Err(e) => {
+        Err(_) => {
             Span::current().record("otel.status_code", "ERROR");
             Span::current().record("error", true);
             Span::current().record("error.kind", "transport");
             warn!("OTLP HTTP post_telemetry failed");
-            return Err(e.context("OTLP export request failed"));
+            return Err(anyhow::anyhow!("OTLP export request failed"));
         }
     };
 
@@ -941,21 +939,10 @@ mod tests {
             "Expected send_telemetry_batch to fail due to timeout"
         );
         let err = result.unwrap_err();
+        let err_msg = err.to_string();
 
-        let is_timeout_error = err.chain().any(|cause| {
-            if let Some(req_err) = cause.downcast_ref::<reqwest::Error>() {
-                req_err.is_timeout()
-            } else {
-                cause.to_string().to_lowercase().contains("timeout")
-                    || cause.to_string().to_lowercase().contains("timed out")
-            }
-        });
-        assert!(
-            is_timeout_error,
-            "Error was not a timeout error. Actual error: {:?}\nCause chain: {:#?}",
-            err,
-            err.chain().collect::<Vec<_>>()
-        );
+        assert_eq!(err_msg, "OTLP export request failed");
+        assert!(!err_msg.contains(&server.uri()));
     }
 
     #[tokio::test]
