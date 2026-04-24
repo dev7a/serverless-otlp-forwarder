@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.1] - 2026-04-24
+
+### Changed
+- Updated `otlp-stdout-span-exporter` to `0.17.1` through the workspace dependency.
+
 ## [0.19.0] - 2026-03-30
 
 ### Changed
