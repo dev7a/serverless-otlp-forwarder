@@ -30,7 +30,7 @@ lambda-lw-http-router-macro = { version = "0.6.0", path = "packages/rust/lambda-
 otlp-stdout-span-exporter = { version = "0.17.1", path = "packages/rust/otlp-stdout-span-exporter" }
 lambda-otel-lite = { version = "0.19.0", path = "packages/rust/lambda-otel-lite" }
 otlp-stdout-logs-processor = { path = "forwarders/otlp-stdout-logs-processor/processor" }
-serverless-otlp-forwarder-core = { version = "0.2.0", path = "packages/rust/serverless-otlp-forwarder-core" }
+serverless-otlp-forwarder-core = { version = "0.2.1", path = "packages/rust/serverless-otlp-forwarder-core" }
 
 # Runtime and async
 tokio = { version = "1.45.1", features = ["full"] }

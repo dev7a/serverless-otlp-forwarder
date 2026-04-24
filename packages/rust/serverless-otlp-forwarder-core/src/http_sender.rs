@@ -51,7 +51,6 @@ impl HttpForwarderResponse {
 async fn read_error_body_if_needed<F, E>(status: StatusCode, read_body: F) -> String
 where
     F: Future<Output = std::result::Result<String, E>>,
-    E: std::fmt::Display,
 {
     if status.is_success() {
         return String::new();
@@ -59,10 +58,9 @@ where
 
     match read_body.await {
         Ok(body) => body,
-        Err(err) => {
+        Err(_) => {
             warn!(
-                status = %status,
-                error = %err,
+                status = status.as_u16(),
                 "Failed to read OTLP error response body"
             );
             String::new()
@@ -73,19 +71,17 @@ where
 async fn drain_success_body<F, E>(status: StatusCode, drain_body: F)
 where
     F: Future<Output = std::result::Result<(), E>>,
-    E: std::fmt::Display,
 {
-    if let Err(err) = drain_body.await {
+    if drain_body.await.is_err() {
         warn!(
-            status = %status,
-            error = %err,
+            status = status.as_u16(),
             "Failed to drain OTLP success response body"
         );
     }
 }
 
 /// Parses OTLP headers from a comma-separated key=value string.
-fn parse_otlp_headers(headers_str: &str) -> Result<HeaderMap> {
+fn parse_otlp_headers(headers_str: &str, header_source: &'static str) -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
     if headers_str.is_empty() {
         return Ok(headers);
@@ -100,7 +96,11 @@ fn parse_otlp_headers(headers_str: &str) -> Result<HeaderMap> {
                 let key = key_str.trim();
                 let value = value_str.trim();
                 if key.is_empty() {
-                    warn!("Empty header key found in OTLP headers string part: '{}' from full string: '{}'", pair_str, headers_str);
+                    warn!(
+                        header_source,
+                        invalid_header_reason = "empty_key",
+                        "Skipping invalid OTLP header"
+                    );
                     continue;
                 }
                 match HeaderName::from_str(key) {
@@ -108,20 +108,29 @@ fn parse_otlp_headers(headers_str: &str) -> Result<HeaderMap> {
                         Ok(header_value) => {
                             headers.append(header_name, header_value);
                         }
-                        Err(e) => {
+                        Err(_) => {
                             warn!(
-                                "Invalid header value '{}' for key '{}': {}. Skipping header.",
-                                value, key, e
+                                header_source,
+                                invalid_header_reason = "invalid_value",
+                                "Skipping invalid OTLP header"
                             );
                         }
                     },
-                    Err(e) => {
-                        warn!("Invalid header name '{}': {}. Skipping header.", key, e);
+                    Err(_) => {
+                        warn!(
+                            header_source,
+                            invalid_header_reason = "invalid_name",
+                            "Skipping invalid OTLP header"
+                        );
                     }
                 }
             }
             None => {
-                warn!("Malformed header pair (missing '='): '{}' in OTLP headers string: '{}'. Skipping.", pair_str, headers_str);
+                warn!(
+                    header_source,
+                    invalid_header_reason = "missing_equals",
+                    "Skipping invalid OTLP header"
+                );
             }
         }
     }
@@ -136,8 +145,15 @@ fn resolve_otlp_headers() -> Result<HeaderMap> {
 
     match traces_headers_var {
         Ok(headers_str) if !headers_str.is_empty() => {
-            debug!("Using OTEL_EXPORTER_OTLP_TRACES_HEADERS: {}", headers_str);
-            return parse_otlp_headers(&headers_str);
+            debug!(
+                header_source = "OTEL_EXPORTER_OTLP_TRACES_HEADERS",
+                configured_header_parts_count = headers_str
+                    .split(',')
+                    .filter(|part| !part.trim().is_empty())
+                    .count() as u64,
+                "Using configured OTLP headers"
+            );
+            return parse_otlp_headers(&headers_str, "OTEL_EXPORTER_OTLP_TRACES_HEADERS");
         }
         _ => { // Fall through if TRACES_HEADERS is not set or empty
         }
@@ -145,8 +161,15 @@ fn resolve_otlp_headers() -> Result<HeaderMap> {
 
     match generic_headers_var {
         Ok(headers_str) if !headers_str.is_empty() => {
-            debug!("Using OTEL_EXPORTER_OTLP_HEADERS: {}", headers_str);
-            return parse_otlp_headers(&headers_str);
+            debug!(
+                header_source = "OTEL_EXPORTER_OTLP_HEADERS",
+                configured_header_parts_count = headers_str
+                    .split(',')
+                    .filter(|part| !part.trim().is_empty())
+                    .count() as u64,
+                "Using configured OTLP headers"
+            );
+            return parse_otlp_headers(&headers_str, "OTEL_EXPORTER_OTLP_HEADERS");
         }
         _ => { // Fall through if HEADERS is not set or empty
         }
@@ -164,21 +187,22 @@ fn resolve_otlp_endpoint() -> Result<Url> {
     if let Ok(traces_endpoint) = env::var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") {
         if !traces_endpoint.is_empty() {
             debug!(
-                "Using OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: {}",
-                traces_endpoint
+                endpoint_source = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+                "Using configured OTLP endpoint"
             );
-            return Url::parse(&traces_endpoint).with_context(|| {
-                format!("Invalid URL from OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: {traces_endpoint}")
-            });
+            return Url::parse(&traces_endpoint)
+                .context("Invalid URL in OTEL_EXPORTER_OTLP_TRACES_ENDPOINT");
         }
     }
 
     if let Ok(generic_endpoint) = env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         if !generic_endpoint.is_empty() {
-            debug!("Using OTEL_EXPORTER_OTLP_ENDPOINT: {}", generic_endpoint);
-            let mut url = Url::parse(&generic_endpoint).with_context(|| {
-                format!("Invalid URL from OTEL_EXPORTER_OTLP_ENDPOINT: {generic_endpoint}")
-            })?;
+            debug!(
+                endpoint_source = "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "Using configured OTLP endpoint"
+            );
+            let mut url = Url::parse(&generic_endpoint)
+                .context("Invalid URL in OTEL_EXPORTER_OTLP_ENDPOINT")?;
 
             let current_path = url.path();
             if !current_path.ends_with(OTLP_TRACES_PATH) {
@@ -193,16 +217,15 @@ fn resolve_otlp_endpoint() -> Result<Url> {
         }
     }
 
-    debug!("Using default OTLP endpoint: {}", DEFAULT_OTLP_ENDPOINT);
-    Url::parse(DEFAULT_OTLP_ENDPOINT)
-        .with_context(|| format!("Failed to parse default OTLP endpoint: {DEFAULT_OTLP_ENDPOINT}"))
+    debug!(endpoint_source = "default", "Using default OTLP endpoint");
+    Url::parse(DEFAULT_OTLP_ENDPOINT).context("Failed to parse default OTLP endpoint URL")
 }
 
 /// Parses an OTLP timeout string (expected to be milliseconds) into a Duration.
 fn parse_otlp_timeout_millis(duration_ms_str: &str) -> Result<Duration> {
-    let millis = duration_ms_str.parse::<u64>().with_context(|| {
-        format!("Invalid OTLP timeout value: '{duration_ms_str}'. Expected integer milliseconds.")
-    })?;
+    let millis = duration_ms_str
+        .parse::<u64>()
+        .context("Invalid OTLP timeout value")?;
     Ok(Duration::from_millis(millis))
 }
 
@@ -213,36 +236,36 @@ fn resolve_otlp_timeout() -> Duration {
     let generic_timeout_var = env::var("OTEL_EXPORTER_OTLP_TIMEOUT");
 
     let timeout_str_to_parse = match traces_timeout_var {
-        Ok(val) if !val.is_empty() => {
-            debug!("Using OTEL_EXPORTER_OTLP_TRACES_TIMEOUT: {}", val);
-            Some(val)
-        }
+        Ok(val) if !val.is_empty() => Some(("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", val)),
         _ => match generic_timeout_var {
-            Ok(val) if !val.is_empty() => {
-                debug!("Using OTEL_EXPORTER_OTLP_TIMEOUT: {}", val);
-                Some(val)
-            }
+            Ok(val) if !val.is_empty() => Some(("OTEL_EXPORTER_OTLP_TIMEOUT", val)),
             _ => None,
         },
     };
 
-    if let Some(s) = timeout_str_to_parse {
-        match parse_otlp_timeout_millis(&s) {
+    if let Some((timeout_source, timeout_value)) = timeout_str_to_parse {
+        match parse_otlp_timeout_millis(&timeout_value) {
             Ok(duration) => {
-                debug!("Parsed OTLP export timeout duration: {:?}", duration);
+                debug!(
+                    timeout_source,
+                    timeout_ms = duration.as_millis() as u64,
+                    "Using configured OTLP export timeout"
+                );
                 return duration;
             }
-            Err(e) => {
+            Err(_) => {
                 warn!(
-                    "Failed to parse OTLP timeout value '{}': {}. Using default timeout.",
-                    s, e
+                    timeout_source,
+                    timeout_ms = DEFAULT_OTLP_EXPORT_TIMEOUT.as_millis() as u64,
+                    "Failed to parse OTLP export timeout; using default"
                 );
             }
         }
     }
     debug!(
-        "Using default OTLP export timeout: {:?}",
-        DEFAULT_OTLP_EXPORT_TIMEOUT
+        timeout_source = "default",
+        timeout_ms = DEFAULT_OTLP_EXPORT_TIMEOUT.as_millis() as u64,
+        "Using default OTLP export timeout"
     );
     DEFAULT_OTLP_EXPORT_TIMEOUT
 }
@@ -293,19 +316,30 @@ pub type HttpClient = Arc<dyn HttpOtlpForwarderClient + Send + Sync>;
 
 /// Sends a batch of OTLP telemetry data.
 /// The TelemetryData payload is assumed to be a compacted, possibly compressed, OTLP protobuf batch.
-#[instrument(name="http_sender/send_telemetry_batch", skip_all, fields(
-    otel.kind = "client",
-    http.method = "POST",
-    http.url = %telemetry_data.endpoint,
-    http.status_code
-    // error details will be added on error
-))]
+#[instrument(
+    name = "http_sender/send_telemetry_batch",
+    skip_all,
+    fields(
+        otel.kind = "client",
+        http.method = "POST",
+        http.status_code,
+        otel.status_code,
+        error,
+        error.kind,
+        otlp.headers.count,
+        otlp.payload.size_bytes,
+        otlp.timeout_ms,
+        otlp.request_content_type = %telemetry_data.content_type,
+        otlp.request_content_encoding = %telemetry_data.content_encoding.as_deref().unwrap_or("none"),
+        otlp.response_error_body_present,
+        otlp.response_error_body_size_bytes
+    )
+)]
 pub async fn send_telemetry_batch(
     client: &impl HttpOtlpForwarderClient,
     telemetry_data: TelemetryData,
 ) -> Result<()> {
     let resolved_target_url = resolve_otlp_endpoint()?;
-    Span::current().record("http.url", resolved_target_url.as_str());
     let timeout = resolve_otlp_timeout();
 
     let mut headers = resolve_otlp_headers()?;
@@ -324,14 +358,15 @@ pub async fn send_telemetry_batch(
     }
 
     let payload_bytes = Bytes::from(telemetry_data.payload); // Convert Vec<u8> to Bytes
+    Span::current().record("otlp.timeout_ms", timeout.as_millis() as u64);
+    Span::current().record("otlp.headers.count", headers.len() as u64);
+    Span::current().record("otlp.payload.size_bytes", payload_bytes.len() as u64);
 
     debug!(
-        name = "sending telemetry batch",
-        target_url = %resolved_target_url,
-        timeout_ms = timeout.as_millis(),
-        headers = ?headers,
-        payload_size_bytes = payload_bytes.len(), // Use length of Bytes
-        "Request details"
+        timeout_ms = timeout.as_millis() as u64,
+        header_count = headers.len() as u64,
+        payload_size_bytes = payload_bytes.len() as u64,
+        "Sending telemetry batch"
     );
 
     let response = match client
@@ -339,12 +374,12 @@ pub async fn send_telemetry_batch(
         .await
     {
         Ok(resp) => resp,
-        Err(e) => {
+        Err(_) => {
             Span::current().record("otel.status_code", "ERROR");
             Span::current().record("error", true);
-            Span::current().record("error.message", e.to_string());
-            warn!(target_url = %resolved_target_url, error = %e, "OTLP HTTP post_telemetry failed");
-            return Err(e);
+            Span::current().record("error.kind", "transport");
+            warn!("OTLP HTTP post_telemetry failed");
+            return Err(anyhow::anyhow!("OTLP export request failed"));
         }
     };
 
@@ -353,23 +388,32 @@ pub async fn send_telemetry_batch(
 
     if !status.is_success() {
         Span::current().record("otel.status_code", "ERROR");
+        Span::current().record("error", true);
+        Span::current().record("error.kind", "non_success_status");
         let error_body = response.into_body();
-        Span::current().record("error.message", error_body.clone());
+        Span::current().record("otlp.response_error_body_present", !error_body.is_empty());
+        Span::current().record(
+            "otlp.response_error_body_size_bytes",
+            error_body.len() as u64,
+        );
         warn!(
-            target_url = %resolved_target_url,
-            status = %status,
-            response_body = %error_body,
+            status = status.as_u16(),
+            response_error_body_present = !error_body.is_empty(),
+            response_error_body_size_bytes = error_body.len() as u64,
             "OTLP export failed with non-success status"
         );
         return Err(anyhow::anyhow!(
-            "OTLP export failed to {}. Status: {}. Body: {}",
-            resolved_target_url,
-            status,
-            error_body
+            "OTLP export failed with status {}",
+            status.as_u16()
         ));
     }
 
-    debug!(target_url = %resolved_target_url, status = %status, "Telemetry batch sent successfully");
+    Span::current().record("otel.status_code", "OK");
+    Span::current().record("error", false);
+    debug!(
+        status = status.as_u16(),
+        "Telemetry batch sent successfully"
+    );
     Ok(())
 }
 
@@ -471,12 +515,15 @@ pub mod client_builder {
 mod tests {
     use super::*;
     use crate::telemetry::TelemetryData;
+    use crate::tracing_capture::EventCaptureLayer;
     use anyhow::anyhow;
     use reqwest::Client as ReqwestClient;
     use sealed_test::prelude::*;
+    use serial_test::serial;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::time::Duration as StdDuration;
+    use tracing_subscriber::{prelude::*, registry::Registry};
     use wiremock::matchers::{body_bytes, header, method, path};
     use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
 
@@ -524,7 +571,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_otlp_headers_empty() {
-        let headers = parse_otlp_headers("").unwrap();
+        let headers = parse_otlp_headers("", "test").unwrap();
         assert!(headers.is_empty());
     }
 
@@ -594,13 +641,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_otlp_headers_single() {
-        let headers = parse_otlp_headers("key1=value1").unwrap();
+        let headers = parse_otlp_headers("key1=value1", "test").unwrap();
         assert_eq!(headers.get("key1").unwrap(), "value1");
     }
 
     #[tokio::test]
     async fn test_parse_otlp_headers_multiple() {
-        let headers = parse_otlp_headers("key1=value1,key2=value2, key3 = value3 ").unwrap();
+        let headers =
+            parse_otlp_headers("key1=value1,key2=value2, key3 = value3 ", "test").unwrap();
         assert_eq!(headers.get("key1").unwrap(), "value1");
         assert_eq!(headers.get("key2").unwrap(), "value2");
         assert_eq!(headers.get("key3").unwrap(), "value3");
@@ -608,7 +656,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_otlp_headers_invalid_pair() {
-        let headers = parse_otlp_headers("key1=value1,invalid,key2=value2").unwrap();
+        let headers = parse_otlp_headers("key1=value1,invalid,key2=value2", "test").unwrap();
         assert_eq!(headers.get("key1").unwrap(), "value1");
         assert_eq!(headers.get("key2").unwrap(), "value2");
         assert!(headers.get("invalid").is_none());
@@ -617,7 +665,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_parse_otlp_headers_empty_key_value() {
-        let headers = parse_otlp_headers("key1=, =value2 , key3=value3").unwrap();
+        let headers = parse_otlp_headers("key1=, =value2 , key3=value3", "test").unwrap();
         assert_eq!(headers.get("key1").unwrap(), "");
         assert_eq!(headers.get("key3").unwrap(), "value3");
         assert_eq!(headers.len(), 2);
@@ -741,6 +789,32 @@ mod tests {
 
     #[tokio::test]
     #[sealed_test]
+    async fn test_resolve_otlp_endpoint_traces_invalid_mentions_source_only() {
+        let invalid_endpoint = "not a url with a secret token";
+        let _g1 = EnvVarGuard::set("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", invalid_endpoint);
+        let _g2 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_ENDPOINT");
+
+        let err_msg = resolve_otlp_endpoint().unwrap_err().to_string();
+
+        assert!(err_msg.contains("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"));
+        assert!(!err_msg.contains(invalid_endpoint));
+    }
+
+    #[tokio::test]
+    #[sealed_test]
+    async fn test_resolve_otlp_endpoint_generic_invalid_mentions_source_only() {
+        let invalid_endpoint = "not a url with a secret token";
+        let _g1 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT");
+        let _g2 = EnvVarGuard::set("OTEL_EXPORTER_OTLP_ENDPOINT", invalid_endpoint);
+
+        let err_msg = resolve_otlp_endpoint().unwrap_err().to_string();
+
+        assert!(err_msg.contains("OTEL_EXPORTER_OTLP_ENDPOINT"));
+        assert!(!err_msg.contains(invalid_endpoint));
+    }
+
+    #[tokio::test]
+    #[sealed_test]
     async fn test_resolve_otlp_timeout_default() {
         let _g1 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT");
         let _g2 = EnvVarGuard::remove("OTEL_EXPORTER_OTLP_TIMEOUT");
@@ -819,21 +893,10 @@ mod tests {
             "Expected send_telemetry_batch to fail due to timeout"
         );
         let err = result.unwrap_err();
+        let err_msg = err.to_string();
 
-        let is_timeout_error = err.chain().any(|cause| {
-            if let Some(req_err) = cause.downcast_ref::<reqwest::Error>() {
-                req_err.is_timeout()
-            } else {
-                cause.to_string().to_lowercase().contains("timeout")
-                    || cause.to_string().to_lowercase().contains("timed out")
-            }
-        });
-        assert!(
-            is_timeout_error,
-            "Error was not a timeout error. Actual error: {:?}\nCause chain: {:#?}",
-            err,
-            err.chain().collect::<Vec<_>>()
-        );
+        assert_eq!(err_msg, "OTLP export request failed");
+        assert!(!err_msg.contains(&server.uri()));
     }
 
     #[tokio::test]
@@ -946,7 +1009,66 @@ mod tests {
         let result = send_telemetry_batch(&client, telemetry).await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Status: 500"));
-        assert!(err_msg.contains("Internal Error"));
+        assert!(err_msg.contains("status 500"));
+        assert!(!err_msg.contains("Internal Error"));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    #[sealed_test]
+    #[serial]
+    async fn test_send_telemetry_batch_error_logs_exclude_sensitive_values() {
+        let server = MockServer::start().await;
+        let client = test_client();
+        let telemetry = TelemetryData::default();
+        let capture_layer = EventCaptureLayer::new();
+        let captured_events = capture_layer.events();
+        let subscriber = Registry::default().with(capture_layer);
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        Mock::given(method("POST"))
+            .and(path(OTLP_TRACES_PATH))
+            .respond_with(ResponseTemplate::new(500).set_body_string("Internal Error"))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let _g1 = EnvVarGuard::set(
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            &format!("{}{}", server.uri(), OTLP_TRACES_PATH),
+        );
+
+        let result = send_telemetry_batch(&client, telemetry).await;
+        assert!(result.is_err());
+
+        let events = captured_events.lock().unwrap();
+        let failure_event = events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|message| message == "OTLP export failed with non-success status")
+            })
+            .expect("expected non-success OTLP export warning");
+
+        assert_eq!(
+            failure_event.fields.get("status").map(String::as_str),
+            Some("500")
+        );
+        assert_eq!(
+            failure_event
+                .fields
+                .get("response_error_body_present")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert!(failure_event
+            .fields
+            .values()
+            .all(|value| !value.contains("Internal Error")));
+        assert!(failure_event
+            .fields
+            .values()
+            .all(|value| !value.contains(&server.uri())));
     }
 }

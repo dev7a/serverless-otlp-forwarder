@@ -4,6 +4,9 @@
 pub mod telemetry;
 pub use telemetry::TelemetryData;
 
+#[cfg(test)]
+pub(crate) mod tracing_capture;
+
 pub mod span_compactor;
 pub use span_compactor::{compact_telemetry_payloads, SpanCompactionConfig};
 
