@@ -227,87 +227,12 @@ pub fn compact_telemetry_payloads(
 mod tests {
     use super::*;
     use crate::telemetry::TelemetryData; // Ensure TelemetryData is in scope for tests
+    use crate::tracing_capture::EventCaptureLayer;
     use flate2::read::GzDecoder;
     use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
     use serial_test::serial;
-    use std::collections::BTreeMap;
-    use std::fmt::Debug;
     use std::io::Read; // For tests that modify environment variables
-    use std::sync::{Arc, Mutex};
-    use tracing::{
-        field::{Field, Visit},
-        Event, Subscriber,
-    };
-    use tracing_subscriber::{
-        layer::{Context, Layer},
-        prelude::*,
-        registry::Registry,
-    };
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct CapturedEvent {
-        fields: BTreeMap<String, String>,
-    }
-
-    #[derive(Debug, Default)]
-    struct EventFieldVisitor {
-        fields: BTreeMap<String, String>,
-    }
-
-    impl Visit for EventFieldVisitor {
-        fn record_i64(&mut self, field: &Field, value: i64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_bool(&mut self, field: &Field, value: bool) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-            self.fields
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
-
-    #[derive(Debug, Default)]
-    struct EventCaptureLayer {
-        events: Arc<Mutex<Vec<CapturedEvent>>>,
-    }
-
-    impl EventCaptureLayer {
-        fn new() -> Self {
-            Self::default()
-        }
-
-        fn events(&self) -> Arc<Mutex<Vec<CapturedEvent>>> {
-            Arc::clone(&self.events)
-        }
-    }
-
-    impl<S> Layer<S> for EventCaptureLayer
-    where
-        S: Subscriber,
-    {
-        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = EventFieldVisitor::default();
-            event.record(&mut visitor);
-            self.events.lock().unwrap().push(CapturedEvent {
-                fields: visitor.fields,
-            });
-        }
-    }
+    use tracing_subscriber::{prelude::*, registry::Registry};
 
     // Helper function to create a test ExportTraceServiceRequest with a specified number of spans
     fn create_test_request(span_count: usize) -> ExportTraceServiceRequest {

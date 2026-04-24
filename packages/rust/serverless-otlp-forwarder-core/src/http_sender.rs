@@ -515,24 +515,15 @@ pub mod client_builder {
 mod tests {
     use super::*;
     use crate::telemetry::TelemetryData;
+    use crate::tracing_capture::EventCaptureLayer;
     use anyhow::anyhow;
     use reqwest::Client as ReqwestClient;
     use sealed_test::prelude::*;
     use serial_test::serial;
-    use std::collections::BTreeMap;
-    use std::fmt::Debug;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use std::time::Duration as StdDuration;
-    use tracing::{
-        field::{Field, Visit},
-        Event, Subscriber,
-    };
-    use tracing_subscriber::{
-        layer::{Context, Layer},
-        prelude::*,
-        registry::Registry,
-    };
+    use tracing_subscriber::{prelude::*, registry::Registry};
     use wiremock::matchers::{body_bytes, header, method, path};
     use wiremock::{Match, Mock, MockServer, Request, ResponseTemplate};
 
@@ -576,71 +567,6 @@ mod tests {
 
     fn test_client() -> ReqwestClient {
         ReqwestClient::new()
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    struct CapturedEvent {
-        fields: BTreeMap<String, String>,
-    }
-
-    #[derive(Debug, Default)]
-    struct EventFieldVisitor {
-        fields: BTreeMap<String, String>,
-    }
-
-    impl Visit for EventFieldVisitor {
-        fn record_i64(&mut self, field: &Field, value: i64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_u64(&mut self, field: &Field, value: u64) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_bool(&mut self, field: &Field, value: bool) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_str(&mut self, field: &Field, value: &str) {
-            self.fields
-                .insert(field.name().to_string(), value.to_string());
-        }
-
-        fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
-            self.fields
-                .insert(field.name().to_string(), format!("{value:?}"));
-        }
-    }
-
-    #[derive(Debug, Default)]
-    struct EventCaptureLayer {
-        events: Arc<Mutex<Vec<CapturedEvent>>>,
-    }
-
-    impl EventCaptureLayer {
-        fn new() -> Self {
-            Self::default()
-        }
-
-        fn events(&self) -> Arc<Mutex<Vec<CapturedEvent>>> {
-            Arc::clone(&self.events)
-        }
-    }
-
-    impl<S> Layer<S> for EventCaptureLayer
-    where
-        S: Subscriber,
-    {
-        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = EventFieldVisitor::default();
-            event.record(&mut visitor);
-            self.events.lock().unwrap().push(CapturedEvent {
-                fields: visitor.fields,
-            });
-        }
     }
 
     #[tokio::test]
