@@ -13,7 +13,7 @@ Before publishing a new version of `lambda-otel-lite`, ensure all these items ar
 - [ ] `homepage` URL is valid
 - [ ] `documentation` URL is specified
 - [ ] Dependencies are up-to-date and correct
-- [ ] Validate that otlp-stdout-span-exporter is not just using the workspace version, but is pinned to the last version
+- [ ] Validate that `otlp-stdout-span-exporter` resolves to the intended published version, either as an explicit version or via a workspace dependency that includes `version`
 - [ ] No extraneous dependencies
 - [ ] Development dependencies are in `[dev-dependencies]`
 - [ ] Feature flags are correctly defined
@@ -101,4 +101,4 @@ Before publishing a new version of `lambda-otel-lite`, ensure all these items ar
 - Consider running `cargo audit` for security vulnerabilities
 - Use `cargo clippy` with all relevant feature combinations
 - Remember to update any related documentation or examples in the main repository
-- Consider testing on different architectures (x86_64, aarch64) 
+- Consider testing on different architectures (x86_64, aarch64)
