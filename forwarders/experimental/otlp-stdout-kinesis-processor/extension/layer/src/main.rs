@@ -131,11 +131,7 @@ async fn telemetry_handler(
         tracing::debug!("Received event: {:?}", event);
         let parsed_event_opt = match event.record {
             // --- Add Case for PlatformInitStart --- START ---
-            LambdaTelemetryRecord::PlatformInitStart {
-                initialization_type:_, // Ignore initialization_type for now
-                phase:_, // Ignore phase for now
-                .. // Ignore other fields like runtime_version for now
-            } => {
+            LambdaTelemetryRecord::PlatformInitStart { .. } => {
                 // TODO removed - InitStart variant needs no fields currently
                 Some(ParsedPlatformEvent {
                     timestamp,
@@ -248,11 +244,20 @@ async fn telemetry_handler(
 
                 // Send the InitDataAvailable message IF init duration was present
                 if let Some(init_duration_ms) = init_duration_ms_opt {
-                     tracing::debug!(request_id = %request_id, init_duration_ms, "Found init duration in report, sending InitDataAvailable message");
-                     if let Err(e) = tx.send(ProcessorInput::InitDataAvailable { request_id: request_id.clone(), init_duration_ms }).await {
-                         tracing::error!("Failed to send InitDataAvailable to processor channel: {}", e);
-                     }
-                 }
+                    tracing::debug!(request_id = %request_id, init_duration_ms, "Found init duration in report, sending InitDataAvailable message");
+                    if let Err(e) = tx
+                        .send(ProcessorInput::InitDataAvailable {
+                            request_id: request_id.clone(),
+                            init_duration_ms,
+                        })
+                        .await
+                    {
+                        tracing::error!(
+                            "Failed to send InitDataAvailable to processor channel: {}",
+                            e
+                        );
+                    }
+                }
 
                 // Return the normal parsed event to be sent as PlatformTelemetry
                 Some(parsed_event)

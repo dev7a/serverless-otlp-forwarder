@@ -21,8 +21,14 @@ Add this to your `Cargo.toml` or run `cargo add otlp-sigv4-client`:
 
 ```toml
 [dependencies]
-otlp-sigv4-client = "0.13.0"
+otlp-sigv4-client = "0.14.0"
 ```
+
+## Compatibility and TLS
+
+This release requires Rust 1.85 or later and uses OpenTelemetry 0.32 and reqwest 0.13. Applications that construct a reqwest client for this crate must also use reqwest 0.13. For instrumented clients, use `reqwest-middleware 0.5` and `reqwest-tracing 0.7.1` with its `opentelemetry_0_32` feature.
+
+The default Rustls client verifies HTTPS certificates using `rustls-platform-verifier` and the operating system trust store. Earlier releases used bundled webpki roots. Ensure a CA bundle is available in minimal Linux containers and Lambda custom runtimes. Custom trust configuration can be supplied through a reqwest `ClientBuilder` before passing the client to this crate.
 
 ## Usage
 
@@ -101,7 +107,7 @@ To use without reqwest, disable default features in your Cargo.toml:
 
 ```toml
 [dependencies]
-otlp-sigv4-client = { version = "0.13.0", default-features = false }
+otlp-sigv4-client = { version = "0.14.0", default-features = false }
 ```
 
 An example implementation using the reqwest client is provided in the examples directory.

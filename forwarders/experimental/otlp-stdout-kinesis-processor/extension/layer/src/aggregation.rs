@@ -367,7 +367,7 @@ mod tests {
         assert!(agg.start_time.is_none());
         assert!(agg.end_time.is_none());
         assert_eq!(agg.status, OtelStatus::Unset);
-        assert_eq!(agg.name, "Lambda Invoke");
+        assert_eq!(agg.name, "Lambda/Invoke");
         assert!(matches!(agg.kind, SpanKind::Server));
         assert!(agg.attributes.is_empty());
         assert!(agg.child_spans_data.is_empty());
@@ -649,7 +649,7 @@ mod tests {
         assert_eq!(span_data.span_context.span_id(), span_id);
         assert_eq!(span_data.span_context.trace_flags(), TraceFlags::SAMPLED);
         assert_eq!(span_data.parent_span_id, root_span_id);
-        assert_eq!(span_data.name.as_ref(), "Lambda Invoke"); // Compare Cow as &str
+        assert_eq!(span_data.name.as_ref(), "Lambda/Invoke"); // Compare Cow as &str
         assert_eq!(span_data.start_time, start_system_time);
         assert_eq!(span_data.end_time, end_system_time);
         assert_eq!(span_data.status, OtelStatus::Ok);

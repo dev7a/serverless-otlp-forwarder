@@ -1,3 +1,13 @@
+# Release Notes for startled v0.10.0
+
+Requires Rust 1.85 or later. Public telemetry initialization now returns the OpenTelemetry 0.32 `SdkTracerProvider`.
+
+This release upgrades telemetry to OpenTelemetry 0.32, requires the baggage propagation fix in `opentelemetry_sdk 0.32.1`, and uses `otlp-sigv4-client 0.14.0`.
+
+HTTP exports now use reqwest 0.13. HTTPS certificate verification uses the operating system trust store through `rustls-platform-verifier` instead of bundled webpki roots. Ensure the target system provides a usable CA bundle.
+
+---
+
 # Release Notes for startled v0.9.2
 
 This patch release refreshes the packaged lockfile used for `cargo publish` and `cargo install --locked` so it no longer references the yanked `slab 0.4.10` release.

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-01
+
+### Changed
+- **Breaking**: Raised the workspace minimum supported Rust version to `1.85`. The platform TLS verifier uses an edition-2024 macOS dependency.
+- **Breaking**: Upgraded the public OpenTelemetry API and SDK to the 0.32 line, with `opentelemetry_sdk >= 0.32.1`, `opentelemetry-aws 0.20`, and `tracing-opentelemetry 0.33`.
+- Updated `otlp-stdout-span-exporter` to `0.18.0` and adapted exporter shutdown to the SDK's shared-reference API.
+- Updated custom sampler examples to import `SamplingDecision` and `SamplingResult` from `opentelemetry_sdk::trace`.
+
+### Security
+- Requires the fix for [GHSA-w9wp-h8wv-79jx](https://github.com/advisories/GHSA-w9wp-h8wv-79jx), which bounds parsing when applications opt into `BaggagePropagator`. Baggage propagation remains opt-in.
+
+
 ## [0.19.1] - 2026-04-24
 
 ### Changed

@@ -732,7 +732,7 @@ impl SpanExporter for OtlpStdoutSpanExporter {
     /// # Returns
     ///
     /// Returns `Ok(())` as there is nothing to clean up.
-    fn shutdown_with_timeout(&mut self, _timeout: std::time::Duration) -> Result<(), OTelSdkError> {
+    fn shutdown_with_timeout(&self, _timeout: std::time::Duration) -> Result<(), OTelSdkError> {
         Ok(())
     }
 
@@ -743,7 +743,7 @@ impl SpanExporter for OtlpStdoutSpanExporter {
     /// # Returns
     ///
     /// Returns `Ok(())` as there is nothing to flush.
-    fn force_flush(&mut self) -> Result<(), OTelSdkError> {
+    fn force_flush(&self) -> Result<(), OTelSdkError> {
         Ok(())
     }
 
@@ -1498,7 +1498,7 @@ mod tests {
 
     #[test]
     fn test_shutdown_and_force_flush_are_noops() {
-        let mut exporter = OtlpStdoutSpanExporter::default();
+        let exporter = OtlpStdoutSpanExporter::default();
         assert!(exporter.force_flush().is_ok());
         assert!(exporter
             .shutdown_with_timeout(Duration::from_millis(1))

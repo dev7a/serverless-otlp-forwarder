@@ -372,6 +372,8 @@ async fn main() -> Result<(), Error> {
 }
 ```
 
+Baggage propagation is opt-in. This release requires `opentelemetry_sdk >= 0.32.1`, which rejects baggage headers larger than 8192 bytes and parses at most the first 64 members to address [GHSA-w9wp-h8wv-79jx](https://github.com/advisories/GHSA-w9wp-h8wv-79jx).
+
 By default, the crate combines two propagators: W3C Trace Context (`TraceContextPropagator`) and the Lambda-specific X-Ray propagator (`LambdaXrayPropagator`), providing out-of-the-box support for both industry-standard tracing and AWS-specific tracing. You can add additional propagators using the `with_propagator` method, or use `with_named_propagator` with the following options:
 
 - `"tracecontext"`: W3C Trace Context propagator
@@ -443,10 +445,10 @@ You can also implement custom samplers by implementing the `ShouldSample` trait:
 ```rust, no_run
 use lambda_otel_lite::{init_telemetry, TelemetryConfig};
 use opentelemetry::{
-    trace::{SamplingDecision, SamplingResult, SpanKind, TraceId, TraceContextExt},
+    trace::{SpanKind, TraceId, TraceContextExt},
     Context, KeyValue,
 };
-use opentelemetry_sdk::trace::{Sampler, ShouldSample};
+use opentelemetry_sdk::trace::{Sampler, SamplingDecision, SamplingResult, ShouldSample};
 use lambda_runtime::Error;
 
 #[derive(Debug, Clone)]

@@ -3,7 +3,6 @@ use aws_lambda_events::event::cloudwatch_logs::LogsEvent;
 use otlp_stdout_span_exporter::ExporterOutput;
 use serverless_otlp_forwarder_core::core_parser::EventParser;
 use serverless_otlp_forwarder_core::telemetry::TelemetryData;
-use tracing;
 
 // Define a local struct for parsing CloudWatch Logs events containing OTLP stdout format.
 pub struct CloudWatchLogsOtlpStdoutParser;
@@ -62,7 +61,7 @@ impl EventParser for CloudWatchLogsOtlpStdoutParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_lambda_events::event::cloudwatch_logs::{AwsLogs, LogData, LogEntry};
+    use aws_lambda_events::event::cloudwatch_logs::LogEntry;
     use serde_json::json;
 
     // A valid base64-encoded, gzipped, minimal OTLP protobuf payload string.
@@ -93,29 +92,21 @@ mod tests {
         let log_message1 = create_test_exporter_output_log_message("service-a");
         let log_message2 = create_test_exporter_output_log_message("service-b");
 
-        let event = LogsEvent {
-            aws_logs: AwsLogs {
-                data: LogData {
-                    owner: "123456789012".to_string(),
-                    log_group: "/aws/lambda/test-func".to_string(),
-                    log_stream: "stream1".to_string(),
-                    message_type: "DATA_MESSAGE".to_string(),
-                    subscription_filters: vec!["filter1".to_string()],
-                    log_events: vec![
-                        LogEntry {
-                            id: "e1".to_string(),
-                            timestamp: 1000,
-                            message: log_message1,
-                        },
-                        LogEntry {
-                            id: "e2".to_string(),
-                            timestamp: 2000,
-                            message: log_message2,
-                        },
-                    ],
-                },
-            },
-        };
+        let mut event = LogsEvent::default();
+        event.aws_logs.data.owner = "123456789012".to_string();
+        event.aws_logs.data.log_group = "/aws/lambda/test-func".to_string();
+        event.aws_logs.data.log_stream = "stream1".to_string();
+        event.aws_logs.data.message_type = "DATA_MESSAGE".to_string();
+        event.aws_logs.data.subscription_filters = vec!["filter1".to_string()];
+        let mut entry1 = LogEntry::default();
+        entry1.id = "e1".to_string();
+        entry1.timestamp = 1000;
+        entry1.message = log_message1;
+        let mut entry2 = LogEntry::default();
+        entry2.id = "e2".to_string();
+        entry2.timestamp = 2000;
+        entry2.message = log_message2;
+        event.aws_logs.data.log_events = vec![entry1, entry2];
 
         let result = parser.parse(event, "/aws/lambda/test-func").unwrap();
         assert_eq!(result.len(), 2);
@@ -133,29 +124,21 @@ mod tests {
         let malformed_json_message = "{\"key\": \"value\" but not closed";
         let valid_json_message = create_test_exporter_output_log_message("service-ok");
 
-        let event = LogsEvent {
-            aws_logs: AwsLogs {
-                data: LogData {
-                    owner: "123456789012".to_string(),
-                    log_group: "/aws/lambda/test-func".to_string(),
-                    log_stream: "stream1".to_string(),
-                    message_type: "DATA_MESSAGE".to_string(),
-                    subscription_filters: vec!["filter1".to_string()],
-                    log_events: vec![
-                        LogEntry {
-                            id: "e1".to_string(),
-                            timestamp: 1000,
-                            message: malformed_json_message.to_string(),
-                        },
-                        LogEntry {
-                            id: "e2".to_string(),
-                            timestamp: 2000,
-                            message: valid_json_message,
-                        },
-                    ],
-                },
-            },
-        };
+        let mut event = LogsEvent::default();
+        event.aws_logs.data.owner = "123456789012".to_string();
+        event.aws_logs.data.log_group = "/aws/lambda/test-func".to_string();
+        event.aws_logs.data.log_stream = "stream1".to_string();
+        event.aws_logs.data.message_type = "DATA_MESSAGE".to_string();
+        event.aws_logs.data.subscription_filters = vec!["filter1".to_string()];
+        let mut entry1 = LogEntry::default();
+        entry1.id = "e1".to_string();
+        entry1.timestamp = 1000;
+        entry1.message = malformed_json_message.to_string();
+        let mut entry2 = LogEntry::default();
+        entry2.id = "e2".to_string();
+        entry2.timestamp = 2000;
+        entry2.message = valid_json_message;
+        event.aws_logs.data.log_events = vec![entry1, entry2];
 
         let result = parser.parse(event, "/aws/lambda/test-func").unwrap();
         assert_eq!(result.len(), 1); // Skips the malformed one, processes the valid one
@@ -165,18 +148,13 @@ mod tests {
     #[test]
     fn test_cloudwatch_logs_parser_empty_log_events_list() {
         let parser = CloudWatchLogsOtlpStdoutParser;
-        let event = LogsEvent {
-            aws_logs: AwsLogs {
-                data: LogData {
-                    owner: "123456789012".to_string(),
-                    log_group: "/aws/lambda/test-func".to_string(),
-                    log_stream: "stream1".to_string(),
-                    message_type: "DATA_MESSAGE".to_string(),
-                    subscription_filters: vec!["filter1".to_string()],
-                    log_events: vec![], // Empty log events list
-                },
-            },
-        };
+        let mut event = LogsEvent::default();
+        event.aws_logs.data.owner = "123456789012".to_string();
+        event.aws_logs.data.log_group = "/aws/lambda/test-func".to_string();
+        event.aws_logs.data.log_stream = "stream1".to_string();
+        event.aws_logs.data.message_type = "DATA_MESSAGE".to_string();
+        event.aws_logs.data.subscription_filters = vec!["filter1".to_string()];
+        event.aws_logs.data.log_events = vec![];
 
         let result = parser.parse(event, "/aws/lambda/test-func").unwrap();
         assert!(result.is_empty());

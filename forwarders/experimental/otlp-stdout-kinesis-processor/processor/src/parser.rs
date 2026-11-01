@@ -67,10 +67,7 @@ impl EventParser for KinesisOtlpStdoutParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_lambda_events::encodings::{Base64Data, SecondTimestamp};
-    use aws_lambda_events::event::kinesis::{
-        KinesisEncryptionType, KinesisEventRecord, KinesisRecord,
-    };
+    use aws_lambda_events::event::kinesis::{KinesisEventRecord, KinesisRecord};
     use chrono::Utc;
     use serde_json::json;
 
@@ -94,25 +91,21 @@ mod tests {
     }
 
     fn create_kinesis_event_record(data_string: String) -> KinesisEventRecord {
-        KinesisEventRecord {
-            event_id: Some("shardId-000000000000:12345".to_string()),
-            event_version: Some("1.0".to_string()),
-            kinesis: KinesisRecord {
-                kinesis_schema_version: Some("1.0".to_string()),
-                partition_key: "test_partition_key".to_string(),
-                sequence_number: "1234567890".to_string(),
-                data: Base64Data(data_string.into_bytes()),
-                approximate_arrival_timestamp: SecondTimestamp(Utc::now()),
-                encryption_type: KinesisEncryptionType::None,
-            },
-            invoke_identity_arn: Some("arn:aws:iam::123456789012:role/lambda-role".to_string()),
-            event_name: Some("aws:kinesis:record".to_string()),
-            event_source: Some("aws:kinesis".to_string()),
-            event_source_arn: Some(
-                "arn:aws:kinesis:us-east-1:123456789012:stream/test-stream".to_string(),
-            ),
-            aws_region: Some("us-east-1".to_string()),
-        }
+        let mut record = KinesisEventRecord::default();
+        record.event_id = Some("shardId-000000000000:12345".to_string());
+        record.event_version = Some("1.0".to_string());
+        record.kinesis.kinesis_schema_version = Some("1.0".to_string());
+        record.kinesis.partition_key = "test_partition_key".to_string();
+        record.kinesis.sequence_number = "1234567890".to_string();
+        record.kinesis.data.0 = data_string.into_bytes();
+        record.kinesis.approximate_arrival_timestamp.0 = Utc::now();
+        record.invoke_identity_arn = Some("arn:aws:iam::123456789012:role/lambda-role".to_string());
+        record.event_name = Some("aws:kinesis:record".to_string());
+        record.event_source = Some("aws:kinesis".to_string());
+        record.event_source_arn =
+            Some("arn:aws:kinesis:us-east-1:123456789012:stream/test-stream".to_string());
+        record.aws_region = Some("us-east-1".to_string());
+        record
     }
 
     #[test]
@@ -121,12 +114,11 @@ mod tests {
         let record_string1 = create_test_exporter_output_json_string("service-c");
         let record_string2 = create_test_exporter_output_json_string("service-d");
 
-        let event = KinesisEvent {
-            records: vec![
-                create_kinesis_event_record(record_string1),
-                create_kinesis_event_record(record_string2),
-            ],
-        };
+        let mut event = KinesisEvent::default();
+        event.records = vec![
+            create_kinesis_event_record(record_string1),
+            create_kinesis_event_record(record_string2),
+        ];
 
         let result = parser.parse(event, "test-stream").unwrap();
         assert_eq!(result.len(), 2);
@@ -142,36 +134,30 @@ mod tests {
         let invalid_utf8_data = vec![0x80];
         let valid_record_string = create_test_exporter_output_json_string("service-ok");
 
-        let kinesis_record_invalid_utf8 = KinesisRecord {
-            kinesis_schema_version: Some("1.0".to_string()),
-            partition_key: "pk_invalid_utf8".to_string(),
-            sequence_number: "seq_invalid_utf8".to_string(),
-            data: Base64Data(invalid_utf8_data),
-            approximate_arrival_timestamp: SecondTimestamp(Utc::now()),
-            encryption_type: KinesisEncryptionType::None,
-        };
+        let mut kinesis_record_invalid_utf8 = KinesisRecord::default();
+        kinesis_record_invalid_utf8.kinesis_schema_version = Some("1.0".to_string());
+        kinesis_record_invalid_utf8.partition_key = "pk_invalid_utf8".to_string();
+        kinesis_record_invalid_utf8.sequence_number = "seq_invalid_utf8".to_string();
+        kinesis_record_invalid_utf8.data.0 = invalid_utf8_data;
+        kinesis_record_invalid_utf8.approximate_arrival_timestamp.0 = Utc::now();
 
-        let event_record_invalid_utf8 = KinesisEventRecord {
-            event_id: Some("event_invalid_utf8_id".to_string()),
-            event_version: Some("1.0".to_string()),
-            kinesis: kinesis_record_invalid_utf8,
-            invoke_identity_arn: Some(
-                "arn:aws:iam::000000000000:role/lambda-role-minimal".to_string(),
-            ),
-            event_name: Some("aws:kinesis:record".to_string()),
-            event_source: Some("aws:kinesis".to_string()),
-            event_source_arn: Some(
-                "arn:aws:kinesis:us-east-1:000000000000:stream/minimal-stream-utf8".to_string(),
-            ),
-            aws_region: Some("us-east-1".to_string()),
-        };
+        let mut event_record_invalid_utf8 = KinesisEventRecord::default();
+        event_record_invalid_utf8.event_id = Some("event_invalid_utf8_id".to_string());
+        event_record_invalid_utf8.event_version = Some("1.0".to_string());
+        event_record_invalid_utf8.kinesis = kinesis_record_invalid_utf8;
+        event_record_invalid_utf8.invoke_identity_arn =
+            Some("arn:aws:iam::000000000000:role/lambda-role-minimal".to_string());
+        event_record_invalid_utf8.event_name = Some("aws:kinesis:record".to_string());
+        event_record_invalid_utf8.event_source = Some("aws:kinesis".to_string());
+        event_record_invalid_utf8.event_source_arn =
+            Some("arn:aws:kinesis:us-east-1:000000000000:stream/minimal-stream-utf8".to_string());
+        event_record_invalid_utf8.aws_region = Some("us-east-1".to_string());
 
-        let event = KinesisEvent {
-            records: vec![
-                event_record_invalid_utf8,
-                create_kinesis_event_record(valid_record_string),
-            ],
-        };
+        let mut event = KinesisEvent::default();
+        event.records = vec![
+            event_record_invalid_utf8,
+            create_kinesis_event_record(valid_record_string),
+        ];
 
         let result = parser.parse(event, "test-stream").unwrap();
         assert_eq!(result.len(), 1);
@@ -184,12 +170,11 @@ mod tests {
         let malformed_json_string = "{\"invalid_json".to_string();
         let valid_record_string = create_test_exporter_output_json_string("service-fine");
 
-        let event = KinesisEvent {
-            records: vec![
-                create_kinesis_event_record(malformed_json_string),
-                create_kinesis_event_record(valid_record_string),
-            ],
-        };
+        let mut event = KinesisEvent::default();
+        event.records = vec![
+            create_kinesis_event_record(malformed_json_string),
+            create_kinesis_event_record(valid_record_string),
+        ];
 
         let result = parser.parse(event, "test-stream").unwrap();
         assert_eq!(result.len(), 1);
@@ -199,7 +184,7 @@ mod tests {
     #[test]
     fn test_kinesis_otlp_stdout_parser_empty_records() {
         let parser = KinesisOtlpStdoutParser;
-        let event = KinesisEvent { records: vec![] };
+        let event = KinesisEvent::default();
         let result = parser.parse(event, "test-stream").unwrap();
         assert!(result.is_empty());
     }

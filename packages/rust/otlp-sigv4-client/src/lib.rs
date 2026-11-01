@@ -262,6 +262,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_reqwest_client_sends_signed_otlp_request() {
+        use std::time::Duration;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/v1/traces", listener.local_addr().unwrap());
+        let payload = Bytes::from_static(b"\x0a\x00");
+        let expected_payload = payload.clone();
+        let receiver = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            loop {
+                let count = stream.read(&mut buffer).await.unwrap();
+                assert_ne!(
+                    count, 0,
+                    "client closed before sending the complete request"
+                );
+                request.extend_from_slice(&buffer[..count]);
+                if let Some(header_end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let body_start = header_end + 4;
+                    if request.len() >= body_start + expected_payload.len() {
+                        assert_eq!(&request[body_start..], expected_payload.as_ref());
+                        let headers =
+                            String::from_utf8_lossy(&request[..header_end]).to_lowercase();
+                        assert!(headers.starts_with("post /v1/traces http/1.1\r\n"));
+                        assert!(headers.contains("content-type: application/x-protobuf"));
+                        assert!(headers.contains("authorization: aws4-hmac-sha256 "));
+                        assert!(headers.contains("/us-east-1/xray/aws4_request"));
+                        assert!(headers.contains("x-amz-date:"));
+                        assert!(headers.contains("x-amz-security-token: test-session"));
+                        break;
+                    }
+                }
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let credentials = Credentials::new(
+            "test-key",
+            "test-secret",
+            Some("test-session".to_string()),
+            None,
+            "test",
+        );
+        let client = SigV4ClientBuilder::new()
+            .with_client(client)
+            .with_credentials(credentials)
+            .with_region("us-east-1")
+            .with_service("xray")
+            .build()
+            .unwrap();
+        let request = Request::builder()
+            .method("POST")
+            .uri(endpoint)
+            .header("content-type", "application/x-protobuf")
+            .body(payload)
+            .unwrap();
+
+        let response = client.send_bytes(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.body().is_empty());
+        receiver.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_sigv4_client_preserves_headers() {
         // Create a mock response
         let mock_response = Response::builder()

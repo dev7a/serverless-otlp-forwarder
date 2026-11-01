@@ -380,7 +380,7 @@ where
         self.is_shutdown.store(true, Ordering::Relaxed);
         // Flush any remaining spans
         self.force_flush()?;
-        if let Ok(mut exporter) = self.exporter.lock() {
+        if let Ok(exporter) = self.exporter.lock() {
             exporter.shutdown()
         } else {
             Err(OTelSdkError::InternalFailure(
@@ -393,7 +393,7 @@ where
         self.is_shutdown.store(true, Ordering::Relaxed);
         // Flush any remaining spans
         self.force_flush()?;
-        if let Ok(mut exporter) = self.exporter.lock() {
+        if let Ok(exporter) = self.exporter.lock() {
             exporter.shutdown_with_timeout(timeout)
         } else {
             Err(OTelSdkError::InternalFailure(
@@ -457,7 +457,7 @@ mod tests {
             })
         }
 
-        fn shutdown(&mut self) -> OTelSdkResult {
+        fn shutdown(&self) -> OTelSdkResult {
             Ok(())
         }
     }

@@ -1,3 +1,11 @@
+## livetrace v0.3.0 - 2026-11-01
+
+Requires Rust 1.85 or later. Public forwarding functions now accept reqwest 0.13 clients.
+
+This release upgrades to OpenTelemetry protobuf 0.32 and `otlp-stdout-span-exporter 0.18.0`, requiring the patched `opentelemetry_sdk 0.32.1`. Trace display handles the new string-table reference variant.
+
+The HTTP client now uses reqwest 0.13. HTTPS certificate verification uses the operating system trust store through `rustls-platform-verifier` instead of bundled webpki roots. Ensure the target system provides a usable CA bundle.
+
 ## livetrace v0.2.3 - 2026-04-01
 
 This patch release refreshes the packaged lockfile used for `cargo publish` and `cargo install --locked` so it no longer references the yanked `slab 0.4.10` release.

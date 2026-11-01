@@ -411,7 +411,7 @@ mod tests {
             futures_util::future::ready(Ok(()))
         }
 
-        fn shutdown(&mut self) -> opentelemetry_sdk::error::OTelSdkResult {
+        fn shutdown(&self) -> opentelemetry_sdk::error::OTelSdkResult {
             Ok(())
         }
     }
