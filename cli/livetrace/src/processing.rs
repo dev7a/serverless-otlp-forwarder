@@ -309,6 +309,7 @@ mod tests {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("test-service".to_string())),
                         }),
+                        ..Default::default()
                     }],
                     dropped_attributes_count: 0,
                     entity_refs: vec![],
@@ -544,6 +545,7 @@ mod tests {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue(service_name.to_string())),
                         }),
+                        ..Default::default()
                     }],
                     dropped_attributes_count: 0,
                     entity_refs: vec![],

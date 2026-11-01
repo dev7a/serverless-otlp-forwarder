@@ -1975,9 +1975,6 @@ fn prepare_metric_line_chart_render_data(
             if current_offset > gap {
                 // Update max_x only if points were added
                 max_x = current_offset - gap;
-            } else {
-                // If a series has 0 points, don't let max_x be negative or zero based on gap
-                max_x = max_x.max(0);
             }
 
             let mut points_sum = 0.0;

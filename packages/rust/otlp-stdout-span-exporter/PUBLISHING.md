@@ -12,7 +12,7 @@ Before publishing a new version of `otlp-stdout-span-exporter`, ensure all these
 - [ ] `repository` information is complete and correct
 - [ ] `homepage` URL is valid
 - [ ] `documentation` URL is specified
-- [ ] Dependencies are up-to-date and correct (currently using OpenTelemetry 0.31.0)
+- [ ] Dependencies are up-to-date and correct (currently using OpenTelemetry 0.32 with opentelemetry_sdk 0.32.1 or later)
 - [ ] No extraneous dependencies
 - [ ] Development dependencies are in `[dev-dependencies]`
 - [ ] Feature flags are correctly defined

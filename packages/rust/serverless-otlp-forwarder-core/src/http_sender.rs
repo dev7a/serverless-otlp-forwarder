@@ -503,7 +503,7 @@ pub mod client_builder {
         use reqwest_middleware::ClientBuilder;
         use reqwest_tracing::TracingMiddleware;
 
-        let base_client = reqwest13::Client::new();
+        let base_client = reqwest::Client::new();
         let middleware_client = ClientBuilder::new(base_client)
             .with(TracingMiddleware::default())
             .build();

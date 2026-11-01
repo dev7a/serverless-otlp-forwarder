@@ -379,7 +379,7 @@ pub async fn update_item(
             let set_completed_at = todo_payload
                 .get("completed_at")
                 .and_then(Value::as_str)
-                .map_or(true, str::is_empty); // Set if not present or if present but empty
+                .is_none_or(str::is_empty); // Set if not present or if present but empty
 
             if set_completed_at {
                 update_expression_parts.push("#CA = :completed_at".to_string());

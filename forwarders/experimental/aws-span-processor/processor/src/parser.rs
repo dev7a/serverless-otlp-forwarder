@@ -3,7 +3,6 @@ use aws_lambda_events::event::cloudwatch_logs::LogsEvent;
 use serde_json::Value as JsonValue; // For parsing the raw span message
 use serverless_otlp_forwarder_core::core_parser::EventParser;
 use serverless_otlp_forwarder_core::telemetry::TelemetryData;
-use tracing;
 // Assuming otlp.rs is in the same crate/module directory (e.g., src/otlp.rs)
 // It will be declared in this crate's main.rs or lib.rs as `mod otlp;`
 use crate::otlp; // To use the local otlp::convert_span_to_otlp_protobuf
@@ -64,7 +63,7 @@ impl EventParser for AwsAppSignalSpanParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_lambda_events::event::cloudwatch_logs::{AwsLogs, LogData, LogEntry};
+    use aws_lambda_events::event::cloudwatch_logs::LogEntry;
     use serde_json::{json, Value as JsonValue};
 
     // Mocking the local otlp module for tests if direct testing of parser is needed
@@ -122,39 +121,30 @@ mod tests {
 
         let test_log_group = "/aws/appsignals/test-group";
 
-        let event = LogsEvent {
-            aws_logs: AwsLogs {
-                data: LogData {
-                    owner: "owner".to_string(),
-                    log_group: test_log_group.to_string(),
-                    log_stream: "stream".to_string(),
-                    message_type: "DATA_MESSAGE".to_string(),
-                    subscription_filters: vec!["filter".to_string()],
-                    log_events: vec![
-                        LogEntry {
-                            id: "1".to_string(),
-                            timestamp: 0,
-                            message: log_message1,
-                        },
-                        LogEntry {
-                            id: "2".to_string(),
-                            timestamp: 0,
-                            message: log_message2_malformed.to_string(),
-                        },
-                        LogEntry {
-                            id: "3".to_string(),
-                            timestamp: 0,
-                            message: log_message3,
-                        },
-                    ],
-                },
-            },
-        };
+        let mut event = LogsEvent::default();
+        event.aws_logs.data.owner = "owner".to_string();
+        event.aws_logs.data.log_group = test_log_group.to_string();
+        event.aws_logs.data.log_stream = "stream".to_string();
+        event.aws_logs.data.message_type = "DATA_MESSAGE".to_string();
+        event.aws_logs.data.subscription_filters = vec!["filter".to_string()];
+        let mut entry1 = LogEntry::default();
+        entry1.id = "1".to_string();
+        entry1.timestamp = 0;
+        entry1.message = log_message1;
+        let mut entry2 = LogEntry::default();
+        entry2.id = "2".to_string();
+        entry2.timestamp = 0;
+        entry2.message = log_message2_malformed.to_string();
+        let mut entry3 = LogEntry::default();
+        entry3.id = "3".to_string();
+        entry3.timestamp = 0;
+        entry3.message = log_message3;
+        event.aws_logs.data.log_events = vec![entry1, entry2, entry3];
 
         let result = parser.parse(event, test_log_group).unwrap();
 
         assert!(
-            result.len() == 2 || result.len() == 0,
+            result.len() == 2 || result.is_empty(),
                 "Expected 2 (if otlp.rs parsed test JSONs) or 0 (if otlp.rs failed due to minimal JSON) successful parses. Got: {}", 
                 result.len());
         if result.len() == 2 {

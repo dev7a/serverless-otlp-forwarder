@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-01
+
+### Changed
+- **Breaking**: Raised the workspace minimum supported Rust version to `1.85`. The platform TLS verifier uses an edition-2024 macOS dependency.
+- **Breaking**: Upgraded OpenTelemetry integrations and public attribute types to the 0.32 line, with `tracing-opentelemetry 0.33`.
+
 ## [0.6.0] - 2026-03-30
 
 ### Changed

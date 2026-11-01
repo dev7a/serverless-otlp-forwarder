@@ -21,7 +21,7 @@ Run `cargo add lambda-lw-http-router` to add the crate to your project or add th
 
 ```toml
 [dependencies]
-lambda-lw-http-router = "0.6.0"
+lambda-lw-http-router = "0.7.0"
 ```
 
 This release requires Rust `1.84+` and the AWS Lambda Rust Runtime `1.x` line.

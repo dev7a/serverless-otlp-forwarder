@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-01
+
+### Changed
+- **Breaking**: Public forwarding functions now accept reqwest 0.13 clients.
+- **Breaking**: Raised the workspace minimum supported Rust version to `1.85`. The platform TLS verifier uses an edition-2024 macOS dependency.
+- Updated to OpenTelemetry protobuf 0.32 and `otlp-stdout-span-exporter 0.18.0`, requiring the patched `opentelemetry_sdk 0.32.1`.
+- Handle string-table reference values in trace display and update protobuf test fixtures for the new attribute fields.
+- Updated the HTTP client to reqwest 0.13. TLS certificate verification now uses the operating system trust store through `rustls-platform-verifier` instead of bundled webpki roots.
+
 ## [0.2.3] - 2026-04-01
 
 ### Fixed

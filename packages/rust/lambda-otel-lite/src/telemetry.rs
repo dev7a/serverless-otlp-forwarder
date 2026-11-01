@@ -747,6 +747,64 @@ mod tests {
     }
 
     #[test]
+    fn test_custom_baggage_propagator_accepts_limit_sized_header() {
+        use opentelemetry::baggage::BaggageExt;
+        use opentelemetry_sdk::propagation::BaggagePropagator;
+        use std::collections::HashMap;
+
+        let config = TelemetryConfig::builder()
+            .with_propagator(BaggagePropagator::new())
+            .build();
+        let header = format!("a={},b={}", "x".repeat(4094), "y".repeat(4093));
+        assert_eq!(header.len(), 8192);
+        let carrier = HashMap::from([("baggage".to_string(), header)]);
+
+        let context = config.propagators[0].extract(&carrier);
+
+        assert_eq!(context.baggage().len(), 2);
+        assert_eq!(context.baggage().get("a").unwrap().to_string().len(), 4094);
+        assert_eq!(context.baggage().get("b").unwrap().to_string().len(), 4093);
+    }
+
+    #[test]
+    fn test_custom_baggage_propagator_rejects_oversized_header() {
+        use opentelemetry::baggage::BaggageExt;
+        use opentelemetry_sdk::propagation::BaggagePropagator;
+        use std::collections::HashMap;
+
+        let config = TelemetryConfig::builder()
+            .with_propagator(BaggagePropagator::new())
+            .build();
+        // A valid prefix must also be rejected when the complete header exceeds 8192 bytes.
+        let header = format!("valid=value,oversized={}", "x".repeat(8192));
+        let carrier = HashMap::from([("baggage".to_string(), header)]);
+
+        let context = config.propagators[0].extract(&carrier);
+
+        assert!(context.baggage().is_empty());
+    }
+
+    #[test]
+    fn test_custom_baggage_propagator_stops_after_64_members() {
+        use opentelemetry::baggage::BaggageExt;
+        use opentelemetry_sdk::propagation::BaggagePropagator;
+        use std::collections::HashMap;
+
+        let config = TelemetryConfig::builder()
+            .with_propagator(BaggagePropagator::new())
+            .build();
+        let mut members: Vec<_> = (0..64).map(|index| format!("key{index}=value")).collect();
+        // A 65th member must not overwrite a key parsed within the allowed prefix.
+        members.push("key0=overwritten".to_string());
+        let carrier = HashMap::from([("baggage".to_string(), members.join(","))]);
+
+        let context = config.propagators[0].extract(&carrier);
+
+        assert_eq!(context.baggage().len(), 64);
+        assert_eq!(context.baggage().get("key0").unwrap().to_string(), "value");
+    }
+
+    #[test]
     #[sealed_test]
     fn test_telemetry_config_with_propagators() {
         cleanup_env();

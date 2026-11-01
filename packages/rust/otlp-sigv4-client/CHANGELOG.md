@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.14.0] - 2026-11-01
+
+### Changed
+- **Breaking**: Raised the workspace minimum supported Rust version to `1.85`. The platform TLS verifier uses an edition-2024 macOS dependency.
+- **Breaking**: Upgraded the public `opentelemetry_http::HttpClient` integration to OpenTelemetry 0.32 and the default HTTP client to reqwest 0.13.
+- The default Rustls client now verifies certificates with `rustls-platform-verifier` and the operating system trust store instead of bundled webpki roots. Minimal Linux containers and Lambda custom runtimes must provide a usable CA bundle.
+
 ## [0.13.0] - 2026-03-30
 
 ### Changed

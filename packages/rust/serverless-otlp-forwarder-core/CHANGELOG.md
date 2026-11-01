@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-11-01
+
+### Fixed
+- Updated `async-trait` to `0.1.92` to avoid a redundant generated `#[must_use]` attribute rejected by Clippy 1.99.
+
+### Changed
+- **Breaking**: Raised the workspace minimum supported Rust version to `1.85`. The platform TLS verifier uses an edition-2024 macOS dependency.
+- **Breaking**: Upgraded the public HTTP client types from reqwest 0.12 to 0.13 and the OpenTelemetry protobuf types to 0.32.
+- Unified simple and instrumented clients on reqwest 0.13, removing the separate `reqwest13` dependency.
+- The default Rustls client now verifies certificates with `rustls-platform-verifier` and the operating system trust store instead of bundled webpki roots. Minimal Linux containers and Lambda custom runtimes must provide a usable CA bundle.
+- Updated `otlp-stdout-span-exporter` to `0.18.0`, requiring `opentelemetry_sdk >= 0.32.1` with the fix for GHSA-w9wp-h8wv-79jx.
+
 ## [0.2.1] - 2026-04-23
 
 ### Changed

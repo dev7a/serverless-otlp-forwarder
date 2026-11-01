@@ -98,6 +98,7 @@ fn convert_attributes(attrs: &Map<String, Value>) -> Vec<KeyValue> {
         .map(|(k, v)| KeyValue {
             key: k.clone(),
             value: Some(convert_value(v)),
+            ..Default::default()
         })
         .collect()
 }

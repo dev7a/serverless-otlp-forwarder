@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-11-01
+
+### Changed
+- **Breaking**: Public telemetry initialization now returns the OpenTelemetry 0.32 `SdkTracerProvider`.
+- **Breaking**: Raised the workspace minimum supported Rust version to `1.85`. The platform TLS verifier uses an edition-2024 macOS dependency.
+- Updated OpenTelemetry to 0.32 with the baggage propagation fix in `opentelemetry_sdk 0.32.1` and `otlp-sigv4-client 0.14.0`.
+- Updated HTTP exports to reqwest 0.13. TLS certificate verification now uses the operating system trust store through `rustls-platform-verifier` instead of bundled webpki roots.
+
 ## [0.9.2] - 2026-04-01
 
 ### Fixed

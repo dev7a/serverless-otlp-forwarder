@@ -17,6 +17,7 @@ This crate is designed to be used by specific Lambda processor implementations, 
     - [HTTP Client Options](#http-client-options)
     - [`process_event_batch` Orchestrator](#process_event_batch-orchestrator)
 - [Installation](#installation)
+- [Compatibility and TLS](#compatibility-and-tls)
 - [Usage Example](#usage-example)
 - [Environment Variables](#environment-variables)
 - [License](#license)
@@ -146,8 +147,14 @@ cargo add serverless-otlp-forwarder-core
 - **`instrumented-client`**: Enables the `InstrumentedHttpClient` for advanced middleware support
   ```toml
   [dependencies]
-  serverless-otlp-forwarder-core = { version = "0.2.1", features = ["instrumented-client"] }
+  serverless-otlp-forwarder-core = { version = "0.3.0", features = ["instrumented-client"] }
   ```
+
+## Compatibility and TLS
+
+This release requires Rust 1.85 or later and uses OpenTelemetry 0.32 and reqwest 0.13. Applications that construct a reqwest client for this crate must also use reqwest 0.13. For instrumented clients, use `reqwest-middleware 0.5` and `reqwest-tracing 0.7.1` with its `opentelemetry_0_32` feature.
+
+The default Rustls client verifies HTTPS certificates using `rustls-platform-verifier` and the operating system trust store. Earlier releases used bundled webpki roots. Ensure a CA bundle is available in minimal Linux containers and Lambda custom runtimes. Custom trust configuration can be supplied through a reqwest `ClientBuilder` before passing the client to this crate.
 
 ## Usage Example
 
@@ -252,9 +259,10 @@ For more advanced use cases requiring request tracing and observability of the f
 ```toml
 # Cargo.toml
 [dependencies]
-serverless-otlp-forwarder-core = { version = "0.2.1", features = ["instrumented-client"] }
-reqwest-middleware = "0.3"
-reqwest-tracing = "0.5"
+serverless-otlp-forwarder-core = { version = "0.3.0", features = ["instrumented-client"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+reqwest-middleware = "0.5"
+reqwest-tracing = { version = "0.7.1", features = ["opentelemetry_0_32"] }
 ```
 
 ```rust,ignore

@@ -339,6 +339,7 @@ fn get_string_value_for_grep(value_opt: &Option<AnyValue>) -> String {
                     .collect::<Vec<String>>()
                     .join(", "),
                 ProtoValue::BytesValue(b) => format!("bytes_len:{}", b.len()),
+                ProtoValue::StringValueStrindex(i) => format!("strindex:{i}"),
             };
         }
     }
@@ -1167,6 +1168,7 @@ fn format_anyvalue(av: &Option<AnyValue>) -> String {
             Some(ProtoValue::ArrayValue(_)) => "[array]".to_string(),
             Some(ProtoValue::KvlistValue(_)) => "[kvlist]".to_string(),
             Some(ProtoValue::BytesValue(_)) => "[bytes]".to_string(),
+            Some(ProtoValue::StringValueStrindex(_)) => "[strindex]".to_string(),
             None => "<empty_value>".to_string(),
         },
         None => "<no_value>".to_string(),
