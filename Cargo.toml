@@ -34,7 +34,7 @@ serverless-otlp-forwarder-core = { version = "0.3.0", path = "packages/rust/serv
 
 # Runtime and async
 tokio = { version = "1.45.1", features = ["full"] }
-async-trait = "0.1.82"
+async-trait = "0.1.92"
 futures = "0.3.31"
 futures-util = "0.3.31"
 futures-executor = "0.3.31"

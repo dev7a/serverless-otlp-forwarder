@@ -35,7 +35,7 @@ bytes = "1.0"
 # OTLP Exporter needs to be pinned to current version for publishing to crates.io
 otlp-stdout-span-exporter = { workspace = true }
 
-async-trait = "0.1"
+async-trait.workspace = true
 
 # Optional dependencies for instrumented client
 reqwest-middleware = { workspace = true, optional = true }

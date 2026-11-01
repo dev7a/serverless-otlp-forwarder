@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-11-01
 
+### Fixed
+- Updated `async-trait` to `0.1.92` to avoid a redundant generated `#[must_use]` attribute rejected by Clippy 1.99.
+
 ### Changed
 - **Breaking**: Raised the workspace minimum supported Rust version to `1.85`. The platform TLS verifier uses an edition-2024 macOS dependency.
 - **Breaking**: Upgraded the public HTTP client types from reqwest 0.12 to 0.13 and the OpenTelemetry protobuf types to 0.32.
